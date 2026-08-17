@@ -1,0 +1,45 @@
+---
+description: Versioning, commit format, changelog, and when to commit. Always apply.
+alwaysApply: true
+---
+
+# Versioning and commits
+
+One format only. Do not use conventional commits (`feat:`, `fix:`, `chore:`).
+
+```
+{channel} v{MAJOR}.{MINOR}.{PATCH}: {short summary}
+```
+
+## Channel
+
+- `beta` until the user explicitly says **release**
+- After that, `release` — do not stay on `beta`
+
+Examples:
+
+- `beta v0.1.0: init`
+- `beta v0.1.1: fix canvas host port`
+- `beta v0.2.0: add local postgres compose`
+- `release v1.0.0: first public release` (only when the user asks to release)
+
+## When to bump
+
+Stay on `0.x` while `beta`.
+
+- **PATCH** (`0.1.0` → `0.1.1`): bugfix, docs-only, small follow-up
+- **MINOR** (`0.1.1` → `0.2.0`): a completed feature
+- **MAJOR**: breaking change, or the first `release` (`beta v0.x` → `release v1.0.0` unless the user names another version)
+
+Same version may appear on more than one commit only for tiny follow-ups in the same feature. Prefer bumping PATCH.
+
+## When to commit
+
+- Commit **after a feature (or fix) is done**, not mid-work
+- **One commit per completed feature**
+- Update `CHANGELOG.md` in that same commit (date + what changed)
+- Do not commit until the user asked, or the feature is finished and they asked to commit/push
+
+## Changelog
+
+Keep `CHANGELOG.md` at the repo root. Newest version at the top. Each entry needs the version label, date, and a short list of changes.

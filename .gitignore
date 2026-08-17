@@ -178,7 +178,8 @@ cython_debug/
 .roorules
 .clinerules
 .windsurfrules
-.cursor/rules
+# Keep project Cursor rules; ignore nested copies from other workspaces.
+.cursor/rules/.cursor/
 .roo/rules
 .cline/rules
 .windsurf/rules
