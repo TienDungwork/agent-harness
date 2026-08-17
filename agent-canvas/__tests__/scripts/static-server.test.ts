@@ -110,6 +110,16 @@ describe("static-server.mjs", () => {
       const config = parseArgs(["--runtime-services-info", ""]);
       expect(config.runtimeServicesInfo).toBeNull();
     });
+
+    it("defaults localAuthEnabled to false", () => {
+      const config = parseArgs([]);
+      expect(config.localAuthEnabled).toBe(false);
+    });
+
+    it("parses --local-auth-enabled", () => {
+      const config = parseArgs(["--local-auth-enabled"]);
+      expect(config.localAuthEnabled).toBe(true);
+    });
   });
 
   describe("runtime services info injection", () => {
@@ -158,6 +168,19 @@ describe("static-server.mjs", () => {
       // JSON.parse it, exactly like the VITE_RUNTIME_SERVICES_INFO env var.
       expect(body).toContain('\\"mode\\"');
       expect(body).toContain("docker");
+    });
+
+    it("exposes window.__VITE_LOCAL_AUTH_ENABLED__ when localAuthEnabled", async () => {
+      const buildDir = mkdtempSync(path.join(tmpdir(), "agent-canvas-build-"));
+      tempDirs.push(buildDir);
+      writeFileSync(
+        path.join(buildDir, "index.html"),
+        "<html><head></head><body>app</body></html>",
+      );
+
+      const origin = await startServer(buildDir, { localAuthEnabled: true });
+      const body = await (await fetch(`${origin}/`)).text();
+      expect(body).toContain('window.__VITE_LOCAL_AUTH_ENABLED__="true"');
     });
 
     it("does not inject when runtimeServicesInfo is null", async () => {

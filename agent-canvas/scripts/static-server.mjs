@@ -86,6 +86,7 @@ export function parseArgs(argv = process.argv.slice(2)) {
     authRequired: false,
     runtimeServicesInfo: null,
     lockToCloud: null,
+    localAuthEnabled: false,
     basePath: "/",
   };
 
@@ -135,9 +136,12 @@ export function parseArgs(argv = process.argv.slice(2)) {
       case "--auth-required":
         config.authRequired = true;
         break;
+      case "--local-auth-enabled":
+        config.localAuthEnabled = true;
+        break;
       case "--reject-prefix": {
         const prefix = argv[++i];
-        if (!prefix || !prefix.startsWith("/")) {
+        if (!prefix?.startsWith("/")) {
           throw new Error(
             `--reject-prefix value must start with '/': ${prefix ?? "(empty)"}`,
           );
@@ -149,6 +153,7 @@ export function parseArgs(argv = process.argv.slice(2)) {
       case "--help":
         showHelp();
         process.exit(0);
+        break;
       default:
         throw new Error(`Unknown flag: ${flag}`);
     }
@@ -197,6 +202,9 @@ OPTIONS:
   --auth-required              Inject authRequired flag into index.html so the
                                pre-built frontend shows the API key entry screen
                                (public mode) without VITE_AUTH_REQUIRED baked in.
+  --local-auth-enabled         Inject window.__VITE_LOCAL_AUTH_ENABLED__ so a
+                               pre-built overlay UI can show Hosts / SSH without
+                               baking VITE_LOCAL_AUTH_ENABLED at build time.
   --runtime-services-info <json>
                                Inject a JSON description of the local runtime
                                services into index.html so the pre-built
@@ -266,6 +274,9 @@ ROUTING:
  * - `basePath`: the path prefix the SPA is mounted under, exposed as
  *   `window.__AGENT_CANVAS_BASE_PATH__` so runtime static assets like locale
  *   files can resolve through the same subpath as the built bundle.
+ *
+ * - `localAuthEnabled`: sets `window.__VITE_LOCAL_AUTH_ENABLED__ = "true"` so
+ *   overlay builds can show Hosts / SSH without baking VITE_LOCAL_AUTH_ENABLED.
  */
 function makeConfigInjectionScript(
   sessionApiKey,
@@ -273,6 +284,7 @@ function makeConfigInjectionScript(
   runtimeServicesInfo,
   lockToCloud,
   basePath,
+  localAuthEnabled,
 ) {
   const parts = [];
 
@@ -322,6 +334,10 @@ function makeConfigInjectionScript(
     );
   }
 
+  if (localAuthEnabled) {
+    parts.push(`window.__VITE_LOCAL_AUTH_ENABLED__="true";`);
+  }
+
   if (parts.length === 0) return "";
 
   return `<script>(function(){${parts.join("")}}());</script>`;
@@ -341,6 +357,7 @@ async function serveInjectedIndexHtml(
     runtimeServicesInfo,
     lockToCloud,
     basePath,
+    localAuthEnabled,
   } = {},
 ) {
   let content;
@@ -356,6 +373,7 @@ async function serveInjectedIndexHtml(
     runtimeServicesInfo,
     lockToCloud,
     basePath,
+    localAuthEnabled,
   );
   // Inject right before </head> so the key is available before any app code runs.
   // replace() targets the first (and only) </head> in well-formed HTML.
@@ -404,6 +422,7 @@ function needsRuntimeInjection(injectionOpts) {
     injectionOpts.authRequired ||
     injectionOpts.runtimeServicesInfo ||
     injectionOpts.lockToCloud ||
+    injectionOpts.localAuthEnabled ||
     (injectionOpts.basePath && injectionOpts.basePath !== "/"),
   );
 }
@@ -547,6 +566,7 @@ export function startStaticServer(config) {
     authRequired: config.authRequired || false,
     runtimeServicesInfo: config.runtimeServicesInfo || null,
     lockToCloud: config.lockToCloud || null,
+    localAuthEnabled: config.localAuthEnabled || false,
     basePath: normalizeBasePath(config.basePath),
   };
   const basePath = injectionOpts.basePath;

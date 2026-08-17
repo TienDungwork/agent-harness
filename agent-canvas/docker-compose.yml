@@ -1,31 +1,93 @@
-# Creanova Agent Canvas stack (image still upstream until Creanova GHCR publishes) (all-in-one image).
-# Avoids Node/nvm/uv on the host — just: docker compose up
+# Creanova Agent Canvas
 #
-# Host :8000 is often taken on this machine (e.g. Triton), so we publish
-# Canvas on ${CANVAS_HOST_PORT:-18010} → container :8000.
+# Image = runtime only (agent-server + automation + Node ingress).
+# Local code is applied on top:
+#   ./build          → UI overlay (Creanova + Hosts / SSH)
+#   ./docker + ./scripts → entrypoint / static-server
+#   ../services/local-gateway → auth + SSH inventory
+#
+# First time (or after UI changes):
+#   docker compose --profile overlay-build run --rm canvas-ui-build
+# Then:
+#   docker compose up
 #
 # UI: http://localhost:18010/canvas/
+# Local login (after overlay): admin / admin123
 #
 # Networking (Atin191 rule): Docker bridge MUST use 10.240.0.0/16 pools.
-# Never let Compose fall back to Docker default 192.168.x.0/20 — those
-# overlap LAN/VPN (e.g. 192.168.80.0/20 covers 192.168.82.0/24).
 
 services:
+  canvas-ui-build:
+    image: node:24-slim
+    profiles: ["overlay-build"]
+    working_dir: /src
+    volumes:
+      - .:/src
+      - canvas_ui_npm:/src/node_modules
+    environment:
+      HUSKY: "0"
+      VITE_BASE_PATH: /canvas
+      VITE_LOCAL_AUTH_ENABLED: "true"
+    command: sh -c "npm ci && npm run build:app"
+
+  local-gateway:
+    build:
+      context: ../services/local-gateway
+      dockerfile: Dockerfile
+    container_name: local-gateway
+    environment:
+      HOST: 0.0.0.0
+      PORT: "18110"
+      AUTH_BACKEND: local
+      AGENT_SERVER_URL: http://agent-canvas:18000
+      DATABASE_URL: sqlite:////data/agent-canvas/local-gateway.db
+      SESSION_SECRET: ${OH_SECRET_KEY:-change-me-creanova-local-session-secret}
+      CORS_ORIGINS: ${CORS_ORIGINS:-http://127.0.0.1:18010,http://localhost:18010,http://192.168.1.191:18010,http://192.168.82.52:18010}
+    volumes:
+      - ../services/local-gateway:/app
+      - canvas_state:/data
+    command:
+      - sh
+      - -c
+      - |
+        keyfile=/data/agent-canvas/api-key.txt
+        i=0
+        while [ ! -s "$$keyfile" ] && [ "$$i" -lt 60 ]; do
+          sleep 1
+          i=$$((i + 1))
+        done
+        if [ -s "$$keyfile" ]; then
+          export AGENT_SERVER_API_KEY=$$(cat "$$keyfile")
+        fi
+        mkdir -p /data/agent-canvas
+        exec /opt/venv/bin/python main.py
+    depends_on:
+      - agent-canvas
+    networks:
+      - default
+    restart: unless-stopped
+
   agent-canvas:
-    image: ${AGENT_CANVAS_IMAGE:-ghcr.io/Creanova/agent-canvas:1.5.2}
+    image: ${AGENT_CANVAS_IMAGE:-ntiendung/agents-harness:v1.0.0}
     container_name: agent-canvas
     ports:
-      # Explicit 0.0.0.0 so LAN/VPN clients can reach the host (not just localhost).
       - "0.0.0.0:${CANVAS_HOST_PORT:-18010}:8000"
     environment:
-      # Optional: set in .env to require X-Session-API-Key
       - LOCAL_BACKEND_API_KEY=${LOCAL_BACKEND_API_KEY:-}
       - OH_SECRET_KEY=${OH_SECRET_KEY:-}
+      - OH_LOCAL_AUTH=${OH_LOCAL_AUTH:-1}
+      - LOCAL_GATEWAY_URL=http://local-gateway:18110
     volumes:
-      - ${Creanova_STATE_DIR:-${HOME}/.Creanova}:/home/Creanova/.Creanova
       - ${PROJECTS_PATH:-${HOME}/projects}:/projects
-      # Let the agent start sibling containers (optional but useful locally)
       - /var/run/docker.sock:/var/run/docker.sock
+      # Runtime image stays untouched; local code is bind-mounted over it.
+      - ./docker/entrypoint.sh:/opt/agent-canvas/entrypoint.sh:ro
+      - ./scripts/static-server.mjs:/opt/agent-canvas/static-server.mjs:ro
+      - ./scripts/proxy-utils.mjs:/opt/agent-canvas/proxy-utils.mjs:ro
+      - ./build:/opt/agent-canvas/frontend-overlay:ro
+      # Hub image writes state here (user=openhands). Named volume keeps
+      # conversations across recreate; local-gateway shares the same data.
+      - canvas_state:/home/openhands/.openhands
     extra_hosts:
       - "host.docker.internal:host-gateway"
     networks:
@@ -33,6 +95,11 @@ services:
     restart: unless-stopped
     stdin_open: true
     tty: true
+
+volumes:
+  canvas_ui_npm:
+  canvas_state:
+    name: agent-canvas_canvas_state
 
 networks:
   default:

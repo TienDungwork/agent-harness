@@ -12,16 +12,15 @@ export type LocalAuthUser = {
 };
 
 export function isLocalAuthEnabled(): boolean {
-  const raw = (
-    import.meta.env.VITE_LOCAL_AUTH_ENABLED ??
-    (typeof window !== "undefined"
+  const fromBuild = (import.meta.env.VITE_LOCAL_AUTH_ENABLED ?? "")
+    .toString()
+    .trim();
+  const fromRuntime =
+    typeof window !== "undefined"
       ? (window as { __VITE_LOCAL_AUTH_ENABLED__?: string })
           .__VITE_LOCAL_AUTH_ENABLED__
-      : undefined) ??
-    ""
-  )
-    .toString()
-    .toLowerCase();
+      : undefined;
+  const raw = (fromBuild || fromRuntime || "").toString().toLowerCase();
   return raw === "true" || raw === "1";
 }
 

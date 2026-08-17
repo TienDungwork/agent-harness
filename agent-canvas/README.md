@@ -79,7 +79,23 @@ agent-canvas --frontend-only  # static frontend + ingress only
 agent-canvas --backend-only   # agent server + automation backend + ingress only
 ```
 
-### Option 2: With a Docker Sandbox
+### Option 2: Docker runtime image + local code overlay
+
+The Hub image (`ntiendung/agents-harness:v1.0.0`) is **runtime only** (agent-server, automation, Node ingress). This repo’s UI, entrypoint, and local-gateway are bind-mounted on top.
+
+```sh
+cd agent-canvas
+mkdir -p "$HOME/projects"
+# After UI source changes (or first run):
+docker compose --profile overlay-build run --rm canvas-ui-build
+docker compose up
+```
+
+UI: [http://localhost:18010/canvas/](http://localhost:18010/canvas/)  
+Local login: `admin` / `admin123`  
+Hosts / SSH: Settings → Host
+
+### Option 2b: Upstream all-in-one image (no local overlay)
 
 **Prerequisites**:
 

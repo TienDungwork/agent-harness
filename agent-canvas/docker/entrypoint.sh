@@ -60,11 +60,16 @@ AGENT_CANVAS_BASE_PATH="${AGENT_CANVAS_BASE_PATH:-${CONFIG_CANVAS_BASE_PATH:-/ca
 
 # Persistence paths — keep settings, conversations, bash history under a
 # single well-known directory that the VOLUME directive exposes.
-Creanova_DIR="${HOME}/.Creanova"
-STATE_DIR="${Creanova_DIR}/${CONFIG_STATE_SUBDIR:-agent-canvas}"
-export OH_PERSISTENCE_DIR="${OH_PERSISTENCE_DIR:-${Creanova_DIR}}"
-export OH_CONVERSATIONS_PATH="${OH_CONVERSATIONS_PATH:-${Creanova_DIR}/${CONFIG_CONVERSATIONS:-agent-canvas/conversations}}"
-export OH_BASH_EVENTS_DIR="${OH_BASH_EVENTS_DIR:-${Creanova_DIR}/${CONFIG_BASH_EVENTS:-agent-canvas/bash_events}}"
+# Hub runtime image uses ~/.openhands; a Creanova-built image uses ~/.Creanova.
+if [ -d "${HOME}/.openhands" ] || command -v openhands-agent-server >/dev/null 2>&1; then
+  STATE_ROOT="${HOME}/.openhands"
+else
+  STATE_ROOT="${HOME}/.Creanova"
+fi
+STATE_DIR="${STATE_ROOT}/${CONFIG_STATE_SUBDIR:-agent-canvas}"
+export OH_PERSISTENCE_DIR="${OH_PERSISTENCE_DIR:-${STATE_ROOT}}"
+export OH_CONVERSATIONS_PATH="${OH_CONVERSATIONS_PATH:-${STATE_ROOT}/${CONFIG_CONVERSATIONS:-agent-canvas/conversations}}"
+export OH_BASH_EVENTS_DIR="${OH_BASH_EVENTS_DIR:-${STATE_ROOT}/${CONFIG_BASH_EVENTS:-agent-canvas/bash_events}}"
 
 # OH_SECRET_KEY is required for settings/secrets encryption. Without it the
 # agent-server refuses to return encrypted secrets → conversation creation
@@ -111,9 +116,11 @@ if [ -z "$EFFECTIVE_SESSION_KEY" ]; then
   exit 1
 fi
 export Creanova_AUTOMATION_API_KEY="${Creanova_AUTOMATION_API_KEY:-${EFFECTIVE_SESSION_KEY}}"
+export OPENHANDS_AUTOMATION_API_KEY="${OPENHANDS_AUTOMATION_API_KEY:-${EFFECTIVE_SESSION_KEY}}"
 export AUTOMATION_LOCAL_API_KEY="${AUTOMATION_LOCAL_API_KEY:-${EFFECTIVE_SESSION_KEY}}"
 export AUTOMATION_AGENT_SERVER_API_KEY="${AUTOMATION_AGENT_SERVER_API_KEY:-${EFFECTIVE_SESSION_KEY}}"
 export Creanova_REMOTE_WS_READY_REQUIRED="${Creanova_REMOTE_WS_READY_REQUIRED:-false}"
+export OPENHANDS_REMOTE_WS_READY_REQUIRED="${OPENHANDS_REMOTE_WS_READY_REQUIRED:-false}"
 
 # AGENT_SERVER_URL — needed by automation sandbox callbacks.
 export AGENT_SERVER_URL="${AGENT_SERVER_URL:-http://127.0.0.1:${AGENT_SERVER_PORT}}"
@@ -147,11 +154,15 @@ trap cleanup EXIT SIGINT SIGTERM
 log "Starting agent-server on port $AGENT_SERVER_PORT..."
 
 if command -v Creanova-agent-server >/dev/null 2>&1; then
-  # Binary build (production image)
   Creanova-agent-server --port "$AGENT_SERVER_PORT" &
+elif command -v openhands-agent-server >/dev/null 2>&1; then
+  openhands-agent-server --port "$AGENT_SERVER_PORT" &
 elif [ -x /agent-server/.venv/bin/python ]; then
-  # Source build (development image)
-  /agent-server/.venv/bin/python -m Creanova.agent_server --port "$AGENT_SERVER_PORT" &
+  if /agent-server/.venv/bin/python -c "import Creanova.agent_server" 2>/dev/null; then
+    /agent-server/.venv/bin/python -m Creanova.agent_server --port "$AGENT_SERVER_PORT" &
+  else
+    /agent-server/.venv/bin/python -m openhands.agent_server --port "$AGENT_SERVER_PORT" &
+  fi
 else
   log_error "Cannot find agent-server binary or source venv."
   exit 1
@@ -169,7 +180,7 @@ export AUTOMATION_FRONTEND_DIR=""
 # to a cloud provider (S3/GCS) which will fail without credentials, causing
 # tarball-based presets (preset/prompt, preset/plugin) to silently error.
 export FILE_STORE="${FILE_STORE:-local}"
-export LOCAL_STORAGE_PATH="${LOCAL_STORAGE_PATH:-${Creanova_DIR}/storage}"
+export LOCAL_STORAGE_PATH="${LOCAL_STORAGE_PATH:-${STATE_ROOT}/storage}"
 mkdir -p "$LOCAL_STORAGE_PATH"
 
 # AUTOMATION_BASE_URL — the publicly-reachable base URL for the automation
@@ -178,27 +189,31 @@ mkdir -p "$LOCAL_STORAGE_PATH"
 export AUTOMATION_BASE_URL="${AUTOMATION_BASE_URL:-http://127.0.0.1:${PORT}}"
 
 # AUTOMATION_WORKSPACE_BASE — where automation runs unpack tarballs.
-export AUTOMATION_WORKSPACE_BASE="${AUTOMATION_WORKSPACE_BASE:-${Creanova_DIR}/workspaces}"
+export AUTOMATION_WORKSPACE_BASE="${AUTOMATION_WORKSPACE_BASE:-${STATE_ROOT}/workspaces}"
 mkdir -p "$AUTOMATION_WORKSPACE_BASE"
 
 # Default to SQLite so the automation server works out of the box without
 # an external PostgreSQL instance. Users can override AUTOMATION_DB_URL to
 # point at a real Postgres for production deployments.
 if [ -z "${AUTOMATION_DB_URL:-}" ]; then
-  AUTOMATION_DB_FILE="${Creanova_DIR}/${CONFIG_AUTOMATION_DB:-automation/automations.db}"
+  AUTOMATION_DB_FILE="${STATE_ROOT}/${CONFIG_AUTOMATION_DB:-automation/automations.db}"
   mkdir -p "$(dirname "$AUTOMATION_DB_FILE")"
   export AUTOMATION_DB_URL="sqlite+aiosqlite:///${AUTOMATION_DB_FILE}"
   log "Using SQLite database: $AUTOMATION_DB_URL"
 fi
 
 # The automation server uses uvicorn. Set AUTOMATION_PORT via its CLI.
+AUTOMATION_MOD="openhands.automation"
+if python -c "import Creanova.automation" 2>/dev/null; then
+  AUTOMATION_MOD="Creanova.automation"
+fi
 if command -v uvicorn >/dev/null 2>&1; then
-  uvicorn Creanova.automation.app:app \
+  uvicorn "${AUTOMATION_MOD}.app:app" \
     --host 0.0.0.0 \
     --port "$AUTOMATION_PORT" &
   PIDS+=($!)
-elif python -c "import Creanova.automation" 2>/dev/null; then
-  python -m uvicorn Creanova.automation.app:app \
+elif python -c "import ${AUTOMATION_MOD}" 2>/dev/null; then
+  python -m uvicorn "${AUTOMATION_MOD}.app:app" \
     --host 0.0.0.0 \
     --port "$AUTOMATION_PORT" &
   PIDS+=($!)
@@ -207,25 +222,81 @@ else
 fi
 
 # ── 3. Wait for backends to be ready ─────────────────────────────────────────
-wait_for_port() {
-  local port=$1 name=$2 max_wait=${3:-30}
+wait_for_tcp() {
+  local host=$1 port=$2 name=$3 max_wait=${4:-30}
   local elapsed=0
-  while ! (echo >/dev/tcp/127.0.0.1/"$port") 2>/dev/null; do
+  while ! (echo >/dev/tcp/"$host"/"$port") 2>/dev/null; do
     sleep 1
     elapsed=$((elapsed + 1))
     if [ "$elapsed" -ge "$max_wait" ]; then
-      log "WARNING: $name on port $port did not become ready within ${max_wait}s"
+      log "WARNING: $name on ${host}:${port} did not become ready within ${max_wait}s"
       return 1
     fi
   done
-  log "$name is ready on port $port"
+  log "$name is ready on ${host}:${port}"
 }
+
+wait_for_port() {
+  wait_for_tcp 127.0.0.1 "$1" "$2" "${3:-30}"
+}
+
+is_truthy() {
+  case "$(printf '%s' "${1:-}" | tr '[:upper:]' '[:lower:]')" in
+    true|1) return 0 ;;
+    *) return 1 ;;
+  esac
+}
+
+# Local source overlay: bind-mount ./build → /opt/agent-canvas/frontend-overlay
+# so the Hub image stays a runtime and this tree's UI is applied at start.
+FRONTEND_DIR="/opt/agent-canvas/frontend"
+if [ -f /opt/agent-canvas/frontend-overlay/index.html ]; then
+  FRONTEND_DIR="/opt/agent-canvas/frontend-overlay"
+  log "Using local frontend overlay at $FRONTEND_DIR"
+else
+  log "No local frontend overlay (missing index.html); using image UI"
+fi
+
+# When overlay UI is present, optionally send /api through local-gateway
+# (auth + SSH hosts). Without overlay, keep /api on agent-server so the
+# stock image UI is not stuck behind a login page it does not have.
+USE_GATEWAY=0
+GATEWAY_ROUTE_ARGS=()
+LOCAL_AUTH_ARGS=()
+if is_truthy "${OH_LOCAL_AUTH:-false}" && [ -n "${LOCAL_GATEWAY_URL:-}" ]; then
+  if [ "$FRONTEND_DIR" = "/opt/agent-canvas/frontend-overlay" ]; then
+    USE_GATEWAY=1
+    GATEWAY_ROUTE_ARGS=(
+      --route "/api=${LOCAL_GATEWAY_URL}"
+      --route "/healthz=${LOCAL_GATEWAY_URL}"
+    )
+    LOCAL_AUTH_ARGS=(--local-auth-enabled)
+    log "Local auth gateway: ${LOCAL_GATEWAY_URL}"
+  else
+    log "OH_LOCAL_AUTH is on but overlay UI is missing; /api stays on agent-server"
+  fi
+fi
+if [ "$USE_GATEWAY" != 1 ]; then
+  GATEWAY_ROUTE_ARGS=(--route "/api=http://127.0.0.1:${AGENT_SERVER_PORT}")
+fi
 
 wait_for_port "$AGENT_SERVER_PORT" "Agent Server" 60 &
 WAIT_PID1=$!
 wait_for_port "$AUTOMATION_PORT" "Automation Server" 60 &
 WAIT_PID2=$!
 wait "$WAIT_PID1" "$WAIT_PID2"
+
+if [ "$USE_GATEWAY" = 1 ]; then
+  gw="${LOCAL_GATEWAY_URL#http://}"
+  gw="${gw#https://}"
+  gw="${gw%%/*}"
+  gw_host="${gw%%:*}"
+  gw_port="${gw##*:}"
+  if [ "$gw_host" = "$gw_port" ]; then
+    gw_port=80
+  fi
+  wait_for_tcp "$gw_host" "$gw_port" "Local gateway" 60 || true
+fi
 
 # ── 4. Start static server (frontend + proxy) ────────────────────────────────
 log "Starting frontend + proxy on port $PORT..."
@@ -249,12 +320,13 @@ RUNTIME_SERVICES_INFO="$(node /opt/agent-canvas/runtime-services-info.mjs \
 node /opt/agent-canvas/static-server.mjs \
   --port "$PORT" \
   --host :: \
-  --dir /opt/agent-canvas/frontend \
+  --dir "$FRONTEND_DIR" \
   --base-path "$AGENT_CANVAS_BASE_PATH" \
   --session-api-key "$EFFECTIVE_SESSION_KEY" \
   --runtime-services-info "$RUNTIME_SERVICES_INFO" \
+  "${LOCAL_AUTH_ARGS[@]}" \
   --route "/api/automation=http://127.0.0.1:${AUTOMATION_PORT}" \
-  --route "/api=http://127.0.0.1:${AGENT_SERVER_PORT}" \
+  "${GATEWAY_ROUTE_ARGS[@]}" \
   --route "/server_info=http://127.0.0.1:${AGENT_SERVER_PORT}" \
   --route "/sockets=http://127.0.0.1:${AGENT_SERVER_PORT}" \
   --route "/alive=http://127.0.0.1:${AGENT_SERVER_PORT}" \
@@ -276,12 +348,13 @@ if [ -n "${PUBLIC_MODE_PORT:-}" ]; then
   node /opt/agent-canvas/static-server.mjs \
     --port "$PUBLIC_MODE_PORT" \
     --host :: \
-    --dir /opt/agent-canvas/frontend \
+    --dir "$FRONTEND_DIR" \
     --base-path "$AGENT_CANVAS_BASE_PATH" \
     --auth-required \
     --runtime-services-info "$RUNTIME_SERVICES_INFO" \
+    "${LOCAL_AUTH_ARGS[@]}" \
     --route "/api/automation=http://127.0.0.1:${AUTOMATION_PORT}" \
-    --route "/api=http://127.0.0.1:${AGENT_SERVER_PORT}" \
+    "${GATEWAY_ROUTE_ARGS[@]}" \
     --route "/server_info=http://127.0.0.1:${AGENT_SERVER_PORT}" \
     --route "/sockets=http://127.0.0.1:${AGENT_SERVER_PORT}" \
     --route "/alive=http://127.0.0.1:${AGENT_SERVER_PORT}" \
