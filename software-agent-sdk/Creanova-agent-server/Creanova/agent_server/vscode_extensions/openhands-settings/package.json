@@ -1,0 +1,12 @@
+{
+  "name": "Creanova-settings",
+  "displayName": "Creanova Settings",
+  "description": "Auto-configure VSCode settings for Creanova",
+  "version": "1.0.0",
+  "engines": {
+    "vscode": "^1.80.0"
+  },
+  "categories": ["Other"],
+  "activationEvents": ["*"],
+  "main": "./extension.js"
+}

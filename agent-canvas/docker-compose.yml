@@ -1,0 +1,44 @@
+# Creanova Agent Canvas stack (image still upstream until Creanova GHCR publishes) (all-in-one image).
+# Avoids Node/nvm/uv on the host — just: docker compose up
+#
+# Host :8000 is often taken on this machine (e.g. Triton), so we publish
+# Canvas on ${CANVAS_HOST_PORT:-18010} → container :8000.
+#
+# UI: http://localhost:18010/canvas/
+#
+# Networking (Atin191 rule): Docker bridge MUST use 10.240.0.0/16 pools.
+# Never let Compose fall back to Docker default 192.168.x.0/20 — those
+# overlap LAN/VPN (e.g. 192.168.80.0/20 covers 192.168.82.0/24).
+
+services:
+  agent-canvas:
+    image: ${AGENT_CANVAS_IMAGE:-ghcr.io/Creanova/agent-canvas:1.5.2}
+    container_name: agent-canvas
+    ports:
+      # Explicit 0.0.0.0 so LAN/VPN clients can reach the host (not just localhost).
+      - "0.0.0.0:${CANVAS_HOST_PORT:-18010}:8000"
+    environment:
+      # Optional: set in .env to require X-Session-API-Key
+      - LOCAL_BACKEND_API_KEY=${LOCAL_BACKEND_API_KEY:-}
+      - OH_SECRET_KEY=${OH_SECRET_KEY:-}
+    volumes:
+      - ${Creanova_STATE_DIR:-${HOME}/.Creanova}:/home/Creanova/.Creanova
+      - ${PROJECTS_PATH:-${HOME}/projects}:/projects
+      # Let the agent start sibling containers (optional but useful locally)
+      - /var/run/docker.sock:/var/run/docker.sock
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    networks:
+      - default
+    restart: unless-stopped
+    stdin_open: true
+    tty: true
+
+networks:
+  default:
+    name: agent-canvas_net
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 10.240.120.0/24
+          gateway: 10.240.120.1

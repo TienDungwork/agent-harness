@@ -1,0 +1,43 @@
+"""Creanova Workspace - Docker and container-based workspace implementations."""
+
+from typing import TYPE_CHECKING
+
+from Creanova.sdk.workspace import PlatformType, TargetType
+
+from .apptainer import ApptainerWorkspace
+from .cloud import (
+    CloneResult,
+    GitProvider,
+    CreanovaCloudWorkspace,
+    RepoMapping,
+    RepoSource,
+)
+from .docker import DockerWorkspace
+from .remote_api import APIRemoteWorkspace
+
+
+if TYPE_CHECKING:
+    from .docker import DockerDevWorkspace
+
+__all__ = [
+    "APIRemoteWorkspace",
+    "ApptainerWorkspace",
+    "CloneResult",
+    "DockerDevWorkspace",
+    "DockerWorkspace",
+    "GitProvider",
+    "CreanovaCloudWorkspace",
+    "PlatformType",
+    "RepoMapping",
+    "RepoSource",
+    "TargetType",
+]
+
+
+def __getattr__(name: str):
+    """Lazy import DockerDevWorkspace to avoid build module imports."""
+    if name == "DockerDevWorkspace":
+        from .docker import DockerDevWorkspace
+
+        return DockerDevWorkspace
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")

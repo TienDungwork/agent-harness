@@ -1,0 +1,45 @@
+{
+  "_comment": "Creanova Agent Canvas defaults. Package/image names are Creanova-branded; scripts/upstream-registry.mjs maps them to installable upstream artifacts until Creanova packages are published.",
+  "versions": {
+    "agentServer": "1.36.1",
+    "agentCanvas": "1.5.2",
+    "automation": "1.1.7"
+  },
+  "compatibility": {
+    "minimumAgentServer": "1.28.0"
+  },
+  "constraints": {
+    "_comment": "Temporary upper bound on agent-client-protocol. Pin acp <0.11 until the SDK ships a fix for ACP prompt() arg reorder.",
+    "agentClientProtocol": "agent-client-protocol<0.11"
+  },
+  "images": {
+    "agentServer": "ghcr.io/creanova/agent-server",
+    "agentCanvas": "ghcr.io/creanova/agent-canvas"
+  },
+  "ports": {
+    "agentServer": 18000,
+    "automation": 18001,
+    "proxy": 8000
+  },
+  "paths": {
+    "stateSubdir": "agent-canvas",
+    "conversations": "agent-canvas/conversations",
+    "bashEvents": "agent-canvas/bash_events",
+    "automationDb": "automation/automations.db",
+    "canvasBasePath": "/canvas",
+    "homeDirName": ".creanova"
+  },
+  "packages": {
+    "agentServer": "creanova-agent-server",
+    "automation": "creanova-automation",
+    "tools": "creanova-tools",
+    "workspace": "creanova-workspace",
+    "sdk": "creanova-sdk"
+  },
+  "llm": {
+    "_comment": "Standard Creanova LiteLLM (OpenAI-compatible). API key stays in .env as CREANOVA_LLM_API_KEY — never commit it.",
+    "model": "openai/nemotron-3-nano:4b",
+    "baseUrl": "https://realtor-authentication-collecting-areas.trycloudflare.com/v1",
+    "profileName": "nemotron-3-nano"
+  }
+}

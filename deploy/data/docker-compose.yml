@@ -1,0 +1,48 @@
+# Creanova application PostgreSQL (users, credits, conversations index, infra).
+# Atin191 networking rule: pin bridges to 10.240.0.0/16.
+# Network: 10.240.123.0/24
+# Host port: 54288 -> container 5432 (loopback only)
+#
+# Boot:
+#   cp deploy/data/.env.example deploy/data/.env   # set POSTGRES_PASSWORD
+#   docker compose -f deploy/data/docker-compose.yml --env-file deploy/data/.env up -d
+#
+# Connection URL (gateway):
+#   postgresql+psycopg://creanova:CHANGE_ME@127.0.0.1:54288/creanova
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: creanova-postgres
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-creanova}
+      POSTGRES_USER: ${POSTGRES_USER:-creanova}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in deploy/data/.env}
+    ports:
+      - "127.0.0.1:54288:5432"
+    volumes:
+      - creanova_pg_data:/var/lib/postgresql/data
+    networks:
+      - data_net
+    restart: unless-stopped
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "pg_isready -U ${POSTGRES_USER:-creanova} -d ${POSTGRES_DB:-creanova}",
+        ]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+
+volumes:
+  creanova_pg_data:
+
+networks:
+  data_net:
+    name: creanova_data_net
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 10.240.123.0/24
+          gateway: 10.240.123.1

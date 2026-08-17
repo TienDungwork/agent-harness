@@ -1,0 +1,934 @@
+import React from "react";
+import { useSearchParams } from "react-router";
+import {
+  Server,
+  Plus,
+  Terminal,
+  Trash2,
+  KeyRound,
+  ArrowLeftRight,
+  FileCode2,
+  ShieldCheck,
+  ScrollText,
+  Usb,
+  Eye,
+  EyeOff,
+  Search,
+  ChevronDown,
+  PanelRightClose,
+  PanelRightOpen,
+  MoreHorizontal,
+} from "lucide-react";
+import "@xterm/xterm/css/xterm.css";
+import { BrandButton } from "#/components/features/settings/brand-button";
+import { LoadingSpinner } from "#/components/shared/loading-spinner";
+import {
+  createInfraServer,
+  deleteInfraServer,
+  fetchInfraServers,
+  setInfraCredentials,
+  updateInfraServer,
+  type InfraServer,
+} from "#/api/infra/client";
+import { isLocalAuthEnabled } from "#/api/local-auth/client";
+import { useLocalAuthUser } from "#/api/local-auth/hooks";
+import { useSshTerminal } from "#/hooks/use-ssh-terminal";
+import { useSettingsSectionHeader } from "#/contexts/settings-section-header-context";
+import {
+  formControlMultilineFieldClassName,
+  formControlSettingsFieldClassName,
+} from "#/utils/form-control-classes";
+import { cn } from "#/utils/utils";
+
+export const handle = { hideTitle: true };
+
+type NavId =
+  | "hosts"
+  | "keychain"
+  | "port-forwarding"
+  | "snippets"
+  | "known-hosts"
+  | "logs";
+
+type WorkspaceTab =
+  | { kind: "vaults" }
+  | { kind: "terminal"; id: string; serverId: string; title: string };
+
+type Draft = {
+  id: string | null; // null = new unsaved
+  address: string;
+  label: string;
+  parentGroup: string;
+  tags: string;
+  port: string;
+  username: string;
+  password: string;
+  authType: "password" | "key";
+  privateKey: string;
+};
+
+const EMPTY_DRAFT = (): Draft => ({
+  id: null,
+  address: "",
+  label: "",
+  parentGroup: "",
+  tags: "",
+  port: "22",
+  username: "",
+  password: "",
+  authType: "password",
+  privateKey: "",
+});
+
+function draftFromServer(s: InfraServer): Draft {
+  return {
+    id: s.id,
+    address: s.hostname,
+    label: s.name,
+    parentGroup: "",
+    tags: (s.tags || []).join(", "),
+    port: String(s.port || 22),
+    username: s.username,
+    password: "",
+    authType: s.auth_type === "key" ? "key" : "password",
+    privateKey: "",
+  };
+}
+
+const NAV: Array<{ id: NavId; label: string; icon: React.ReactNode }> = [
+  { id: "hosts", label: "Hosts", icon: <Server className="size-4" /> },
+  { id: "keychain", label: "Keychain", icon: <KeyRound className="size-4" /> },
+  {
+    id: "port-forwarding",
+    label: "Port Forwarding",
+    icon: <ArrowLeftRight className="size-4" />,
+  },
+  { id: "snippets", label: "Snippets", icon: <FileCode2 className="size-4" /> },
+  {
+    id: "known-hosts",
+    label: "Known Hosts",
+    icon: <ShieldCheck className="size-4" />,
+  },
+  { id: "logs", label: "Logs", icon: <ScrollText className="size-4" /> },
+];
+
+const fieldClass = cn(
+  formControlSettingsFieldClassName,
+  "caret-white [&:-webkit-autofill]:shadow-[inset_0_0_0_1000px_var(--oh-color-base-secondary)] [&:-webkit-autofill]:[-webkit-text-fill-color:white]",
+);
+const multilineClass = cn(
+  formControlMultilineFieldClassName,
+  "min-h-[100px] font-mono text-[11px]",
+);
+const labelClass = "mb-1 block text-xs text-tertiary-light";
+const sectionTitleClass =
+  "mb-2 text-xs font-medium uppercase tracking-wide text-tertiary-alt";
+const chipBtnClass =
+  "inline-flex items-center gap-1 rounded-lg border border-[var(--oh-border)] bg-base-secondary px-2 py-1 text-xs text-content hover:border-white/30 hover:text-white disabled:opacity-40";
+const iconBtnClass =
+  "rounded-md p-1.5 text-tertiary-alt hover:bg-interactive-hover hover:text-white";
+
+/**
+ * Settings → Host: Termius-inspired vault UI
+ * (left nav · host list · host details · terminal tabs).
+ */
+export default function HostSettingsScreen() {
+  const localAuth = isLocalAuthEnabled();
+  const { data: me, isLoading: meLoading } = useLocalAuthUser();
+  const { setHideSectionHeader } = useSettingsSectionHeader();
+  const [searchParams, setSearchParams] = useSearchParams();
+
+  const [nav, setNav] = React.useState<NavId>("hosts");
+  const [servers, setServers] = React.useState<InfraServer[]>([]);
+  const [listError, setListError] = React.useState<string | null>(null);
+  const [filter, setFilter] = React.useState("");
+  const [selectedId, setSelectedId] = React.useState<string | null>(null);
+  const [draft, setDraft] = React.useState<Draft>(EMPTY_DRAFT);
+  const [showPassword, setShowPassword] = React.useState(false);
+  const [showAdvancedAuth, setShowAdvancedAuth] = React.useState(false);
+  const [saving, setSaving] = React.useState(false);
+  const [statusMsg, setStatusMsg] = React.useState<string | null>(null);
+  const [fontSize, setFontSize] = React.useState(13);
+  /** Show / hide the New Host · Host Details panel */
+  const [detailsOpen, setDetailsOpen] = React.useState(true);
+
+  const [workspaceTabs, setWorkspaceTabs] = React.useState<WorkspaceTab[]>([
+    { kind: "vaults" },
+  ]);
+  const [activeWorkspace, setActiveWorkspace] = React.useState(0);
+
+  const activeWs = workspaceTabs[activeWorkspace] ?? workspaceTabs[0];
+  const terminalServerId =
+    activeWs?.kind === "terminal" ? activeWs.serverId : null;
+  const { containerRef, status, error, banner, reconnect, disconnect } =
+    useSshTerminal(terminalServerId, { fontSize });
+
+  React.useEffect(() => {
+    setHideSectionHeader(true);
+    return () => setHideSectionHeader(false);
+  }, [setHideSectionHeader]);
+
+  const reload = React.useCallback(async () => {
+    if (!localAuth) return;
+    try {
+      setServers(await fetchInfraServers());
+      setListError(null);
+    } catch (err) {
+      setListError(err instanceof Error ? err.message : String(err));
+    }
+  }, [localAuth]);
+
+  React.useEffect(() => {
+    if (me) void reload();
+  }, [me, reload]);
+
+  React.useEffect(() => {
+    const sid = searchParams.get("server");
+    if (!sid || !servers.length) return;
+    const s = servers.find((x) => x.id === sid);
+    if (!s) return;
+    setSelectedId(s.id);
+    setDraft(draftFromServer(s));
+    setSearchParams({}, { replace: true });
+  }, [servers, searchParams, setSearchParams]);
+
+  function selectHost(s: InfraServer) {
+    setSelectedId(s.id);
+    setDraft(draftFromServer(s));
+    setShowAdvancedAuth(s.auth_type === "key");
+    setStatusMsg(null);
+    setDetailsOpen(true);
+    setActiveWorkspace(0);
+  }
+
+  function startNewHost() {
+    setSelectedId(null);
+    setDraft(EMPTY_DRAFT());
+    setShowAdvancedAuth(false);
+    setStatusMsg(null);
+    setDetailsOpen(true);
+    setActiveWorkspace(0);
+    setNav("hosts");
+  }
+
+  function openTerminal(s: InfraServer) {
+    setWorkspaceTabs((prev) => {
+      const existingIdx = prev.findIndex(
+        (t) => t.kind === "terminal" && t.serverId === s.id,
+      );
+      if (existingIdx >= 0) {
+        setActiveWorkspace(existingIdx);
+        return prev;
+      }
+      const tab: WorkspaceTab = {
+        kind: "terminal",
+        id: `${s.id}-${Date.now()}`,
+        serverId: s.id,
+        title: s.name || s.hostname,
+      };
+      setActiveWorkspace(prev.length);
+      return [...prev, tab];
+    });
+  }
+
+  function closeWorkspaceTab(index: number) {
+    if (index === 0) return; // vaults stays
+    setWorkspaceTabs((prev) => {
+      const closing = prev[index];
+      const next = prev.filter((_, i) => i !== index);
+      if (closing?.kind === "terminal" && activeWs?.kind === "terminal") {
+        const stillOpen = next.some(
+          (t) => t.kind === "terminal" && t.serverId === closing.serverId,
+        );
+        if (!stillOpen) disconnect();
+      }
+      return next;
+    });
+    setActiveWorkspace((cur) => {
+      if (cur === index) return Math.max(0, index - 1);
+      if (cur > index) return cur - 1;
+      return cur;
+    });
+  }
+
+  async function saveHost(): Promise<InfraServer | null> {
+    if (!me?.is_admin) {
+      setStatusMsg("Only admin can save hosts");
+      return null;
+    }
+    const address = draft.address.trim();
+    if (!address) {
+      setStatusMsg("Address is required");
+      return null;
+    }
+    const label = draft.label.trim() || address;
+    const tags = draft.tags
+      .split(",")
+      .map((t) => t.trim())
+      .filter(Boolean);
+    const port = Number(draft.port) || 22;
+    const username = draft.username.trim();
+    if (!username) {
+      setStatusMsg("Username is required");
+      return null;
+    }
+    const authType = showAdvancedAuth && draft.privateKey.trim() ? "key" : draft.authType;
+    const credential =
+      authType === "key" ? draft.privateKey.trim() : draft.password;
+
+    setSaving(true);
+    setStatusMsg(null);
+    try {
+      let saved: InfraServer;
+      if (draft.id) {
+        saved = await updateInfraServer(draft.id, {
+          name: label,
+          hostname: address,
+          port,
+          username,
+          auth_type: authType,
+          tags,
+        });
+        if (credential) {
+          await setInfraCredentials(draft.id, {
+            credential,
+            auth_type: authType,
+          });
+        }
+      } else {
+        saved = await createInfraServer({
+          name: label,
+          hostname: address,
+          port,
+          username,
+          auth_type: authType,
+          tags,
+          credential: credential || undefined,
+        });
+      }
+      await reload();
+      setSelectedId(saved.id);
+      setDraft(draftFromServer(saved));
+      setStatusMsg("Saved");
+      return saved;
+    } catch (err) {
+      setStatusMsg(err instanceof Error ? err.message : String(err));
+      return null;
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function connect() {
+    let target: InfraServer | null = null;
+    if (draft.id) {
+      target = servers.find((s) => s.id === draft.id) || null;
+      // Persist credential edits before connect when admin typed a new password
+      if (me?.is_admin && (draft.password || draft.privateKey.trim())) {
+        target = (await saveHost()) || target;
+      }
+    } else {
+      target = await saveHost();
+    }
+    if (!target && draft.id) {
+      target = servers.find((s) => s.id === draft.id) || null;
+    }
+    if (!target) {
+      if (!statusMsg) setStatusMsg("Save the host before connecting");
+      return;
+    }
+    openTerminal(target);
+  }
+
+  if (!localAuth) {
+    return (
+      <p className="text-sm text-tertiary-light">
+        Host / SSH requires local auth gateway (
+        <code className="text-xs">OH_LOCAL_AUTH=1</code>).
+      </p>
+    );
+  }
+
+  if (meLoading) {
+    return (
+      <div className="flex h-64 items-center justify-center">
+        <LoadingSpinner size="large" />
+      </div>
+    );
+  }
+
+  const filtered = servers.filter((s) => {
+    const q = filter.trim().toLowerCase();
+    if (!q) return true;
+    return (
+      s.name.toLowerCase().includes(q) ||
+      s.hostname.toLowerCase().includes(q) ||
+      s.username.toLowerCase().includes(q) ||
+      (s.tags || []).some((t) => t.toLowerCase().includes(q))
+    );
+  });
+
+  const stubCopy: Record<Exclude<NavId, "hosts">, string> = {
+    keychain: "Store reusable passwords and SSH keys (coming soon).",
+    "port-forwarding": "Local / remote / dynamic tunnels (coming soon).",
+    snippets: "Reusable command snippets for sessions (coming soon).",
+    "known-hosts": "Manage host key fingerprints (coming soon).",
+    logs: "Connection and session audit log (coming soon).",
+  };
+
+  const canEdit = Boolean(me?.is_admin);
+
+  return (
+    <div
+      data-testid="settings-host"
+      className="flex h-[calc(100vh-6rem)] min-h-[480px] w-full flex-col overflow-hidden rounded-xl border border-[var(--oh-border-subtle)] bg-base text-content"
+    >
+      <div className="flex items-center gap-0.5 border-b border-[var(--oh-border-subtle)] bg-base-secondary px-2 pt-1.5">
+        {workspaceTabs.map((tab, i) => (
+          <div
+            key={tab.kind === "vaults" ? "vaults" : tab.id}
+            className={cn(
+              "group flex items-center gap-1.5 rounded-t-md px-3 py-1.5 text-xs",
+              i === activeWorkspace
+                ? "bg-base text-white"
+                : "text-tertiary-alt hover:bg-interactive-hover hover:text-content",
+            )}
+          >
+            <button type="button" onClick={() => setActiveWorkspace(i)}>
+              {tab.kind === "vaults" ? "Vaults" : tab.title}
+            </button>
+            {tab.kind === "terminal" ? (
+              <button
+                type="button"
+                className="text-tertiary-alt hover:text-danger"
+                aria-label="Close tab"
+                onClick={() => closeWorkspaceTab(i)}
+              >
+                ×
+              </button>
+            ) : null}
+          </div>
+        ))}
+        <span className="ml-auto px-2 pb-1 text-[10px] text-tertiary-alt">
+          SFTP soon
+        </span>
+      </div>
+
+      {activeWs?.kind === "terminal" ? (
+        <div className="flex min-h-0 flex-1 flex-col">
+          <div className="flex items-center justify-between border-b border-[var(--oh-border-subtle)] bg-base-secondary px-3 py-1.5 text-[11px] text-tertiary-light">
+            <span className="truncate">
+              {banner || activeWs.title} · {status}
+              {error ? ` · ${error}` : ""}
+            </span>
+            <div className="flex items-center gap-2">
+              <label className="flex items-center gap-1">
+                Font
+                <select
+                  className={cn(fieldClass, "h-8 w-auto px-2")}
+                  value={fontSize}
+                  onChange={(e) => setFontSize(Number(e.target.value))}
+                >
+                  {[11, 12, 13, 14, 16, 18].map((n) => (
+                    <option key={n} value={n}>
+                      {n}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <BrandButton type="button" variant="secondary" onClick={reconnect}>
+                Reconnect
+              </BrandButton>
+            </div>
+          </div>
+          <div className="min-h-0 flex-1 bg-base p-2">
+            <div
+              ref={containerRef}
+              className="h-full w-full overflow-hidden rounded-lg border border-[var(--oh-border-subtle)]"
+            />
+          </div>
+        </div>
+      ) : (
+        <div className="flex min-h-0 flex-1">
+          <nav className="flex w-[148px] shrink-0 flex-col gap-0.5 border-r border-[var(--oh-border-subtle)] bg-base-secondary p-2">
+            {NAV.map((item) => (
+              <button
+                key={item.id}
+                type="button"
+                onClick={() => setNav(item.id)}
+                className={cn(
+                  "flex items-center gap-2 rounded-lg px-2.5 py-2 text-left text-sm",
+                  nav === item.id
+                    ? "bg-interactive-hover text-white"
+                    : "text-tertiary-light hover:bg-interactive-hover-low hover:text-content",
+                )}
+              >
+                <span
+                  className={cn(
+                    nav === item.id ? "text-primary" : "text-tertiary-alt",
+                  )}
+                >
+                  {item.icon}
+                </span>
+                {item.label}
+              </button>
+            ))}
+          </nav>
+
+          {nav !== "hosts" ? (
+            <div className="flex flex-1 flex-col items-center justify-center gap-2 px-8 text-center text-tertiary-light">
+              <p className="text-base text-content">
+                {NAV.find((n) => n.id === nav)?.label}
+              </p>
+              <p className="max-w-sm text-sm">{stubCopy[nav]}</p>
+            </div>
+          ) : (
+            <>
+              <section className="flex min-w-0 flex-1 flex-col border-r border-[var(--oh-border-subtle)] bg-base">
+                <div className="space-y-2 border-b border-[var(--oh-border-subtle)] p-3">
+                  <div className="relative">
+                    <Search className="pointer-events-none absolute left-2.5 top-1/2 z-[1] size-3.5 -translate-y-1/2 text-tertiary-alt" />
+                    <input
+                      className={cn(fieldClass, "pl-8")}
+                      placeholder="Find a host or ssh user@hostname…"
+                      value={filter}
+                      onChange={(e) => setFilter(e.target.value)}
+                    />
+                  </div>
+                  <div className="flex flex-wrap gap-1.5">
+                    {canEdit ? (
+                      <button
+                        type="button"
+                        onClick={startNewHost}
+                        className={chipBtnClass}
+                      >
+                        <Plus className="size-3.5" /> New host
+                      </button>
+                    ) : null}
+                    <button
+                      type="button"
+                      disabled={!selectedId}
+                      onClick={() => {
+                        const s = servers.find((x) => x.id === selectedId);
+                        if (s) openTerminal(s);
+                      }}
+                      className={chipBtnClass}
+                    >
+                      <Terminal className="size-3.5" /> Terminal
+                    </button>
+                    <button
+                      type="button"
+                      disabled
+                      title="Serial connections coming soon"
+                      className={cn(chipBtnClass, "opacity-50")}
+                    >
+                      <Usb className="size-3.5" /> Serial
+                    </button>
+                    {!detailsOpen ? (
+                      <button
+                        type="button"
+                        onClick={() => setDetailsOpen(true)}
+                        className={chipBtnClass}
+                      >
+                        <PanelRightOpen className="size-3.5" /> Details
+                      </button>
+                    ) : null}
+                  </div>
+                </div>
+
+                {listError ? (
+                  <p className="px-3 py-2 text-xs text-danger">{listError}</p>
+                ) : null}
+
+                <ul className="flex-1 space-y-1 overflow-y-auto p-2">
+                  {filtered.map((s) => (
+                    <li key={s.id}>
+                      <button
+                        type="button"
+                        onClick={() => selectHost(s)}
+                        onDoubleClick={() => openTerminal(s)}
+                        className={cn(
+                          "flex w-full items-center gap-3 rounded-xl border px-3 py-2.5 text-left transition-colors",
+                          selectedId === s.id
+                            ? "border-primary/50 bg-interactive-hover"
+                            : "border-transparent bg-base-secondary hover:border-[var(--oh-border)]",
+                        )}
+                      >
+                        <span className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-interactive-hover text-primary">
+                          <Server className="size-4" />
+                        </span>
+                        <span className="min-w-0 flex-1">
+                          <span className="block truncate text-sm text-white">
+                            {s.name || s.hostname}
+                          </span>
+                          <span className="block truncate text-[11px] text-tertiary-light">
+                            {s.hostname}
+                            {s.username ? ` · ${s.username}` : ""}
+                          </span>
+                        </span>
+                        <span className="shrink-0 rounded bg-interactive-hover px-1.5 py-0.5 text-[10px] uppercase tracking-wide text-tertiary-alt">
+                          ssh
+                        </span>
+                      </button>
+                    </li>
+                  ))}
+                  {!filtered.length ? (
+                    <li className="px-2 py-8 text-center text-xs leading-relaxed text-tertiary-alt">
+                      {canEdit
+                        ? "No hosts yet. Click + New host to add one."
+                        : "No hosts granted. Ask an admin to add and grant access."}
+                    </li>
+                  ) : null}
+                </ul>
+              </section>
+
+              {detailsOpen ? (
+                <section className="flex w-1/4 max-w-[25%] min-w-[260px] shrink-0 flex-col bg-base-secondary">
+                  <div className="flex items-start justify-between gap-3 border-b border-[var(--oh-border-subtle)] px-4 py-2.5">
+                    <div className="min-w-0">
+                      <h2 className="truncate text-sm font-medium text-white">
+                        {draft.id
+                          ? draft.label.trim() ||
+                            draft.address ||
+                            "Host Details"
+                          : "New Host"}
+                      </h2>
+                      <button
+                        type="button"
+                        className="mt-0.5 inline-flex items-center gap-1 text-xs text-tertiary-light hover:text-content"
+                      >
+                        Personal vault
+                        <ChevronDown className="size-3.5 opacity-70" />
+                      </button>
+                    </div>
+                    <div className="flex shrink-0 items-center gap-0.5">
+                      <button
+                        type="button"
+                        className={iconBtnClass}
+                        aria-label="More"
+                      >
+                        <MoreHorizontal className="size-4" />
+                      </button>
+                      <button
+                        type="button"
+                        className={iconBtnClass}
+                        aria-label="Close host details"
+                        title="Close"
+                        onClick={() => setDetailsOpen(false)}
+                      >
+                        <PanelRightClose className="size-4" />
+                      </button>
+                    </div>
+                  </div>
+
+                  <div className="flex-1 overflow-y-auto px-4 py-3">
+                    <div className="flex w-full flex-col gap-3">
+                      <div>
+                        <label className={labelClass} htmlFor="host-address">
+                          Address
+                        </label>
+                        <input
+                          id="host-address"
+                          className={fieldClass}
+                          placeholder="192.168.1.250 or host.example.com"
+                          value={draft.address}
+                          onChange={(e) =>
+                            setDraft((d) => ({
+                              ...d,
+                              address: e.target.value,
+                            }))
+                          }
+                          disabled={!canEdit && !!draft.id}
+                        />
+                      </div>
+
+                      <div>
+                        <p className={sectionTitleClass}>General</p>
+                        <div className="space-y-2.5">
+                          <div>
+                            <label className={labelClass} htmlFor="host-label">
+                              Label
+                            </label>
+                            <input
+                              id="host-label"
+                              className={fieldClass}
+                              placeholder="Friendly name"
+                              value={draft.label}
+                              onChange={(e) =>
+                                setDraft((d) => ({
+                                  ...d,
+                                  label: e.target.value,
+                                }))
+                              }
+                              disabled={!canEdit && !!draft.id}
+                            />
+                          </div>
+                          <div>
+                            <label className={labelClass} htmlFor="host-group">
+                              Parent Group
+                            </label>
+                            <input
+                              id="host-group"
+                              className={fieldClass}
+                              placeholder="Optional folder (UI only for now)"
+                              value={draft.parentGroup}
+                              onChange={(e) =>
+                                setDraft((d) => ({
+                                  ...d,
+                                  parentGroup: e.target.value,
+                                }))
+                              }
+                              disabled={!canEdit}
+                            />
+                          </div>
+                          <div>
+                            <label className={labelClass} htmlFor="host-tags">
+                              Tags
+                            </label>
+                            <input
+                              id="host-tags"
+                              className={fieldClass}
+                              placeholder="prod, gpu (comma-separated)"
+                              value={draft.tags}
+                              onChange={(e) =>
+                                setDraft((d) => ({
+                                  ...d,
+                                  tags: e.target.value,
+                                }))
+                              }
+                              disabled={!canEdit && !!draft.id}
+                            />
+                          </div>
+                        </div>
+                      </div>
+
+                      <div>
+                        <label className={labelClass} htmlFor="host-port">
+                          SSH on{" "}
+                          <span className="text-primary">
+                            [{draft.port || "22"}]
+                          </span>{" "}
+                          port
+                        </label>
+                        <input
+                          id="host-port"
+                          className={cn(fieldClass, "w-24")}
+                          value={draft.port}
+                          onChange={(e) =>
+                            setDraft((d) => ({ ...d, port: e.target.value }))
+                          }
+                          disabled={!canEdit && !!draft.id}
+                        />
+                      </div>
+
+                      <div>
+                        <p className={sectionTitleClass}>Credentials</p>
+                        <div className="space-y-2.5">
+                          <div>
+                            <label
+                              className={labelClass}
+                              htmlFor="host-username"
+                            >
+                              Username
+                            </label>
+                            <input
+                              id="host-username"
+                              className={fieldClass}
+                              value={draft.username}
+                              onChange={(e) =>
+                                setDraft((d) => ({
+                                  ...d,
+                                  username: e.target.value,
+                                }))
+                              }
+                              disabled={!canEdit && !!draft.id}
+                              autoComplete="username"
+                            />
+                          </div>
+                          <div>
+                            <label
+                              className={labelClass}
+                              htmlFor="host-password"
+                            >
+                              Password
+                              {draft.id ? (
+                                <span className="ml-1 font-normal text-tertiary-alt">
+                                  (leave blank to keep stored)
+                                </span>
+                              ) : null}
+                            </label>
+                            <div className="relative">
+                              <input
+                                id="host-password"
+                                name="host-password"
+                                type={showPassword ? "text" : "password"}
+                                className={cn(
+                                  fieldClass,
+                                  // Keep dots/caret visible even after browser autofill
+                                  // leaves a stuck -webkit-text-fill-color.
+                                  "pr-10 text-white caret-white [-webkit-text-fill-color:white]",
+                                )}
+                                value={draft.password}
+                                onChange={(e) =>
+                                  setDraft((d) => ({
+                                    ...d,
+                                    password: e.target.value,
+                                    authType: "password",
+                                  }))
+                                }
+                                // disabled (not readOnly): readOnly looks editable
+                                // but swallows keystrokes when !canEdit.
+                                disabled={!canEdit}
+                                placeholder={
+                                  canEdit ? "SSH password" : "Admin only"
+                                }
+                                autoComplete="new-password"
+                                spellCheck={false}
+                              />
+                              <button
+                                type="button"
+                                tabIndex={-1}
+                                disabled={!canEdit}
+                                className="absolute right-2 top-1/2 z-[1] -translate-y-1/2 text-tertiary-alt hover:text-white disabled:opacity-40"
+                                onClick={() => setShowPassword((v) => !v)}
+                                aria-label={
+                                  showPassword
+                                    ? "Hide password"
+                                    : "Show password"
+                                }
+                              >
+                                {showPassword ? (
+                                  <EyeOff className="size-4" />
+                                ) : (
+                                  <Eye className="size-4" />
+                                )}
+                              </button>
+                            </div>
+                            {!canEdit ? (
+                              <p className="mt-1 text-[11px] text-tertiary-alt">
+                                Only an admin can set or update the SSH
+                                password.
+                              </p>
+                            ) : null}
+                          </div>
+                          <button
+                            type="button"
+                            className="text-xs text-primary hover:underline"
+                            onClick={() => setShowAdvancedAuth((v) => !v)}
+                          >
+                            {showAdvancedAuth ? "−" : "+"} SSH ID, Key,
+                            Certificate, FIDO2
+                          </button>
+                          {showAdvancedAuth ? (
+                            <div>
+                              <label
+                                className={labelClass}
+                                htmlFor="host-private-key"
+                              >
+                                Private key (PEM)
+                              </label>
+                              <textarea
+                                id="host-private-key"
+                                className={multilineClass}
+                                placeholder="-----BEGIN OPENSSH PRIVATE KEY-----"
+                                value={draft.privateKey}
+                                onChange={(e) =>
+                                  setDraft((d) => ({
+                                    ...d,
+                                    privateKey: e.target.value,
+                                    authType: "key",
+                                  }))
+                                }
+                                disabled={!canEdit}
+                              />
+                            </div>
+                          ) : null}
+                        </div>
+                      </div>
+
+                      {statusMsg ? (
+                        <p
+                          className={cn(
+                            "text-xs",
+                            statusMsg === "Saved"
+                              ? "text-success"
+                              : "text-primary",
+                          )}
+                        >
+                          {statusMsg}
+                        </p>
+                      ) : null}
+                    </div>
+                  </div>
+
+                  <div className="flex items-center justify-between gap-2 border-t border-[var(--oh-border-subtle)] px-4 py-2.5">
+                    <div className="flex gap-2">
+                      {canEdit && draft.id ? (
+                        <BrandButton
+                          type="button"
+                          variant="ghost-danger"
+                          onClick={async () => {
+                            if (!draft.id) return;
+                            if (
+                              !confirm(
+                                `Delete host ${draft.label || draft.address}?`,
+                              )
+                            )
+                              return;
+                            try {
+                              await deleteInfraServer(draft.id);
+                              setWorkspaceTabs((prev) =>
+                                prev.filter(
+                                  (t) =>
+                                    !(
+                                      t.kind === "terminal" &&
+                                      t.serverId === draft.id
+                                    ),
+                                ),
+                              );
+                              startNewHost();
+                              await reload();
+                            } catch (err) {
+                              setStatusMsg(
+                                err instanceof Error
+                                  ? err.message
+                                  : String(err),
+                              );
+                            }
+                          }}
+                        >
+                          <span className="inline-flex items-center gap-1">
+                            <Trash2 className="size-3.5" /> Delete
+                          </span>
+                        </BrandButton>
+                      ) : null}
+                      {canEdit ? (
+                        <BrandButton
+                          type="button"
+                          variant="secondary"
+                          isDisabled={saving}
+                          onClick={() => void saveHost()}
+                        >
+                          {saving ? "Saving…" : "Save"}
+                        </BrandButton>
+                      ) : null}
+                    </div>
+                    <BrandButton
+                      type="button"
+                      variant="primary"
+                      className="min-w-[100px]"
+                      isDisabled={saving || (!draft.id && !canEdit)}
+                      onClick={() => void connect()}
+                    >
+                      Connect
+                    </BrandButton>
+                  </div>
+                </section>
+              ) : null}
+            </>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}

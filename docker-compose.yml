@@ -1,0 +1,37 @@
+# Atin191 networking rule: pin Compose bridges to 10.240.0.0/16.
+# Do not rely on Docker default 192.168.x.0/20 pools (LAN/VPN overlap).
+
+services:
+  creanova:
+    build:
+      context: ./
+      dockerfile: ./containers/app/Dockerfile
+    image: creanova:latest
+    container_name: creanova-app-${DATE:-}
+    environment:
+      - AGENT_SERVER_IMAGE_REPOSITORY=${AGENT_SERVER_IMAGE_REPOSITORY:-ghcr.io/Creanova/agent-server}
+      - AGENT_SERVER_IMAGE_TAG=${AGENT_SERVER_IMAGE_TAG:-1.30.0-python}
+      #- SANDBOX_USER_ID=${SANDBOX_USER_ID:-1234} # enable this only if you want a specific non-root sandbox user but you will have to manually adjust permissions of ~/.Creanova for this user
+      - WORKSPACE_MOUNT_PATH=${WORKSPACE_BASE:-$PWD/workspace}
+    ports:
+      - "0.0.0.0:13000:3000"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - ~/.Creanova:/.Creanova
+      - ${WORKSPACE_BASE:-$PWD/workspace}:/opt/workspace_base
+    networks:
+      - default
+    pull_policy: build
+    stdin_open: true
+    tty: true
+
+networks:
+  default:
+    name: creanova_net
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 10.240.121.0/24
+          gateway: 10.240.121.1

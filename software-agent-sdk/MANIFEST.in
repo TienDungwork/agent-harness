@@ -1,0 +1,48 @@
+# This MANIFEST.in file tells setuptools which files to include
+# in the sdist package distribution used for building docker image
+
+# ==============================================================================
+# Root-level workspace files
+# ==============================================================================
+include pyproject.toml
+include uv.lock
+
+# ==============================================================================
+# Creanova-sdk
+# ==============================================================================
+include Creanova-sdk/pyproject.toml
+recursive-include Creanova-sdk *.py
+recursive-include Creanova-sdk *.j2
+recursive-include Creanova-sdk py.typed
+
+# ==============================================================================
+# Creanova-tools
+# ==============================================================================
+include Creanova-tools/pyproject.toml
+recursive-include Creanova-tools *.py
+recursive-include Creanova-tools *.j2
+recursive-include Creanova-tools py.typed
+
+# ==============================================================================
+# Creanova-workspace
+# ==============================================================================
+include Creanova-workspace/pyproject.toml
+recursive-include Creanova-workspace *.py
+recursive-include Creanova-workspace py.typed
+
+# ==============================================================================
+# Creanova-agent-server
+# ==============================================================================
+include Creanova-agent-server/pyproject.toml
+recursive-include Creanova-agent-server *.py
+recursive-include Creanova-agent-server py.typed
+
+# Docker build files
+include Creanova-agent-server/Creanova/agent_server/docker/Dockerfile
+include Creanova-agent-server/Creanova/agent_server/docker/wallpaper.svg
+
+# PyInstaller spec
+include Creanova-agent-server/Creanova/agent_server/agent-server.spec
+
+# VSCode extensions
+recursive-include Creanova-agent-server/Creanova/agent_server/vscode_extensions *

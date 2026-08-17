@@ -1,0 +1,80 @@
+{
+  "realm": "creanova",
+  "enabled": true,
+  "displayName": "Creanova Local",
+  "registrationAllowed": false,
+  "loginWithEmailAllowed": true,
+  "duplicateEmailsAllowed": false,
+  "resetPasswordAllowed": false,
+  "editUsernameAllowed": false,
+  "sslRequired": "none",
+  "roles": {
+    "realm": [
+      {
+        "name": "user",
+        "description": "Standard Creanova user"
+      },
+      {
+        "name": "admin",
+        "description": "Creanova admin (credits + user ops)"
+      }
+    ]
+  },
+  "users": [
+    {
+      "username": "admin",
+      "enabled": true,
+      "email": "admin@creanova.local",
+      "emailVerified": true,
+      "firstName": "Admin",
+      "lastName": "Creanova",
+      "credentials": [
+        {
+          "type": "password",
+          "value": "admin123",
+          "temporary": false
+        }
+      ],
+      "realmRoles": ["admin", "user"]
+    },
+    {
+      "username": "demo",
+      "enabled": true,
+      "email": "demo@creanova.local",
+      "emailVerified": true,
+      "firstName": "Demo",
+      "lastName": "User",
+      "credentials": [
+        {
+          "type": "password",
+          "value": "demo123",
+          "temporary": false
+        }
+      ],
+      "realmRoles": ["user"]
+    }
+  ],
+  "clients": [
+    {
+      "clientId": "creanova-local",
+      "name": "Creanova Local Gateway",
+      "enabled": true,
+      "publicClient": false,
+      "secret": "creanova-local-secret",
+      "directAccessGrantsEnabled": true,
+      "standardFlowEnabled": true,
+      "implicitFlowEnabled": false,
+      "serviceAccountsEnabled": false,
+      "redirectUris": [
+        "http://127.0.0.1:*",
+        "http://localhost:*",
+        "http://192.168.1.191:*"
+      ],
+      "webOrigins": ["+"],
+      "attributes": {
+        "access.token.lifespan": "3600"
+      },
+      "protocol": "openid-connect"
+    }
+  ]
+}
