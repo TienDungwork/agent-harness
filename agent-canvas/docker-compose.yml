@@ -28,6 +28,7 @@ services:
       HUSKY: "0"
       VITE_BASE_PATH: /canvas
       VITE_LOCAL_AUTH_ENABLED: "true"
+      VITE_DO_NOT_TRACK: "1"
     command: sh -c "npm ci && npm run build:app"
 
   local-gateway:
@@ -88,6 +89,10 @@ services:
       # Hub image writes state here (user=openhands). Named volume keeps
       # conversations across recreate; local-gateway shares the same data.
       - canvas_state:/home/openhands/.openhands
+      # Custom identity: Hub image reads ~/.openhands/SOUL.md; Creanova SDK
+      # reads ~/.Creanova/SOUL.md. Overlay UI also injects LOCAL_HARNESS.
+      - ./config/SOUL.md:/home/openhands/.openhands/SOUL.md:ro
+      - ./config/SOUL.md:/home/openhands/.Creanova/SOUL.md:ro
     extra_hosts:
       - "host.docker.internal:host-gateway"
     networks:

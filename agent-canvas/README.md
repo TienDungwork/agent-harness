@@ -93,7 +93,8 @@ docker compose up
 
 UI: [http://localhost:18010/canvas/](http://localhost:18010/canvas/)  
 Local login: `admin` / `admin123`  
-Hosts / SSH: Settings → Host
+Hosts / SSH: Settings → Host  
+Custom agent prompt: `config/SOUL.md` (identity) + `src/config/local-agent-prompt.ts` (rules). Claude Code’s system prompt is not in this repo.
 
 ### Option 2b: Upstream all-in-one image (no local overlay)
 

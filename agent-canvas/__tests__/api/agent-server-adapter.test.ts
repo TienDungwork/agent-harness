@@ -14,6 +14,7 @@ import {
   setStoredConversationMetadata,
 } from "#/api/conversation-metadata-store";
 import { ACP_VERTEX_SAFE_MODEL } from "#/constants/acp-providers";
+import { LOCAL_AGENT_SYSTEM_SUFFIX } from "#/config/local-agent-prompt";
 import { DEFAULT_SETTINGS } from "#/services/settings";
 import {
   LLM_AUTH_TYPE_SUBSCRIPTION,
@@ -1196,7 +1197,7 @@ describe("agent_settings runtime services suffix", () => {
     vi.unstubAllEnvs();
   });
 
-  it("does not set system_message_suffix when no runtime info is provided", () => {
+  it("always injects the local Creanova harness suffix", () => {
     const payload = buildStartConversationRequest({
       settings: DEFAULT_SETTINGS,
       query: "hello",
@@ -1210,6 +1211,46 @@ describe("agent_settings runtime services suffix", () => {
     });
     expect(Array.isArray(payload.agent_settings.agent_context.skills)).toBe(
       true,
+    );
+    const suffix = payload.agent_settings.agent_context
+      .system_message_suffix as string;
+    expect(suffix).toContain("<LOCAL_HARNESS>");
+    expect(suffix).toContain("Settings → Host");
+    expect(suffix).toBe(LOCAL_AGENT_SYSTEM_SUFFIX);
+  });
+
+  it("keeps an existing suffix in front of runtime services", () => {
+    vi.stubEnv(
+      "VITE_RUNTIME_SERVICES_INFO",
+      JSON.stringify({
+        mode: "dev:automation",
+        services: {
+          agent_server: { url_from_agent: "http://localhost:18000" },
+        },
+      }),
+    );
+    const payload = buildStartConversationRequest({
+      settings: {
+        ...DEFAULT_SETTINGS,
+        agent_settings: {
+          ...DEFAULT_SETTINGS.agent_settings,
+          agent_context: { system_message_suffix: "Team rules." },
+        },
+      },
+      query: "hello",
+    }) as {
+      agent_settings: { agent_context: Record<string, unknown> };
+    };
+    const suffix = payload.agent_settings.agent_context
+      .system_message_suffix as string;
+    expect(suffix).toContain("<LOCAL_HARNESS>");
+    expect(suffix).toContain("Team rules.");
+    expect(suffix).toContain("<RUNTIME_SERVICES>");
+    expect(suffix.indexOf("<LOCAL_HARNESS>")).toBeLessThan(
+      suffix.indexOf("Team rules."),
+    );
+    expect(suffix.indexOf("Team rules.")).toBeLessThan(
+      suffix.indexOf("<RUNTIME_SERVICES>"),
     );
   });
 
@@ -1236,6 +1277,9 @@ describe("agent_settings runtime services suffix", () => {
       load_public_skills: false,
       load_user_skills: true,
     });
+    expect(
+      payload.agent_settings.agent_context.system_message_suffix as string,
+    ).toContain("<LOCAL_HARNESS>");
     expect(
       payload.agent_settings.agent_context.system_message_suffix as string,
     ).toContain("<RUNTIME_SERVICES>");

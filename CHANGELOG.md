@@ -2,6 +2,12 @@
 
 All notable changes to this workspace are listed here.
 
+## [beta v0.3.0] - 2026-08-18
+
+### Added
+
+- Local Creanova agent prompt overlay: `SOUL.md` identity plus `<LOCAL_HARNESS>` suffix on every Canvas conversation (SSH/host, runtime image, no Claude Code prompt)
+
 ## [beta v0.2.0] - 2026-08-17
 
 ### Added

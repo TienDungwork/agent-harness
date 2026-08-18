@@ -11,6 +11,7 @@ import {
 import { getAgentServerClientOptions } from "./agent-server-client-options";
 import { isAgentServerToolAvailable } from "./agent-server-compatibility";
 import { getAgentServerWorkingDir } from "./agent-server-config";
+import { LOCAL_AGENT_SYSTEM_SUFFIX } from "#/config/local-agent-prompt";
 import { getEffectiveLocalBackend } from "./backend-registry/active-store";
 import { buildAuthHeaders } from "./backend-registry/auth";
 import {
@@ -277,6 +278,16 @@ export function buildRuntimeServicesSystemSuffix(): string | undefined {
   lines.push("</RUNTIME_SERVICES>");
 
   return lines.join("\n");
+}
+
+function mergeSystemMessageSuffix(
+  ...parts: Array<string | undefined | null>
+): string | undefined {
+  const text = parts
+    .map((part) => (typeof part === "string" ? part.trim() : ""))
+    .filter((part) => part.length > 0)
+    .join("\n\n");
+  return text || undefined;
 }
 
 export function toConversationUrl(conversationId: string): string {
@@ -640,6 +651,18 @@ function buildAgentContext(agentSettings: SettingsRecord): SettingsRecord {
     ? (existingContext.skills as SettingsRecord[])
     : [];
   const mergedSkills = [...existingSkills, ...buildBundledSkills()];
+  const existingSuffix =
+    typeof existingContext.system_message_suffix === "string"
+      ? existingContext.system_message_suffix
+      : undefined;
+  const localSuffix = existingSuffix?.includes("<LOCAL_HARNESS>")
+    ? undefined
+    : LOCAL_AGENT_SYSTEM_SUFFIX;
+  const systemMessageSuffix = mergeSystemMessageSuffix(
+    localSuffix,
+    existingSuffix,
+    runtimeServicesSuffix,
+  );
 
   return {
     ...existingContext,
@@ -656,8 +679,8 @@ function buildAgentContext(agentSettings: SettingsRecord): SettingsRecord {
     load_public_skills: false,
     load_user_skills: true,
     load_project_skills: true,
-    ...(runtimeServicesSuffix
-      ? { system_message_suffix: runtimeServicesSuffix }
+    ...(systemMessageSuffix
+      ? { system_message_suffix: systemMessageSuffix }
       : {}),
   };
 }
