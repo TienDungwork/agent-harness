@@ -4,11 +4,15 @@ All notable changes to this workspace are listed here.
 
 ## [beta v0.5.8] - 2026-08-19
 
+### Fixed
+
+- Host details ⋯ menu opens Connect and Remove on the same page instead of a new tab
+
 ### Changed
 
 - Host details panel auto-saves after edits; footer Save/Delete buttons removed (remove is under the ⋯ menu)
 
-
+## [beta v0.5.7] - 2026-08-19
 
 ### Fixed
 
