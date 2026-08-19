@@ -156,6 +156,8 @@ export default function HostSettingsScreen() {
   const [fontSize, setFontSize] = React.useState(13);
   /** Show / hide the New Host · Host Details panel */
   const [detailsOpen, setDetailsOpen] = React.useState(true);
+  const [moreMenuOpen, setMoreMenuOpen] = React.useState(false);
+  const moreMenuRef = React.useRef<HTMLDivElement>(null);
 
   const [workspaceTabs, setWorkspaceTabs] = React.useState<WorkspaceTab[]>([
     { kind: "vaults" },
@@ -167,6 +169,11 @@ export default function HostSettingsScreen() {
     activeWs?.kind === "terminal" ? activeWs.serverId : null;
   const { containerRef, status, error, banner, reconnect, disconnect } =
     useSshTerminal(terminalServerId, { fontSize });
+
+  const draftRef = React.useRef(draft);
+  draftRef.current = draft;
+  const showAdvancedAuthRef = React.useRef(showAdvancedAuth);
+  showAdvancedAuthRef.current = showAdvancedAuth;
 
   React.useEffect(() => {
     setHideSectionHeader(true);
@@ -223,6 +230,8 @@ export default function HostSettingsScreen() {
       draft.privateKey !== ""
     );
   }, [draft, savedDraft]);
+
+  const canEdit = Boolean(me?.is_admin);
 
   function selectHost(s: InfraServer) {
     setSelectedId(s.id);
@@ -288,84 +297,138 @@ export default function HostSettingsScreen() {
     });
   }
 
-  async function saveHost(): Promise<InfraServer | null> {
+  const inFlightSaveRef = React.useRef<Promise<InfraServer | null> | null>(
+    null,
+  );
+
+  const saveHost = React.useCallback(async (): Promise<InfraServer | null> => {
     if (!me?.is_admin) {
       setStatusMsg("Only admin can save hosts");
       return null;
     }
-    const address = draft.address.trim();
+    if (inFlightSaveRef.current) {
+      await inFlightSaveRef.current;
+      return saveHost();
+    }
+
+    const snapshot = draftRef.current;
+    const address = snapshot.address.trim();
     if (!address) {
       setStatusMsg("Address is required");
       return null;
     }
-    const label = draft.label.trim() || address;
-    const tags = draft.tags
+    const label = snapshot.label.trim() || address;
+    const tags = snapshot.tags
       .split(",")
       .map((t) => t.trim())
       .filter(Boolean);
-    const port = Number(draft.port) || 22;
-    const username = draft.username.trim();
+    const port = Number(snapshot.port) || 22;
+    const username = snapshot.username.trim();
     if (!username) {
       setStatusMsg("Username is required");
       return null;
     }
     const authType =
-      showAdvancedAuth && draft.privateKey.trim() ? "key" : draft.authType;
+      showAdvancedAuthRef.current && snapshot.privateKey.trim()
+        ? "key"
+        : snapshot.authType;
     const credential =
-      authType === "key" ? draft.privateKey.trim() : draft.password;
+      authType === "key" ? snapshot.privateKey.trim() : snapshot.password;
 
-    setSaving(true);
-    setStatusMsg(null);
-    try {
-      let saved: InfraServer;
-      if (draft.id) {
-        saved = await updateInfraServer(draft.id, {
-          name: label,
-          hostname: address,
-          port,
-          username,
-          auth_type: authType,
-          tags,
-        });
-        if (credential) {
-          await setInfraCredentials(draft.id, {
-            credential,
+    const work = (async (): Promise<InfraServer | null> => {
+      setSaving(true);
+      setStatusMsg(null);
+      try {
+        let saved: InfraServer;
+        if (snapshot.id) {
+          saved = await updateInfraServer(snapshot.id, {
+            name: label,
+            hostname: address,
+            port,
+            username,
             auth_type: authType,
+            tags,
+          });
+          if (credential) {
+            await setInfraCredentials(snapshot.id, {
+              credential,
+              auth_type: authType,
+            });
+          }
+        } else {
+          saved = await createInfraServer({
+            name: label,
+            hostname: address,
+            port,
+            username,
+            auth_type: authType,
+            tags,
+            credential: credential || undefined,
           });
         }
-      } else {
-        saved = await createInfraServer({
-          name: label,
-          hostname: address,
-          port,
-          username,
-          auth_type: authType,
-          tags,
-          credential: credential || undefined,
+        await reload();
+        setSelectedId(saved.id);
+        const updatedDraft = draftFromServer(saved);
+        setDraft((d) => {
+          const next = { ...d, id: saved.id };
+          if (d.password === snapshot.password && credential) {
+            next.password = "";
+          }
+          if (d.privateKey === snapshot.privateKey && credential) {
+            next.privateKey = "";
+          }
+          draftRef.current = next;
+          return next;
         });
+        setSavedDraft(updatedDraft);
+        setAllChangesSaved(true);
+        return saved;
+      } catch (err) {
+        setStatusMsg(err instanceof Error ? err.message : String(err));
+        return null;
+      } finally {
+        setSaving(false);
       }
-      await reload();
-      setSelectedId(saved.id);
-      const updatedDraft = draftFromServer(saved);
-      setDraft(updatedDraft);
-      setSavedDraft(updatedDraft);
-      setAllChangesSaved(true);
-      setStatusMsg("Saved");
-      return saved;
-    } catch (err) {
-      setStatusMsg(err instanceof Error ? err.message : String(err));
-      return null;
+    })();
+
+    inFlightSaveRef.current = work;
+    try {
+      return await work;
     } finally {
-      setSaving(false);
+      if (inFlightSaveRef.current === work) {
+        inFlightSaveRef.current = null;
+      }
     }
-  }
+  }, [me?.is_admin, reload]);
+
+  React.useEffect(() => {
+    if (!canEdit || !hasPendingChanges) return;
+    if (!draft.address.trim() || !draft.username.trim()) return;
+    const timer = window.setTimeout(() => {
+      void saveHost();
+    }, 700);
+    return () => window.clearTimeout(timer);
+  }, [
+    canEdit,
+    draft.address,
+    draft.label,
+    draft.parentGroup,
+    draft.tags,
+    draft.port,
+    draft.username,
+    draft.password,
+    draft.privateKey,
+    draft.authType,
+    draft.id,
+    hasPendingChanges,
+    saveHost,
+  ]);
 
   async function connect() {
     let target: InfraServer | null = null;
     if (draft.id) {
       target = servers.find((s) => s.id === draft.id) || null;
-      // Persist credential edits before connect when admin typed a new password
-      if (me?.is_admin && (draft.password || draft.privateKey.trim())) {
+      if (me?.is_admin && hasPendingChanges) {
         target = (await saveHost()) || target;
       }
     } else {
@@ -375,11 +438,44 @@ export default function HostSettingsScreen() {
       target = servers.find((s) => s.id === draft.id) || null;
     }
     if (!target) {
-      if (!statusMsg) setStatusMsg("Save the host before connecting");
+      if (!statusMsg) setStatusMsg("Fill address and username to connect");
       return;
     }
     openTerminal(target);
   }
+
+  async function removeHost() {
+    if (!draft.id) return;
+    if (!confirm(`Remove host ${draft.label || draft.address}?`)) return;
+    try {
+      await deleteInfraServer(draft.id);
+      setWorkspaceTabs((prev) =>
+        prev.filter((t) => !(t.kind === "terminal" && t.serverId === draft.id)),
+      );
+      startNewHost();
+      await reload();
+    } catch (err) {
+      setStatusMsg(err instanceof Error ? err.message : String(err));
+    }
+  }
+
+  React.useEffect(() => {
+    if (!moreMenuOpen) return;
+    const onPointerDown = (event: MouseEvent) => {
+      if (!moreMenuRef.current?.contains(event.target as Node)) {
+        setMoreMenuOpen(false);
+      }
+    };
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setMoreMenuOpen(false);
+    };
+    document.addEventListener("mousedown", onPointerDown);
+    document.addEventListener("keydown", onKeyDown);
+    return () => {
+      document.removeEventListener("mousedown", onPointerDown);
+      document.removeEventListener("keydown", onKeyDown);
+    };
+  }, [moreMenuOpen]);
 
   if (!localAuth) {
     return (
@@ -424,8 +520,6 @@ export default function HostSettingsScreen() {
       "";
     return base.replace(/\/+$/, "");
   })();
-
-  const canEdit = Boolean(me?.is_admin);
 
   return (
     <div
@@ -666,7 +760,14 @@ export default function HostSettingsScreen() {
                       </button>
                     </div>
                     <div className="flex shrink-0 items-center gap-0.5">
-                      {allChangesSaved && !hasPendingChanges ? (
+                      {saving ? (
+                        <span
+                          className="px-1.5 py-1 text-[10px] text-tertiary-alt"
+                          aria-label="Saving"
+                        >
+                          Saving…
+                        </span>
+                      ) : allChangesSaved && !hasPendingChanges ? (
                         <span
                           className="flex items-center gap-1 rounded-md px-1.5 py-1 text-xs text-success"
                           title="All changes saved"
@@ -675,16 +776,55 @@ export default function HostSettingsScreen() {
                           <Check className="size-3.5" />
                         </span>
                       ) : null}
-                      <a
-                        href="http://192.168.1.191:18010/canvas/settings/host"
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className={iconBtnClass}
-                        aria-label="More"
-                        title="More"
-                      >
-                        <MoreHorizontal className="size-4" />
-                      </a>
+                      <div className="relative" ref={moreMenuRef}>
+                        <button
+                          type="button"
+                          className={iconBtnClass}
+                          aria-label="More"
+                          aria-expanded={moreMenuOpen}
+                          aria-haspopup="menu"
+                          title="More"
+                          data-testid="host-details-more"
+                          onClick={() => setMoreMenuOpen((open) => !open)}
+                        >
+                          <MoreHorizontal className="size-4" />
+                        </button>
+                        {moreMenuOpen ? (
+                          <div
+                            role="menu"
+                            data-testid="host-details-more-menu"
+                            className="absolute right-0 z-20 mt-1 min-w-[148px] rounded-lg border border-[var(--oh-border)] bg-base-secondary py-1 shadow-lg"
+                          >
+                            <button
+                              type="button"
+                              role="menuitem"
+                              className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs text-content hover:bg-interactive-hover disabled:opacity-40"
+                              disabled={saving || (!draft.id && !canEdit)}
+                              onClick={() => {
+                                setMoreMenuOpen(false);
+                                void connect();
+                              }}
+                            >
+                              <Terminal className="size-3.5" />
+                              Connect
+                            </button>
+                            {canEdit && draft.id ? (
+                              <button
+                                type="button"
+                                role="menuitem"
+                                className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs text-danger hover:bg-interactive-hover"
+                                onClick={() => {
+                                  setMoreMenuOpen(false);
+                                  void removeHost();
+                                }}
+                              >
+                                <Trash2 className="size-3.5" />
+                                Remove
+                              </button>
+                            ) : null}
+                          </div>
+                        ) : null}
+                      </div>
                       <button
                         type="button"
                         className={iconBtnClass}
@@ -937,58 +1077,7 @@ export default function HostSettingsScreen() {
                     </div>
                   </div>
 
-                  <div className="flex items-center justify-between gap-2 border-t border-[var(--oh-border-subtle)] px-4 py-2.5">
-                    <div className="flex gap-2">
-                      {canEdit && draft.id ? (
-                        <BrandButton
-                          type="button"
-                          variant="ghost-danger"
-                          onClick={async () => {
-                            if (!draft.id) return;
-                            if (
-                              !confirm(
-                                `Delete host ${draft.label || draft.address}?`,
-                              )
-                            )
-                              return;
-                            try {
-                              await deleteInfraServer(draft.id);
-                              setWorkspaceTabs((prev) =>
-                                prev.filter(
-                                  (t) =>
-                                    !(
-                                      t.kind === "terminal" &&
-                                      t.serverId === draft.id
-                                    ),
-                                ),
-                              );
-                              startNewHost();
-                              await reload();
-                            } catch (err) {
-                              setStatusMsg(
-                                err instanceof Error
-                                  ? err.message
-                                  : String(err),
-                              );
-                            }
-                          }}
-                        >
-                          <span className="inline-flex items-center gap-1">
-                            <Trash2 className="size-3.5" /> Delete
-                          </span>
-                        </BrandButton>
-                      ) : null}
-                      {canEdit ? (
-                        <BrandButton
-                          type="button"
-                          variant="secondary"
-                          isDisabled={saving}
-                          onClick={() => void saveHost()}
-                        >
-                          {saving ? "Saving…" : "Save"}
-                        </BrandButton>
-                      ) : null}
-                    </div>
+                  <div className="flex items-center justify-end gap-2 border-t border-[var(--oh-border-subtle)] px-4 py-2.5">
                     <BrandButton
                       type="button"
                       variant="primary"

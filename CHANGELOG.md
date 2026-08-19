@@ -2,7 +2,13 @@
 
 All notable changes to this workspace are listed here.
 
-## [beta v0.5.7] - 2026-08-19
+## [beta v0.5.8] - 2026-08-19
+
+### Changed
+
+- Host details panel auto-saves after edits; footer Save/Delete buttons removed (remove is under the ⋯ menu)
+
+
 
 ### Fixed
 
