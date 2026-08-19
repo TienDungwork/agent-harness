@@ -45,7 +45,10 @@ class Settings(BaseSettings):
     # Beszel integration (shared volume written by beszel-bootstrap container)
     beszel_shared_path: str = '/beszel_shared'
     beszel_agent_port: int = 45876
+    beszel_agent_port_base: int = 45000
     beszel_hub_url: str = 'http://beszel:8090'
+    # Agents on other machines send metrics here (LAN URL of the hub).
+    beszel_hub_public_url: str = 'http://192.168.1.191:18090'
     beszel_user_email: str = 'admin@creanova.local'
     beszel_user_password: str = 'admin123'
 

@@ -798,28 +798,27 @@ async def list_audit(
 
 _BESZEL_AGENT_DEPLOY_SCRIPT = r"""
 set -eu
-TOKEN="$1"; KEY="$2"; PORT="${3:-45876}"
+TOKEN="$1"; KEY="$2"; PORT="$3"; HUB="$4"; NAME="$5"
 
-# Detect Docker availability
 HAS_DOCKER=0
 command -v docker >/dev/null 2>&1 && docker info >/dev/null 2>&1 && HAS_DOCKER=1
 
 if [ "$HAS_DOCKER" = "1" ]; then
-    docker rm -f beszel-agent 2>/dev/null || true
+    docker rm -f "$NAME" 2>/dev/null || true
     docker run -d \
-        --name beszel-agent \
+        --name "$NAME" \
         --network host \
         --restart unless-stopped \
         -v /var/run/docker.sock:/var/run/docker.sock:ro \
         -e TOKEN="$TOKEN" \
         -e KEY="$KEY" \
         -e LISTEN="$PORT" \
+        -e HUB_URL="$HUB" \
         henrygd/beszel-agent:latest
-    echo "beszel-agent: deployed via Docker on port $PORT"
+    echo "beszel-agent: $NAME listening $PORT hub $HUB"
     exit 0
 fi
 
-# Fallback: binary install (Linux amd64/arm64)
 ARCH="$(uname -m)"
 case "$ARCH" in
     x86_64)  GOARCH=amd64 ;;
@@ -830,7 +829,6 @@ esac
 TMPDIR="$(mktemp -d)"
 trap 'rm -rf "$TMPDIR"' EXIT
 
-# Try to find latest release URL
 RELEASE_URL="https://github.com/henrygd/beszel/releases/latest/download/beszel-agent_Linux_${GOARCH}.tar.gz"
 if command -v curl >/dev/null 2>&1; then
     curl -fsSL "$RELEASE_URL" -o "$TMPDIR/beszel-agent.tar.gz"
@@ -843,11 +841,10 @@ fi
 tar -xzf "$TMPDIR/beszel-agent.tar.gz" -C "$TMPDIR"
 install -m 755 "$TMPDIR/beszel-agent" /usr/local/bin/beszel-agent
 
-# Write systemd unit if available, else run in background via nohup
 if command -v systemctl >/dev/null 2>&1 && [ -d /etc/systemd/system ]; then
-    cat >/etc/systemd/system/beszel-agent.service <<EOF2
+    cat >/etc/systemd/system/${NAME}.service <<EOF2
 [Unit]
-Description=Beszel Agent
+Description=Beszel Agent ($NAME)
 After=network.target
 
 [Service]
@@ -856,18 +853,18 @@ Restart=always
 Environment=TOKEN=$TOKEN
 Environment=KEY=$KEY
 Environment=LISTEN=$PORT
+Environment=HUB_URL=$HUB
 
 [Install]
 WantedBy=multi-user.target
 EOF2
     systemctl daemon-reload
-    systemctl enable --now beszel-agent
-    echo "beszel-agent: deployed via systemd on port $PORT"
+    systemctl enable --now "$NAME"
+    echo "beszel-agent: systemd $NAME listening $PORT hub $HUB"
 else
-    nohup /usr/local/bin/beszel-agent \
-        TOKEN="$TOKEN" KEY="$KEY" LISTEN="$PORT" \
-        >/tmp/beszel-agent.log 2>&1 &
-    echo "beszel-agent: deployed via nohup (pid $!) on port $PORT"
+    nohup env TOKEN="$TOKEN" KEY="$KEY" LISTEN="$PORT" HUB_URL="$HUB" \
+        /usr/local/bin/beszel-agent >/tmp/${NAME}.log 2>&1 &
+    echo "beszel-agent: nohup $NAME (pid $!) listening $PORT hub $HUB"
 fi
 """
 
@@ -880,7 +877,7 @@ async def _do_deploy_beszel(
 ) -> dict[str, Any]:
     """Core deploy logic — SSH into server and install beszel-agent."""
     try:
-        hub_token = await upsert_beszel_system(server, settings)
+        hub_token, listen_port = await upsert_beszel_system(server, settings)
         if not hub_token:
             with open(f'{settings.beszel_shared_path}/token') as f:
                 hub_token = f.read().strip()
@@ -897,8 +894,13 @@ async def _do_deploy_beszel(
     def _sq(s: str) -> str:
         return "'" + s.replace("'", "'\\''") + "'"
 
+    octet = server.hostname.rsplit('.', 1)[-1]
+    cname = f'beszel-agent-{octet}' if octet.isdigit() else 'beszel-agent-host'
+    hub_public = settings.beszel_hub_public_url.rstrip('/')
+
     script = (
-        f"sh -s {_sq(hub_token)} {_sq(hub_pubkey)} {settings.beszel_agent_port} <<'__DEPLOY__'\n"
+        f'sh -s {_sq(hub_token)} {_sq(hub_pubkey)} {listen_port} '
+        f"{_sq(hub_public)} {_sq(cname)} <<'__DEPLOY__'\n"
         + _BESZEL_AGENT_DEPLOY_SCRIPT
         + '\n__DEPLOY__'
     )

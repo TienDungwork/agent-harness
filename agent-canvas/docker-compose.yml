@@ -48,6 +48,7 @@ services:
       BESZEL_HUB_URL: http://beszel:8090
       BESZEL_USER_EMAIL: ${BESZEL_USER_EMAIL:-admin@creanova.local}
       BESZEL_USER_PASSWORD: ${BESZEL_USER_PASSWORD:-admin123}
+      BESZEL_HUB_PUBLIC_URL: ${BESZEL_HUB_PUBLIC_URL:-http://192.168.1.191:18090}
     volumes:
       - ../services/local-gateway:/app
       - canvas_state:/data

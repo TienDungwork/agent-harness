@@ -2,7 +2,12 @@
 
 All notable changes to this workspace are listed here.
 
-## [beta v0.5.6] - 2026-08-19
+## [beta v0.5.7] - 2026-08-19
+
+### Fixed
+
+- Beszel agents now use a unique listen port per host (`45000` + last IP octet) and report to the hub at `BESZEL_HUB_PUBLIC_URL` (`http://192.168.1.191:18090`)
+
 
 ### Changed
 
