@@ -42,6 +42,10 @@ class Settings(BaseSettings):
     #   python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
     infra_encryption_key: str = ''
 
+    # Beszel integration (shared volume written by beszel-bootstrap container)
+    beszel_shared_path: str = '/beszel_shared'
+    beszel_agent_port: int = 45876
+
     # CORS / frontend origins
     cors_origins: str = (
         'http://127.0.0.1:18010,http://localhost:18010,'

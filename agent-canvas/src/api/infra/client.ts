@@ -148,6 +148,21 @@ export async function fetchInfraServices(serverId: string): Promise<{
   return res.json();
 }
 
+export async function deployBeszelAgent(serverId: string): Promise<{
+  ok: boolean;
+  exit_code: number;
+  stdout: string;
+  stderr: string;
+  duration_ms: number;
+}> {
+  const res = await fetch(
+    `${infraBase()}/api/infra/servers/${serverId}/deploy-beszel`,
+    { method: "POST", credentials: "include" },
+  );
+  if (!res.ok) throw new Error(await parseError(res));
+  return res.json();
+}
+
 export async function infraServiceAction(
   serverId: string,
   unit: string,

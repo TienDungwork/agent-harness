@@ -3,6 +3,7 @@ import { Link, Navigate, useParams } from "react-router";
 import { BrandButton } from "#/components/features/settings/brand-button";
 import { LoadingSpinner } from "#/components/shared/loading-spinner";
 import {
+  deployBeszelAgent,
   fetchInfraGpu,
   fetchInfraServers,
   fetchInfraServices,
@@ -28,6 +29,8 @@ export default function InfraServerDetailScreen() {
     }>
   >([]);
   const [error, setError] = React.useState<string | null>(null);
+  const [deployLog, setDeployLog] = React.useState<string | null>(null);
+  const [deploying, setDeploying] = React.useState(false);
 
   React.useEffect(() => {
     if (!me || !serverId) return;
@@ -60,6 +63,45 @@ export default function InfraServerDetailScreen() {
         {server?.name || serverId}
       </h1>
       {error ? <p className="text-sm text-red-400">{error}</p> : null}
+
+      <div className="flex flex-wrap gap-2">
+        <BrandButton
+          type="button"
+          variant="primary"
+          disabled={deploying}
+          onClick={async () => {
+            if (!serverId) return;
+            setDeploying(true);
+            setDeployLog(null);
+            setError(null);
+            try {
+              const r = await deployBeszelAgent(serverId);
+              setDeployLog(
+                `exit ${r.exit_code} (${r.duration_ms}ms)\n${r.stdout}${r.stderr ? `\nstderr: ${r.stderr}` : ""}`,
+              );
+            } catch (err) {
+              setError(err instanceof Error ? err.message : String(err));
+            } finally {
+              setDeploying(false);
+            }
+          }}
+        >
+          {/* eslint-disable-next-line i18next/no-literal-string */}
+          {deploying ? "Deploying…" : "Deploy Beszel Agent"}
+        </BrandButton>
+      </div>
+
+      {deployLog ? (
+        <section>
+          {/* eslint-disable-next-line i18next/no-literal-string */}
+          <h2 className="mb-1 text-sm font-medium text-neutral-300">
+            Deploy output
+          </h2>
+          <pre className="overflow-auto rounded border border-neutral-800 bg-neutral-950 p-2 text-xs text-neutral-200">
+            {deployLog}
+          </pre>
+        </section>
+      ) : null}
 
       <div className="flex gap-2">
         <BrandButton

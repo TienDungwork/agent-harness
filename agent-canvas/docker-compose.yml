@@ -48,6 +48,7 @@ services:
     volumes:
       - ../services/local-gateway:/app
       - canvas_state:/data
+      - beszel_shared:/beszel_shared:ro
     command:
       - sh
       - -c
