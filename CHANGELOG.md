@@ -2,7 +2,13 @@
 
 All notable changes to this workspace are listed here.
 
-## [beta v0.5.4] - 2026-08-19
+## [beta v0.5.5] - 2026-08-19
+
+### Fixed
+
+- Adding or renaming an SSH host now updates Beszel All Systems immediately (label = host name)
+- Auto-deploy of beszel-agent on save no longer fails silently; SSH install waits up to 3 minutes for image pull
+
 
 ### Changed
 

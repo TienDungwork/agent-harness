@@ -46,6 +46,8 @@ class Settings(BaseSettings):
     beszel_shared_path: str = '/beszel_shared'
     beszel_agent_port: int = 45876
     beszel_hub_url: str = 'http://beszel:8090'
+    beszel_user_email: str = 'admin@creanova.local'
+    beszel_user_password: str = 'admin123'
 
     # CORS / frontend origins
     cors_origins: str = (

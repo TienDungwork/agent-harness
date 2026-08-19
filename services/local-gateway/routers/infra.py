@@ -11,6 +11,7 @@ from config import Settings, get_settings
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
 from infra.access import user_has_server_access
 from infra.audit import write_audit
+from infra.beszel import upsert_system as upsert_beszel_system
 from infra.commands import CommandDenied, render_command
 from infra.crypto import CryptoError, decrypt_text, encrypt_text
 from infra.gpu import is_nvidia_smi_missing, parse_nvidia_smi_csv
@@ -31,7 +32,7 @@ from storage.users import AuthUser, to_auth_user
 
 router = APIRouter(tags=['infra'])
 
-_NAME_RE = re.compile(r'^[a-z0-9][a-z0-9._-]{0,127}$')
+_NAME_RE = re.compile(r'^[A-Za-z0-9][A-Za-z0-9._ -]{0,127}$')
 
 # Simple in-process single-flight cache for GPU (also backed by DB freshness).
 _gpu_cache: dict[str, tuple[datetime, list[dict[str, Any]]]] = {}
@@ -125,6 +126,7 @@ async def _run_on_server(
     db: Session,
     server: InfraServer,
     command: str,
+    timeout: float = 10.0,
 ) -> Any:
     cred = (
         db.query(InfraServerCredential)
@@ -150,6 +152,7 @@ async def _run_on_server(
         secret=secret,
         passphrase=passphrase,
         command=command,
+        timeout=timeout,
     )
 
 
@@ -173,19 +176,51 @@ async def list_servers(
     return [_server_public(s) for s in q.order_by(InfraServer.name).all()]
 
 
-async def _auto_deploy_beszel(server_id: str, settings: Settings) -> None:
-    """Background task: deploy beszel-agent right after a server is created."""
+async def _sync_and_maybe_deploy_beszel(
+    server_id: str,
+    settings: Settings,
+    *,
+    deploy: bool,
+    actor_user_id: str | None = None,
+) -> None:
+    """Register/rename the host in Beszel; optionally SSH-install the agent."""
     import asyncio
 
     from storage.models import SessionLocal
 
-    await asyncio.sleep(2)  # let DB commit settle
+    await asyncio.sleep(1)
     if SessionLocal is None:
         return
     db = SessionLocal()
     try:
         server = db.query(InfraServer).filter(InfraServer.id == server_id).one_or_none()
         if server is None:
+            return
+        try:
+            await upsert_beszel_system(server, settings)
+            write_audit(
+                db,
+                actor_user_id=actor_user_id,
+                action='beszel.sync',
+                success=True,
+                server_id=str(server.id),
+                server_name=server.name,
+            )
+            db.commit()
+        except Exception as exc:
+            write_audit(
+                db,
+                actor_user_id=actor_user_id,
+                action='beszel.sync',
+                success=False,
+                server_id=str(server.id),
+                server_name=server.name,
+                error_excerpt=str(exc)[:500],
+            )
+            db.commit()
+            if not deploy:
+                return
+        if not deploy:
             return
         cred = (
             db.query(InfraServerCredential)
@@ -195,9 +230,18 @@ async def _auto_deploy_beszel(server_id: str, settings: Settings) -> None:
         if cred is None:
             return
         try:
-            await _do_deploy_beszel(server, db, settings)
-        except Exception:
-            pass  # best-effort; result recorded in audit log
+            await _do_deploy_beszel(server, db, settings, actor_user_id=actor_user_id)
+        except Exception as exc:
+            write_audit(
+                db,
+                actor_user_id=actor_user_id,
+                action='beszel.deploy',
+                success=False,
+                server_id=str(server.id),
+                server_name=server.name,
+                error_excerpt=str(exc)[:500],
+            )
+            db.commit()
     finally:
         db.close()
 
@@ -251,9 +295,13 @@ async def create_server(
     )
     db.commit()
     db.refresh(server)
-    # Auto-deploy beszel-agent in background if credential was provided.
-    if body.credential:
-        background_tasks.add_task(_auto_deploy_beszel, str(server.id), settings)
+    background_tasks.add_task(
+        _sync_and_maybe_deploy_beszel,
+        str(server.id),
+        settings,
+        deploy=bool(body.credential),
+        actor_user_id=user.id,
+    )
     return _server_public(server)
 
 
@@ -261,8 +309,10 @@ async def create_server(
 async def update_server(
     server_id: str,
     body: ServerUpdate,
+    background_tasks: BackgroundTasks,
     user: AuthUser = Depends(require_admin),
     db: Session = Depends(get_db),
+    settings: Settings = Depends(get_settings),
 ) -> dict[str, Any]:
     server = db.query(InfraServer).filter(InfraServer.id == server_id).one_or_none()
     if server is None:
@@ -291,6 +341,14 @@ async def update_server(
     )
     db.commit()
     db.refresh(server)
+    if body.name is not None or body.hostname is not None:
+        background_tasks.add_task(
+            _sync_and_maybe_deploy_beszel,
+            str(server.id),
+            settings,
+            deploy=False,
+            actor_user_id=user.id,
+        )
     return _server_public(server)
 
 
@@ -320,8 +378,10 @@ async def delete_server(
 async def set_credentials(
     server_id: str,
     body: CredentialSet,
+    background_tasks: BackgroundTasks,
     user: AuthUser = Depends(require_admin),
     db: Session = Depends(get_db),
+    settings: Settings = Depends(get_settings),
 ) -> dict[str, bool]:
     server = db.query(InfraServer).filter(InfraServer.id == server_id).one_or_none()
     if server is None:
@@ -357,6 +417,14 @@ async def set_credentials(
         success=True,
         server_id=server_id,
         server_name=server.name,
+    )
+    db.commit()
+    background_tasks.add_task(
+        _sync_and_maybe_deploy_beszel,
+        server_id,
+        settings,
+        deploy=True,
+        actor_user_id=user.id,
     )
     return {'ok': True}
 
@@ -811,19 +879,20 @@ async def _do_deploy_beszel(
     actor_user_id: str | None = None,
 ) -> dict[str, Any]:
     """Core deploy logic — SSH into server and install beszel-agent."""
-    beszel_shared = settings.beszel_shared_path
-    token_path = f'{beszel_shared}/token'
-    key_path = f'{beszel_shared}/id_ed25519.pub'
     try:
-        with open(token_path) as f:
-            hub_token = f.read().strip()
-        with open(key_path) as f:
+        hub_token = await upsert_beszel_system(server, settings)
+        if not hub_token:
+            with open(f'{settings.beszel_shared_path}/token') as f:
+                hub_token = f.read().strip()
+        with open(f'{settings.beszel_shared_path}/id_ed25519.pub') as f:
             hub_pubkey = f.read().strip()
     except OSError as exc:
         raise HTTPException(
             status_code=503,
             detail=f'Beszel credentials not ready ({exc}). Run docker compose up first.',
         ) from exc
+    except RuntimeError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
 
     def _sq(s: str) -> str:
         return "'" + s.replace("'", "'\\''") + "'"
@@ -835,7 +904,7 @@ async def _do_deploy_beszel(
     )
 
     try:
-        result = await _run_on_server(db, server, script)
+        result = await _run_on_server(db, server, script, timeout=180.0)
     except (SSHError, HTTPException) as exc:
         write_audit(
             db,
@@ -882,6 +951,7 @@ async def deploy_beszel_agent(
     server = db.query(InfraServer).filter(InfraServer.id == server_id).one_or_none()
     if server is None:
         raise HTTPException(status_code=404, detail='Server not found')
+    await upsert_beszel_system(server, settings)
     return await _do_deploy_beszel(server, db, settings, actor_user_id=user.id)
 
 

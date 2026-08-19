@@ -52,7 +52,7 @@ async def run_ssh(
     started = time.monotonic()
     try:
         async with asyncssh.connect(**connect_kwargs) as conn:
-            result = await conn.run(command, check=False, timeout=timeout)
+            result = await conn.run(command, check=False, timeout=max(timeout, 1.0))
     except asyncssh.PermissionDenied as exc:
         raise SSHError('SSH authentication failed', code='auth_failed') from exc
     except asyncssh.HostKeyNotVerifiable as exc:
