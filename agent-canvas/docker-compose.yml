@@ -5,6 +5,7 @@
 #   ./build          → UI overlay (Creanova + Hosts / SSH)
 #   ./docker + ./scripts → entrypoint / static-server
 #   ../services/local-gateway → auth + SSH inventory
+#   henrygd/beszel + agent     → host/container monitoring (http://localhost:18090)
 #
 # First time (or after UI changes):
 #   docker compose --profile overlay-build run --rm canvas-ui-build
@@ -101,10 +102,74 @@ services:
     stdin_open: true
     tty: true
 
+  beszel:
+    image: henrygd/beszel:latest
+    container_name: creanova-beszel
+    restart: unless-stopped
+    environment:
+      APP_URL: ${BESZEL_APP_URL:-http://127.0.0.1:18090}
+      USER_EMAIL: ${BESZEL_USER_EMAIL:-admin@creanova.local}
+      USER_PASSWORD: ${BESZEL_USER_PASSWORD:-admin123}
+    ports:
+      - "0.0.0.0:${BESZEL_PORT:-18090}:8090"
+    volumes:
+      - beszel_data:/beszel_data
+    networks:
+      - default
+    healthcheck:
+      test: ["CMD", "/beszel", "health", "--url", "http://localhost:8090"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 10s
+
+  beszel-bootstrap:
+    image: alpine:3.21
+    container_name: creanova-beszel-bootstrap
+    restart: "no"
+    depends_on:
+      beszel:
+        condition: service_healthy
+    environment:
+      HUB_URL: http://beszel:8090
+      BESZEL_USER_EMAIL: ${BESZEL_USER_EMAIL:-admin@creanova.local}
+      BESZEL_USER_PASSWORD: ${BESZEL_USER_PASSWORD:-admin123}
+    volumes:
+      - beszel_data:/beszel_data:ro
+      - beszel_shared:/beszel_shared
+      - ./docker/beszel-bootstrap.sh:/bootstrap.sh:ro
+    command:
+      - sh
+      - -c
+      - apk add --no-cache curl jq openssh-client >/dev/null && exec sh /bootstrap.sh
+    networks:
+      - default
+
+  beszel-agent:
+    image: henrygd/beszel-agent:latest
+    container_name: creanova-beszel-agent
+    restart: unless-stopped
+    network_mode: host
+    depends_on:
+      beszel-bootstrap:
+        condition: service_completed_successfully
+    volumes:
+      - beszel_agent_data:/var/lib/beszel-agent
+      - beszel_shared:/beszel_shared:ro
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    environment:
+      LISTEN: "45876"
+      HUB_URL: ${BESZEL_HUB_URL:-http://127.0.0.1:18090}
+      TOKEN_FILE: /beszel_shared/token
+      KEY_FILE: /beszel_shared/id_ed25519.pub
+
 volumes:
   canvas_ui_npm:
   canvas_state:
     name: agent-canvas_canvas_state
+  beszel_data:
+  beszel_shared:
+  beszel_agent_data:
 
 networks:
   default:

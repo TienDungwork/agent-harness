@@ -2,6 +2,12 @@
 
 All notable changes to this workspace are listed here.
 
+## [beta v0.4.0] - 2026-08-19
+
+### Added
+
+- Beszel hub + agent in Agent Canvas compose (`docker compose up` starts monitoring at `:18090`)
+
 ## [beta v0.3.0] - 2026-08-18
 
 ### Added

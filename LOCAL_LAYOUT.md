@@ -25,6 +25,8 @@ Open: http://localhost:18010/canvas/
 
 Stop: `docker compose down`
 
+Beszel (bundled): http://localhost:18090 — login `admin@creanova.local` / `admin123`
+
 Ports / paths are in `agent-canvas/.env` (`CANVAS_HOST_PORT`, `PROJECTS_PATH`, …).
 
 ## Run from source (optional)

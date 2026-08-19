@@ -1,0 +1,60 @@
+# Beszel monitoring (hub + optional same-host agent).
+# Source vendored at services/beszel/ — runtime uses official Docker images.
+#
+# Atin191 networking rule: pin bridges to 10.240.0.0/16.
+# Network: 10.240.124.0/24
+# Hub UI: http://127.0.0.1:8090
+#
+# Boot (hub only):
+#   cp deploy/beszel/.env.example deploy/beszel/.env
+#   docker compose -f deploy/beszel/docker-compose.yml --env-file deploy/beszel/.env up -d
+#
+# Agent (after creating a system in the hub UI and copying TOKEN + KEY):
+#   docker compose -f deploy/beszel/docker-compose.yml --env-file deploy/beszel/.env --profile agent up -d
+
+services:
+  beszel:
+    image: henrygd/beszel:latest
+    container_name: creanova-beszel
+    restart: unless-stopped
+    environment:
+      APP_URL: ${BESZEL_APP_URL:-http://127.0.0.1:8090}
+    ports:
+      - "127.0.0.1:${BESZEL_PORT:-8090}:8090"
+    volumes:
+      - beszel_data:/beszel_data
+      - beszel_socket:/beszel_socket
+    networks:
+      - beszel_net
+
+  beszel-agent:
+    profiles: ["agent"]
+    image: henrygd/beszel-agent:latest
+    container_name: creanova-beszel-agent
+    restart: unless-stopped
+    network_mode: host
+    depends_on:
+      - beszel
+    volumes:
+      - beszel_agent_data:/var/lib/beszel-agent
+      - beszel_socket:/beszel_socket
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    environment:
+      LISTEN: /beszel_socket/beszel.sock
+      HUB_URL: ${BESZEL_HUB_URL:-http://127.0.0.1:8090}
+      TOKEN: ${BESZEL_AGENT_TOKEN:-}
+      KEY: ${BESZEL_AGENT_KEY:-}
+
+volumes:
+  beszel_data:
+  beszel_agent_data:
+  beszel_socket:
+
+networks:
+  beszel_net:
+    name: creanova_beszel_net
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 10.240.124.0/24
+          gateway: 10.240.124.1
