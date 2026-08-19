@@ -48,7 +48,8 @@ type NavId =
   | "port-forwarding"
   | "snippets"
   | "known-hosts"
-  | "logs";
+  | "logs"
+  | "monitor";
 
 type WorkspaceTab =
   | { kind: "vaults" }
@@ -110,6 +111,7 @@ const NAV: Array<{ id: NavId; label: string; icon: React.ReactNode }> = [
     icon: <ShieldCheck className="size-4" />,
   },
   { id: "logs", label: "Logs", icon: <ScrollText className="size-4" /> },
+  { id: "monitor", label: "Monitor", icon: <Eye className="size-4" /> },
 ];
 
 const fieldClass = cn(
@@ -272,7 +274,8 @@ export default function HostSettingsScreen() {
       setStatusMsg("Username is required");
       return null;
     }
-    const authType = showAdvancedAuth && draft.privateKey.trim() ? "key" : draft.authType;
+    const authType =
+      showAdvancedAuth && draft.privateKey.trim() ? "key" : draft.authType;
     const credential =
       authType === "key" ? draft.privateKey.trim() : draft.password;
 
@@ -368,13 +371,21 @@ export default function HostSettingsScreen() {
     );
   });
 
-  const stubCopy: Record<Exclude<NavId, "hosts">, string> = {
+  const stubCopy: Record<Exclude<NavId, "hosts" | "monitor">, string> = {
     keychain: "Store reusable passwords and SSH keys (coming soon).",
     "port-forwarding": "Local / remote / dynamic tunnels (coming soon).",
     snippets: "Reusable command snippets for sessions (coming soon).",
     "known-hosts": "Manage host key fingerprints (coming soon).",
     logs: "Connection and session audit log (coming soon).",
   };
+
+  const gwBase = (() => {
+    const base =
+      (import.meta.env.VITE_LOCAL_AUTH_BASE_URL as string | undefined) ||
+      (import.meta.env.VITE_BACKEND_BASE_URL as string | undefined) ||
+      "";
+    return base.replace(/\/+$/, "");
+  })();
 
   const canEdit = Boolean(me?.is_admin);
 
@@ -436,7 +447,11 @@ export default function HostSettingsScreen() {
                   ))}
                 </select>
               </label>
-              <BrandButton type="button" variant="secondary" onClick={reconnect}>
+              <BrandButton
+                type="button"
+                variant="secondary"
+                onClick={reconnect}
+              >
                 Reconnect
               </BrandButton>
             </div>
@@ -475,12 +490,23 @@ export default function HostSettingsScreen() {
             ))}
           </nav>
 
-          {nav !== "hosts" ? (
+          {nav === "monitor" ? (
+            <iframe
+              key="beszel"
+              src={`${gwBase}/beszel/`}
+              title="Monitor"
+              className="min-h-0 flex-1 border-0"
+              allow="same-origin"
+            />
+          ) : nav !== "hosts" ? (
             <div className="flex flex-1 flex-col items-center justify-center gap-2 px-8 text-center text-tertiary-light">
               <p className="text-base text-content">
                 {NAV.find((n) => n.id === nav)?.label}
               </p>
-              <p className="max-w-sm text-sm">{stubCopy[nav]}</p>
+              {/* eslint-disable-next-line i18next/no-literal-string */}
+              <p className="max-w-sm text-sm">
+                {stubCopy[nav as Exclude<NavId, "hosts" | "monitor">]}
+              </p>
             </div>
           ) : (
             <>

@@ -45,6 +45,7 @@ class Settings(BaseSettings):
     # Beszel integration (shared volume written by beszel-bootstrap container)
     beszel_shared_path: str = '/beszel_shared'
     beszel_agent_port: int = 45876
+    beszel_hub_url: str = 'http://beszel:8090'
 
     # CORS / frontend origins
     cors_origins: str = (

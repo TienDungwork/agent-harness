@@ -196,6 +196,57 @@ def _filter_conversation_page(payload: Any, allowed: set[str]) -> Any:
 
 
 @router.api_route(
+    '/beszel/{full_path:path}',
+    methods=['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS', 'HEAD'],
+)
+async def proxy_beszel(
+    full_path: str,
+    request: Request,
+    settings: Settings = Depends(get_settings),
+) -> Response:
+    """Reverse-proxy Beszel hub. Requires GW session. Strips X-Frame-Options."""
+    require_session(request, settings, SessionManager(settings))
+
+    target = f'{settings.beszel_hub_url.rstrip("/")}/{full_path}'
+    if request.url.query:
+        target = f'{target}?{request.url.query}'
+
+    headers = {
+        k: v
+        for k, v in request.headers.items()
+        if k.lower()
+        not in {'host', 'content-length', 'connection', 'transfer-encoding'}
+    }
+
+    body = None
+    if request.method not in ('GET', 'HEAD'):
+        body = await request.body()
+
+    async with httpx.AsyncClient(timeout=30, follow_redirects=True) as client:
+        upstream = await client.request(
+            request.method, target, headers=headers, content=body
+        )
+
+    excluded = {
+        'content-encoding',
+        'transfer-encoding',
+        'content-length',
+        'connection',
+        'x-frame-options',
+        'content-security-policy',
+    }
+    out_headers = {
+        k: v for k, v in upstream.headers.items() if k.lower() not in excluded
+    }
+    return Response(
+        content=upstream.content,
+        status_code=upstream.status_code,
+        headers=out_headers,
+        media_type=upstream.headers.get('content-type'),
+    )
+
+
+@router.api_route(
     '/api/{full_path:path}',
     methods=['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS', 'HEAD'],
 )
