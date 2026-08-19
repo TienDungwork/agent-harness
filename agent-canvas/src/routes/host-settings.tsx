@@ -604,44 +604,40 @@ export default function HostSettingsScreen() {
                   <p className="px-3 py-2 text-xs text-danger">{listError}</p>
                 ) : null}
 
-                <ul className="flex flex-1 flex-wrap content-start gap-2 overflow-y-auto p-3">
+                <ul className="grid flex-1 grid-cols-3 content-start gap-2 overflow-y-auto p-2">
                   {filtered.map((s) => (
-                    <li key={s.id} className="w-[228px] max-w-full">
+                    <li key={s.id} className="min-w-0">
                       <button
                         type="button"
                         onClick={() => selectHost(s)}
                         onDoubleClick={() => openTerminal(s)}
                         className={cn(
-                          "flex w-full items-center gap-2.5 rounded-lg border px-2.5 py-2 text-left transition-colors",
+                          "flex w-full items-center gap-3 rounded-xl border px-3 py-2.5 text-left transition-colors",
                           selectedId === s.id
-                            ? "border-white/25 bg-[#323236]"
-                            : "border-transparent bg-[#2a2a2e] hover:bg-[#323236]",
+                            ? "border-primary/50 bg-interactive-hover"
+                            : "border-transparent bg-base-secondary hover:border-[var(--oh-border)]",
                         )}
                       >
-                        <span
-                          className="flex size-8 shrink-0 items-center justify-center rounded-md bg-[#E95420] text-white"
-                          aria-hidden="true"
-                        >
-                          <svg viewBox="0 0 24 24" className="size-4 fill-current">
-                            <circle cx="12" cy="12" r="3.1" />
-                            <circle cx="12" cy="4.4" r="1.9" />
-                            <circle cx="18.6" cy="15.8" r="1.9" />
-                            <circle cx="5.4" cy="15.8" r="1.9" />
-                          </svg>
+                        <span className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-interactive-hover text-primary">
+                          <Server className="size-4" />
                         </span>
                         <span className="min-w-0 flex-1">
-                          <span className="block truncate text-[13px] font-semibold text-white">
+                          <span className="block truncate text-sm text-white">
                             {s.name || s.hostname}
                           </span>
-                          <span className="block truncate text-[11px] text-neutral-400">
-                            ssh{s.username ? `, ${s.username}` : ""}
+                          <span className="block truncate text-[11px] text-tertiary-light">
+                            {s.hostname}
+                            {s.username ? ` · ${s.username}` : ""}
                           </span>
+                        </span>
+                        <span className="shrink-0 rounded bg-interactive-hover px-1.5 py-0.5 text-[10px] uppercase tracking-wide text-tertiary-alt">
+                          ssh
                         </span>
                       </button>
                     </li>
                   ))}
                   {!filtered.length ? (
-                    <li className="w-full px-2 py-8 text-center text-xs leading-relaxed text-tertiary-alt">
+                    <li className="col-span-3 px-2 py-8 text-center text-xs leading-relaxed text-tertiary-alt">
                       {canEdit
                         ? "No hosts yet. Click + New host to add one."
                         : "No hosts granted. Ask an admin to add and grant access."}

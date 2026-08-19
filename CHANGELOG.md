@@ -2,6 +2,12 @@
 
 All notable changes to this workspace are listed here.
 
+## [beta v0.5.6] - 2026-08-19
+
+### Changed
+
+- Host cards keep original height/style; width is ~1/3 so three hosts fit on one row
+
 ## [beta v0.5.5] - 2026-08-19
 
 ### Fixed
