@@ -9,7 +9,6 @@ import { SettingsNavHeader } from "./settings-nav-header";
 import { SettingsNavDivider } from "./settings-nav-divider";
 import { SettingsNavLink } from "./settings-nav-link";
 import { navInteractiveTransitionClassName } from "#/components/features/sidebar/sidebar-layout";
-import { BackendSyncedSettingsBadge } from "#/components/features/settings/backend-synced-settings-badge";
 import { CloudSettingsLink } from "#/components/features/settings/cloud-settings-link";
 
 interface SettingsMobileDrawerProps {
@@ -89,10 +88,6 @@ export function SettingsMobileDrawer({
             );
           })}
           <CloudSettingsLink />
-        </div>
-
-        <div className="px-2 pt-3">
-          <BackendSyncedSettingsBadge />
         </div>
       </nav>
     </>

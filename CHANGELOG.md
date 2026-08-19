@@ -2,6 +2,12 @@
 
 All notable changes to this workspace are listed here.
 
+## [beta v0.5.3] - 2026-08-19
+
+### Removed
+
+- Settings / Customize sidebar line “These settings are synced from … backend (…)”
+
 ## [beta v0.4.0] - 2026-08-19
 
 ### Added

@@ -3,7 +3,6 @@ import { NavigationLink } from "#/components/shared/navigation-link";
 import { cn } from "#/utils/utils";
 import SkillsIcon from "#/icons/skills.svg?react";
 import ServerProcessIcon from "#/icons/server-process.svg?react";
-import { BackendSyncedSettingsBadge } from "#/components/features/settings/backend-synced-settings-badge";
 import {
   SIDEBAR_ROW_INTERACTIVE_CLASS,
   sidebarNavRowClassName,
@@ -103,9 +102,6 @@ export function ExtensionsNavigation() {
             </NavigationLink>
           );
         })}
-      </div>
-      <div className="px-2 pt-3">
-        <BackendSyncedSettingsBadge />
       </div>
     </aside>
   );
