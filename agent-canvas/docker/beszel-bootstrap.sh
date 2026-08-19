@@ -90,11 +90,9 @@ ALL_SYSTEMS="$(curl -sf \
   "$HUB_URL/api/collections/systems/records?perPage=200" \
   -H "Authorization: $PB_TOKEN")"
 
-echo "$SERVERS" | while IFS='|' read -r _SRV_ID _SRV_NAME SRV_HOST; do
-  # Display name = last octet of IP (e.g. 192.168.1.250 → 250)
-  DISPLAY_NAME="$(printf '%s' "$SRV_HOST" | awk -F. '{print $NF}')"
-  # Fallback to full host if not dotted IP
-  [ -z "$DISPLAY_NAME" ] && DISPLAY_NAME="$SRV_HOST"
+echo "$SERVERS" | while IFS='|' read -r _SRV_ID SRV_NAME SRV_HOST; do
+  # Display name = InfraServer.name (label set by user), fallback to hostname
+  DISPLAY_NAME="${SRV_NAME:-$SRV_HOST}"
 
   # Match by host (stable across renames).
   EXISTING_ID="$(printf '%s' "$ALL_SYSTEMS" \
