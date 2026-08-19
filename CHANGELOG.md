@@ -2,6 +2,12 @@
 
 All notable changes to this workspace are listed here.
 
+## [beta v0.5.4] - 2026-08-19
+
+### Changed
+
+- Host vault cards: compact Termius-style rectangles (icon + name + `ssh, user`) in a wrapping row
+
 ## [beta v0.5.3] - 2026-08-19
 
 ### Removed

@@ -44,7 +44,10 @@ services:
       AGENT_SERVER_URL: http://agent-canvas:18000
       DATABASE_URL: sqlite:////data/agent-canvas/local-gateway.db
       SESSION_SECRET: ${OH_SECRET_KEY:-change-me-creanova-local-session-secret}
-      CORS_ORIGINS: ${CORS_ORIGINS:-http://127.0.0.1:18010,http://localhost:18010,http://192.168.1.191:18010,http://192.168.82.52:18010}
+      CORS_ORIGINS: ${CORS_ORIGINS:-http://127.0.0.1:18010,http://localhost:18010,http://192.168.1.191:18010,http://192.168.82.52:18010,http://127.0.0.1:3001,http://localhost:3001,http://192.168.1.191:3001}
+      BESZEL_HUB_URL: http://beszel:8090
+      BESZEL_USER_EMAIL: ${BESZEL_USER_EMAIL:-admin@creanova.local}
+      BESZEL_USER_PASSWORD: ${BESZEL_USER_PASSWORD:-admin123}
     volumes:
       - ../services/local-gateway:/app
       - canvas_state:/data
