@@ -90,9 +90,13 @@ ALL_SYSTEMS="$(curl -sf \
   "$HUB_URL/api/collections/systems/records?perPage=200" \
   -H "Authorization: $PB_TOKEN")"
 
-echo "$SERVERS" | while IFS='|' read -r _SRV_ID SRV_NAME SRV_HOST; do
-  # Match by host (stable across renames). If multiple systems share same host,
-  # we'll match the first one — that's fine for local single-host setups.
+echo "$SERVERS" | while IFS='|' read -r _SRV_ID _SRV_NAME SRV_HOST; do
+  # Display name = last octet of IP (e.g. 192.168.1.250 → 250)
+  DISPLAY_NAME="$(printf '%s' "$SRV_HOST" | awk -F. '{print $NF}')"
+  # Fallback to full host if not dotted IP
+  [ -z "$DISPLAY_NAME" ] && DISPLAY_NAME="$SRV_HOST"
+
+  # Match by host (stable across renames).
   EXISTING_ID="$(printf '%s' "$ALL_SYSTEMS" \
     | jq -r --arg h "$SRV_HOST" '.items[] | select(.host==$h) | .id // empty' \
     | head -1)"
@@ -101,17 +105,16 @@ echo "$SERVERS" | while IFS='|' read -r _SRV_ID SRV_NAME SRV_HOST; do
     curl -sf -X POST "$HUB_URL/api/collections/systems/records" \
       -H "Authorization: $PB_TOKEN" \
       -H "Content-Type: application/json" \
-      -d "{\"name\":\"$SRV_NAME\",\"host\":\"$SRV_HOST\",\"port\":$AGENT_PORT,\"token\":\"$TOKEN_VAL\",\"status\":\"pending\"}" \
+      -d "{\"name\":\"$DISPLAY_NAME\",\"host\":\"$SRV_HOST\",\"port\":$AGENT_PORT,\"token\":\"$TOKEN_VAL\",\"status\":\"pending\"}" \
       >/dev/null
-    echo "beszel-bootstrap: created system '$SRV_NAME' ($SRV_HOST:$AGENT_PORT)"
+    echo "beszel-bootstrap: created system '$DISPLAY_NAME' ($SRV_HOST:$AGENT_PORT)"
   else
-    # Update name and host in case either changed in local-gateway.
     curl -sf -X PATCH "$HUB_URL/api/collections/systems/records/$EXISTING_ID" \
       -H "Authorization: $PB_TOKEN" \
       -H "Content-Type: application/json" \
-      -d "{\"name\":\"$SRV_NAME\",\"host\":\"$SRV_HOST\",\"port\":$AGENT_PORT}" \
+      -d "{\"name\":\"$DISPLAY_NAME\",\"host\":\"$SRV_HOST\",\"port\":$AGENT_PORT}" \
       >/dev/null
-    echo "beszel-bootstrap: synced system '$SRV_NAME' ($SRV_HOST:$AGENT_PORT)"
+    echo "beszel-bootstrap: synced system '$DISPLAY_NAME' ($SRV_HOST:$AGENT_PORT)"
   fi
 done
 

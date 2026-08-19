@@ -8,7 +8,7 @@ from uuid import uuid4
 from auth.deps import require_admin, require_session
 from auth.session import SessionManager
 from config import Settings, get_settings
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
 from infra.access import user_has_server_access
 from infra.audit import write_audit
 from infra.commands import CommandDenied, render_command
@@ -173,11 +173,42 @@ async def list_servers(
     return [_server_public(s) for s in q.order_by(InfraServer.name).all()]
 
 
+async def _auto_deploy_beszel(server_id: str, settings: Settings) -> None:
+    """Background task: deploy beszel-agent right after a server is created."""
+    import asyncio
+
+    from storage.models import SessionLocal
+
+    await asyncio.sleep(2)  # let DB commit settle
+    if SessionLocal is None:
+        return
+    db = SessionLocal()
+    try:
+        server = db.query(InfraServer).filter(InfraServer.id == server_id).one_or_none()
+        if server is None:
+            return
+        cred = (
+            db.query(InfraServerCredential)
+            .filter(InfraServerCredential.server_id == server_id)
+            .one_or_none()
+        )
+        if cred is None:
+            return
+        try:
+            await _do_deploy_beszel(server, db, settings)
+        except Exception:
+            pass  # best-effort; result recorded in audit log
+    finally:
+        db.close()
+
+
 @router.post('/api/infra/servers')
 async def create_server(
     body: ServerCreate,
+    background_tasks: BackgroundTasks,
     user: AuthUser = Depends(require_admin),
     db: Session = Depends(get_db),
+    settings: Settings = Depends(get_settings),
 ) -> dict[str, Any]:
     if not _NAME_RE.match(body.name):
         raise HTTPException(status_code=400, detail='Invalid server name')
@@ -218,7 +249,11 @@ async def create_server(
         server_id=str(server.id),
         server_name=server.name,
     )
+    db.commit()
     db.refresh(server)
+    # Auto-deploy beszel-agent in background if credential was provided.
+    if body.credential:
+        background_tasks.add_task(_auto_deploy_beszel, str(server.id), settings)
     return _server_public(server)
 
 
@@ -769,20 +804,14 @@ fi
 """
 
 
-@router.post('/api/infra/servers/{server_id}/deploy-beszel')
-async def deploy_beszel_agent(
-    server_id: str,
-    user: AuthUser = Depends(require_admin),
-    db: Session = Depends(get_db),
-    settings: Settings = Depends(get_settings),
+async def _do_deploy_beszel(
+    server: InfraServer,
+    db: Session,
+    settings: Settings,
+    actor_user_id: str | None = None,
 ) -> dict[str, Any]:
-    """SSH into the server and install/start beszel-agent using hub token + pubkey."""
-    server = db.query(InfraServer).filter(InfraServer.id == server_id).one_or_none()
-    if server is None:
-        raise HTTPException(status_code=404, detail='Server not found')
-
-    # Load Beszel credentials from the shared path written by beszel-bootstrap.
-    beszel_shared = getattr(settings, 'beszel_shared_path', '/beszel_shared')
+    """Core deploy logic — SSH into server and install beszel-agent."""
+    beszel_shared = settings.beszel_shared_path
     token_path = f'{beszel_shared}/token'
     key_path = f'{beszel_shared}/id_ed25519.pub'
     try:
@@ -796,14 +825,11 @@ async def deploy_beszel_agent(
             detail=f'Beszel credentials not ready ({exc}). Run docker compose up first.',
         ) from exc
 
-    agent_port = getattr(settings, 'beszel_agent_port', 45876)
-
-    # Escape arguments for safe shell injection (no special chars expected in token/key).
     def _sq(s: str) -> str:
         return "'" + s.replace("'", "'\\''") + "'"
 
     script = (
-        f"sh -s {_sq(hub_token)} {_sq(hub_pubkey)} {agent_port} <<'__DEPLOY__'\n"
+        f"sh -s {_sq(hub_token)} {_sq(hub_pubkey)} {settings.beszel_agent_port} <<'__DEPLOY__'\n"
         + _BESZEL_AGENT_DEPLOY_SCRIPT
         + '\n__DEPLOY__'
     )
@@ -813,32 +839,29 @@ async def deploy_beszel_agent(
     except (SSHError, HTTPException) as exc:
         write_audit(
             db,
-            actor_user_id=user.id,
+            actor_user_id=actor_user_id,
             action='beszel.deploy',
             success=False,
-            server_id=server_id,
+            server_id=str(server.id),
             server_name=server.name,
             error_excerpt=str(exc)[:500],
         )
         db.commit()
-        if isinstance(exc, HTTPException):
-            raise
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
+        raise
 
     ok = result.exit_code == 0
     write_audit(
         db,
-        actor_user_id=user.id,
+        actor_user_id=actor_user_id,
         action='beszel.deploy',
         success=ok,
-        server_id=server_id,
+        server_id=str(server.id),
         server_name=server.name,
         exit_code=result.exit_code,
         duration_ms=result.duration_ms,
         error_excerpt=None if ok else (result.stderr or result.stdout)[:500],
     )
     db.commit()
-
     return {
         'ok': ok,
         'exit_code': result.exit_code,
@@ -846,6 +869,20 @@ async def deploy_beszel_agent(
         'stderr': result.stderr.strip(),
         'duration_ms': result.duration_ms,
     }
+
+
+@router.post('/api/infra/servers/{server_id}/deploy-beszel')
+async def deploy_beszel_agent(
+    server_id: str,
+    user: AuthUser = Depends(require_admin),
+    db: Session = Depends(get_db),
+    settings: Settings = Depends(get_settings),
+) -> dict[str, Any]:
+    """SSH into the server and install/start beszel-agent using hub token + pubkey."""
+    server = db.query(InfraServer).filter(InfraServer.id == server_id).one_or_none()
+    if server is None:
+        raise HTTPException(status_code=404, detail='Server not found')
+    return await _do_deploy_beszel(server, db, settings, actor_user_id=user.id)
 
 
 @router.post('/api/infra/servers/{server_id}/grants')
