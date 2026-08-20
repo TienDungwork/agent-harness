@@ -6,6 +6,7 @@ All notable changes to this workspace are listed here.
 
 ### Fixed
 
+- Host picker `+` opens a floating portal menu; picking a host opens/focuses an SSH session tab instead of resetting to Vaults and overlaying the terminal
 - local-gateway: stop caching GET /api/profiles in per-user blobs so Add LLM Profile updates the Available Profiles list
 
 ## [beta v0.5.34] - 2026-08-20
