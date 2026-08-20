@@ -87,6 +87,77 @@ async def _fingerprint_token(
     return str(items[0].get('token') or '')
 
 
+async def clear_system_fingerprint(
+    server: InfraServer,
+    settings: Settings,
+    *,
+    system_id: str | None = None,
+) -> None:
+    """Clear stored agent fingerprint so a redeployed agent can rebind.
+
+    Needed when switching Docker agent → host binary (or vice versa): the
+    machine identity / data-dir fingerprint changes and hub rejects with
+    'fingerprint mismatch'.
+    """
+    pb, _user_id = await _login(settings)
+    headers = {'Authorization': pb}
+    base = settings.beszel_hub_url.rstrip('/')
+    host = server.hostname.strip()
+
+    async with httpx.AsyncClient(timeout=15) as client:
+        sys_id = (system_id or '').strip()
+        if not sys_id:
+            listed = await client.get(
+                f'{base}/api/collections/systems/records',
+                headers=headers,
+                params={'filter': f"(host='{host}')", 'perPage': 1},
+            )
+            if listed.status_code != 200:
+                logger.warning(
+                    'beszel: list system for fingerprint clear failed: %s',
+                    listed.status_code,
+                )
+                return
+            items = listed.json().get('items') or []
+            if not items:
+                return
+            sys_id = str(items[0].get('id') or '')
+        if not sys_id:
+            return
+        fps = await client.get(
+            f'{base}/api/collections/fingerprints/records',
+            headers=headers,
+            params={'filter': f"(system='{sys_id}')", 'perPage': 5},
+        )
+        if fps.status_code != 200:
+            logger.warning(
+                'beszel: list fingerprints failed: %s %s',
+                fps.status_code,
+                fps.text[:200],
+            )
+            return
+        for row in fps.json().get('items') or []:
+            fp_id = row.get('id')
+            if not fp_id:
+                continue
+            if not (row.get('fingerprint') or '').strip():
+                continue
+            patched = await client.patch(
+                f'{base}/api/collections/fingerprints/records/{fp_id}',
+                headers=headers,
+                json={'fingerprint': ''},
+            )
+            if patched.status_code != 200:
+                logger.warning(
+                    'beszel: clear fingerprint failed for %s: %s %s',
+                    host,
+                    patched.status_code,
+                    patched.text[:200],
+                )
+                continue
+            logger.info('beszel: cleared fingerprint for %s', host)
+
+
 async def upsert_system(server: InfraServer, settings: Settings) -> tuple[str, int]:
     """Create or patch Beszel system. Returns (agent_token, listen_port)."""
     display = (server.name or server.hostname).strip()

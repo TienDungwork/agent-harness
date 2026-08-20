@@ -8,7 +8,15 @@ All notable changes to this workspace are listed here.
 
 - Host vault list uses a Termius-style wrapping card grid (circular icon, title, `ssh`/tags) instead of one full-width row per host
 
+## [beta v0.5.10] - 2026-08-20
+
+### Fixed
+
+- Beszel GPU metrics on NVIDIA hosts: deploy host binary (uses `nvidia-smi`) instead of the Docker agent image, which cannot see the GPU
+- Redeploy clears Beszel agent fingerprint so Docker ↔ binary switches do not get stuck on fingerprint mismatch
+
 ## [beta v0.5.8] - 2026-08-19
+
 
 ### Fixed
 

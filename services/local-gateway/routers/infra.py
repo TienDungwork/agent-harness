@@ -11,6 +11,7 @@ from config import Settings, get_settings
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
 from infra.access import user_has_server_access
 from infra.audit import write_audit
+from infra.beszel import clear_system_fingerprint as clear_beszel_fingerprint
 from infra.beszel import upsert_system as upsert_beszel_system
 from infra.commands import CommandDenied, render_command
 from infra.crypto import CryptoError, decrypt_text, encrypt_text
@@ -802,6 +803,109 @@ TOKEN="$1"; KEY="$2"; PORT="$3"; HUB="$4"; NAME="$5"
 
 HAS_DOCKER=0
 command -v docker >/dev/null 2>&1 && docker info >/dev/null 2>&1 && HAS_DOCKER=1
+# Prefer common NVIDIA paths even when SSH login PATH is minimal.
+export PATH="/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:${PATH:-}"
+HAS_NVIDIA=0
+if command -v nvidia-smi >/dev/null 2>&1; then
+    HAS_NVIDIA=1
+fi
+
+# NVIDIA: official Docker agent image cannot use NVML/nvidia-smi (no glibc).
+# Prefer host binary + systemd so nvidia-smi on the host works.
+install_binary() {
+    ARCH="$(uname -m)"
+    case "$ARCH" in
+        x86_64)  GOARCH=amd64 ;;
+        aarch64|arm64) GOARCH=arm64 ;;
+        *) echo "unsupported arch: $ARCH" >&2; return 1 ;;
+    esac
+
+    TMPDIR="$(mktemp -d)"
+    trap 'rm -rf "$TMPDIR"' EXIT
+
+    RELEASE_URL="https://github.com/henrygd/beszel/releases/latest/download/beszel-agent_Linux_${GOARCH}.tar.gz"
+    if command -v curl >/dev/null 2>&1; then
+        curl -fsSL "$RELEASE_URL" -o "$TMPDIR/beszel-agent.tar.gz"
+    elif command -v wget >/dev/null 2>&1; then
+        wget -qO "$TMPDIR/beszel-agent.tar.gz" "$RELEASE_URL"
+    else
+        echo "beszel-agent: need curl or wget" >&2; return 1
+    fi
+
+    tar -xzf "$TMPDIR/beszel-agent.tar.gz" -C "$TMPDIR"
+    if [ -w /usr/local/bin ] || [ "$(id -u)" = "0" ]; then
+        install -m 755 "$TMPDIR/beszel-agent" /usr/local/bin/beszel-agent
+        BIN=/usr/local/bin/beszel-agent
+        UNIT_DIR=/etc/systemd/system
+        SYSTEMCTL="systemctl"
+    elif command -v sudo >/dev/null 2>&1 && sudo -n true 2>/dev/null; then
+        sudo install -m 755 "$TMPDIR/beszel-agent" /usr/local/bin/beszel-agent
+        BIN=/usr/local/bin/beszel-agent
+        UNIT_DIR=/etc/systemd/system
+        SYSTEMCTL="sudo systemctl"
+    else
+        mkdir -p "$HOME/.local/bin"
+        install -m 755 "$TMPDIR/beszel-agent" "$HOME/.local/bin/beszel-agent"
+        BIN="$HOME/.local/bin/beszel-agent"
+        UNIT_DIR=""
+        SYSTEMCTL=""
+    fi
+
+    if [ "$HAS_DOCKER" = "1" ]; then
+        docker rm -f "$NAME" 2>/dev/null || true
+    fi
+    if [ -n "$SYSTEMCTL" ]; then
+        $SYSTEMCTL stop "$NAME" 2>/dev/null || true
+    fi
+
+    if [ -n "$UNIT_DIR" ] && [ -d "$UNIT_DIR" ]; then
+        UNIT_FILE="$UNIT_DIR/${NAME}.service"
+        UNIT_BODY=$(cat <<EOF2
+[Unit]
+Description=Beszel Agent ($NAME)
+After=network.target
+
+[Service]
+ExecStart=$BIN
+Restart=always
+Environment=TOKEN=$TOKEN
+Environment=KEY=$KEY
+Environment=LISTEN=$PORT
+Environment=HUB_URL=$HUB
+
+[Install]
+WantedBy=multi-user.target
+EOF2
+)
+        if [ "$(id -u)" = "0" ] || [ -w "$UNIT_DIR" ]; then
+            printf '%s\n' "$UNIT_BODY" >"$UNIT_FILE"
+        else
+            printf '%s\n' "$UNIT_BODY" | sudo tee "$UNIT_FILE" >/dev/null
+        fi
+        $SYSTEMCTL daemon-reload
+        $SYSTEMCTL enable --now "$NAME"
+        echo "beszel-agent: systemd $NAME listening $PORT hub $HUB${HAS_NVIDIA:+ (nvidia-smi)}"
+        return 0
+    fi
+
+    # Stop previous nohup agent bound to this port (LISTEN is env-only, not argv).
+    if command -v fuser >/dev/null 2>&1; then
+        fuser -k "${PORT}/tcp" 2>/dev/null || true
+    elif command -v ss >/dev/null 2>&1; then
+        OLD_PIDS=$(ss -lptn "sport = :$PORT" 2>/dev/null | sed -n 's/.*pid=\([0-9]*\).*/\1/p' | sort -u)
+        for pid in $OLD_PIDS; do kill "$pid" 2>/dev/null || true; done
+    fi
+    sleep 1
+    nohup env TOKEN="$TOKEN" KEY="$KEY" LISTEN="$PORT" HUB_URL="$HUB" \
+        "$BIN" >/tmp/${NAME}.log 2>&1 &
+    echo "beszel-agent: nohup $NAME (pid $!) listening $PORT hub $HUB${HAS_NVIDIA:+ (nvidia-smi)}"
+    return 0
+}
+
+if [ "$HAS_NVIDIA" = "1" ]; then
+    install_binary
+    exit $?
+fi
 
 if [ "$HAS_DOCKER" = "1" ]; then
     docker rm -f "$NAME" 2>/dev/null || true
@@ -815,57 +919,12 @@ if [ "$HAS_DOCKER" = "1" ]; then
         -e LISTEN="$PORT" \
         -e HUB_URL="$HUB" \
         henrygd/beszel-agent:latest
-    echo "beszel-agent: $NAME listening $PORT hub $HUB"
+    echo "beszel-agent: $NAME listening $PORT hub $HUB (docker)"
     exit 0
 fi
 
-ARCH="$(uname -m)"
-case "$ARCH" in
-    x86_64)  GOARCH=amd64 ;;
-    aarch64|arm64) GOARCH=arm64 ;;
-    *) echo "unsupported arch: $ARCH" >&2; exit 1 ;;
-esac
-
-TMPDIR="$(mktemp -d)"
-trap 'rm -rf "$TMPDIR"' EXIT
-
-RELEASE_URL="https://github.com/henrygd/beszel/releases/latest/download/beszel-agent_Linux_${GOARCH}.tar.gz"
-if command -v curl >/dev/null 2>&1; then
-    curl -fsSL "$RELEASE_URL" -o "$TMPDIR/beszel-agent.tar.gz"
-elif command -v wget >/dev/null 2>&1; then
-    wget -qO "$TMPDIR/beszel-agent.tar.gz" "$RELEASE_URL"
-else
-    echo "beszel-agent: need curl or wget" >&2; exit 1
-fi
-
-tar -xzf "$TMPDIR/beszel-agent.tar.gz" -C "$TMPDIR"
-install -m 755 "$TMPDIR/beszel-agent" /usr/local/bin/beszel-agent
-
-if command -v systemctl >/dev/null 2>&1 && [ -d /etc/systemd/system ]; then
-    cat >/etc/systemd/system/${NAME}.service <<EOF2
-[Unit]
-Description=Beszel Agent ($NAME)
-After=network.target
-
-[Service]
-ExecStart=/usr/local/bin/beszel-agent
-Restart=always
-Environment=TOKEN=$TOKEN
-Environment=KEY=$KEY
-Environment=LISTEN=$PORT
-Environment=HUB_URL=$HUB
-
-[Install]
-WantedBy=multi-user.target
-EOF2
-    systemctl daemon-reload
-    systemctl enable --now "$NAME"
-    echo "beszel-agent: systemd $NAME listening $PORT hub $HUB"
-else
-    nohup env TOKEN="$TOKEN" KEY="$KEY" LISTEN="$PORT" HUB_URL="$HUB" \
-        /usr/local/bin/beszel-agent >/tmp/${NAME}.log 2>&1 &
-    echo "beszel-agent: nohup $NAME (pid $!) listening $PORT hub $HUB"
-fi
+install_binary
+exit $?
 """
 
 
@@ -878,6 +937,8 @@ async def _do_deploy_beszel(
     """Core deploy logic — SSH into server and install beszel-agent."""
     try:
         hub_token, listen_port = await upsert_beszel_system(server, settings)
+        # Allow agent rebind after Docker ↔ host-binary switch.
+        await clear_beszel_fingerprint(server, settings)
         if not hub_token:
             with open(f'{settings.beszel_shared_path}/token') as f:
                 hub_token = f.read().strip()
