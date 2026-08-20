@@ -116,7 +116,8 @@ services:
     tty: true
 
   beszel:
-    image: henrygd/beszel:latest
+    image: creanova/beszel:gpu-containers
+    pull_policy: never
     container_name: creanova-beszel
     restart: unless-stopped
     environment:

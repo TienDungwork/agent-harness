@@ -62,6 +62,13 @@ All notable changes to this workspace are listed here.
 
 - Beszel public UI (`:18090`) rewrites `<title>` to Creanova at the nginx layer (faster first paint)
 
+## [beta v0.5.15] - 2026-08-20
+
+### Added
+
+- Beszel container table: GPU % and GPU Mem columns (nvidia-smi process → Docker cgroup), matching host GPU collector style
+- Custom hub image `creanova/beszel:gpu-containers` (built from `services/beszel`) so UI + DB fields ship together
+
 ## [beta v0.5.14] - 2026-08-20
 
 ### Changed
