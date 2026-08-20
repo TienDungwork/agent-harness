@@ -2,6 +2,12 @@
 
 All notable changes to this workspace are listed here.
 
+## [beta v0.5.31] - 2026-08-20
+
+### Changed
+
+- Host vault: quick-add `+` beside the Hosts heading (replaces the New host chip); Terminal chip stays in the toolbar
+
 ## [beta v0.5.30] - 2026-08-20
 
 ### Changed

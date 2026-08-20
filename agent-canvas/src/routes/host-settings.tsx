@@ -661,15 +661,6 @@ export default function HostSettingsScreen() {
                     />
                   </div>
                   <div className="flex flex-wrap gap-1.5">
-                    {canEdit ? (
-                      <button
-                        type="button"
-                        onClick={startNewHost}
-                        className={chipBtnClass}
-                      >
-                        <Plus className="size-3.5" /> New host
-                      </button>
-                    ) : null}
                     <button
                       type="button"
                       disabled={!selectedId}
@@ -689,9 +680,24 @@ export default function HostSettingsScreen() {
                 ) : null}
 
                 <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
-                  <p className={cn(hostSectionHeadingClass, "px-3 pt-2")}>
-                    Hosts
-                  </p>
+                  <div className="flex items-center justify-between gap-2 px-3 pt-2">
+                    <p className={hostSectionHeadingClass}>Hosts</p>
+                    {canEdit ? (
+                      <button
+                        type="button"
+                        onClick={startNewHost}
+                        className={cn(
+                          chipBtnClass,
+                          "size-8 justify-center gap-0 px-0 py-0",
+                        )}
+                        aria-label="New host"
+                        title="New host"
+                        data-testid="host-vault-add"
+                      >
+                        <Plus className="size-4" strokeWidth={2.25} />
+                      </button>
+                    ) : null}
+                  </div>
                   <ul
                     className="grid flex-1 auto-rows-min grid-cols-[repeat(auto-fill,minmax(220px,1fr))] content-start gap-3 overflow-y-auto p-3 pt-2"
                     data-testid="host-vault-grid"
