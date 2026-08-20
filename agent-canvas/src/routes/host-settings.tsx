@@ -698,46 +698,57 @@ export default function HostSettingsScreen() {
                   <p className="px-3 py-2 text-xs text-danger">{listError}</p>
                 ) : null}
 
-                <ul className="grid flex-1 grid-cols-3 content-start gap-2 overflow-y-auto p-2">
-                  {filtered.map((s) => (
-                    <li key={s.id} className="min-w-0">
-                      <button
-                        type="button"
-                        onClick={() => selectHost(s)}
-                        onDoubleClick={() => openTerminal(s)}
-                        className={cn(
-                          "flex w-full items-center gap-3 rounded-xl border px-3 py-2.5 text-left transition-colors",
-                          selectedId === s.id
-                            ? "border-primary/50 bg-interactive-hover"
-                            : "border-transparent bg-base-secondary hover:border-[var(--oh-border)]",
-                        )}
-                      >
-                        <span className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-interactive-hover text-primary">
-                          <Server className="size-4" />
-                        </span>
-                        <span className="min-w-0 flex-1">
-                          <span className="block truncate text-sm text-white">
-                            {s.name || s.hostname}
-                          </span>
-                          <span className="block truncate text-[11px] text-tertiary-light">
-                            {s.hostname}
-                            {s.username ? ` · ${s.username}` : ""}
-                          </span>
-                        </span>
-                        <span className="shrink-0 rounded bg-interactive-hover px-1.5 py-0.5 text-[10px] uppercase tracking-wide text-tertiary-alt">
-                          ssh
-                        </span>
-                      </button>
-                    </li>
-                  ))}
-                  {!filtered.length ? (
-                    <li className="col-span-3 px-2 py-8 text-center text-xs leading-relaxed text-tertiary-alt">
-                      {canEdit
-                        ? "No hosts yet. Click + New host to add one."
-                        : "No hosts granted. Ask an admin to add and grant access."}
-                    </li>
-                  ) : null}
-                </ul>
+                <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
+                  <p className="px-3 pt-2 text-sm font-medium text-white">
+                    Hosts
+                  </p>
+                  <ul className="grid flex-1 auto-rows-min grid-cols-[repeat(auto-fill,minmax(200px,1fr))] content-start gap-2.5 overflow-y-auto p-3 pt-2">
+                    {filtered.map((s) => {
+                      const protocols = Array.from(
+                        new Set([
+                          "ssh",
+                          ...(s.tags || [])
+                            .map((t) => t.trim().toLowerCase())
+                            .filter(Boolean),
+                        ]),
+                      ).join(", ");
+                      return (
+                        <li key={s.id} className="min-w-0">
+                          <button
+                            type="button"
+                            onClick={() => selectHost(s)}
+                            onDoubleClick={() => openTerminal(s)}
+                            className={cn(
+                              "flex w-full items-center gap-3 rounded-2xl border px-3 py-3 text-left transition-colors",
+                              selectedId === s.id
+                                ? "border-primary/50 bg-interactive-hover"
+                                : "border-transparent bg-base-secondary hover:border-[var(--oh-border)] hover:bg-interactive-hover-low",
+                            )}
+                          >
+                            <span className="flex size-10 shrink-0 items-center justify-center rounded-full bg-interactive-hover text-primary">
+                              <Server className="size-4" />
+                            </span>
+                            <span className="min-w-0 flex-1">
+                              <span className="block truncate text-sm text-white">
+                                {s.name || s.hostname}
+                              </span>
+                              <span className="block truncate text-[11px] text-tertiary-light">
+                                {protocols}
+                              </span>
+                            </span>
+                          </button>
+                        </li>
+                      );
+                    })}
+                    {!filtered.length ? (
+                      <li className="col-span-full px-2 py-8 text-center text-xs leading-relaxed text-tertiary-alt">
+                        {canEdit
+                          ? "No hosts yet. Click + New host to add one."
+                          : "No hosts granted. Ask an admin to add and grant access."}
+                      </li>
+                    ) : null}
+                  </ul>
+                </div>
               </section>
 
               {detailsOpen ? (

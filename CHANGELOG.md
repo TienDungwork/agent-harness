@@ -2,6 +2,12 @@
 
 All notable changes to this workspace are listed here.
 
+## [beta v0.5.9] - 2026-08-20
+
+### Changed
+
+- Host vault list uses a Termius-style wrapping card grid (circular icon, title, `ssh`/tags) instead of one full-width row per host
+
 ## [beta v0.5.8] - 2026-08-19
 
 ### Fixed
