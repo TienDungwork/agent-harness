@@ -166,12 +166,17 @@ const multilineClass = cn(
   formControlMultilineFieldClassName,
   "min-h-[100px] font-mono text-[11px]",
 );
-const labelClass = "mb-1.5 block text-sm font-semibold text-white";
-const sectionTitleClass = "mb-2.5 text-sm font-semibold text-white";
+const labelClass = "mb-1.5 block text-sm font-medium text-white";
+const sectionTitleClass = "mb-2.5 text-sm font-medium text-white";
 const chipBtnClass =
-  "inline-flex items-center gap-1 rounded-lg border border-[var(--oh-border)] bg-base-secondary px-2 py-1 text-xs text-content hover:border-white/30 hover:text-white disabled:opacity-40";
+  "inline-flex items-center gap-1.5 rounded-lg border border-[var(--oh-border)] bg-base-secondary px-2.5 py-1.5 text-sm font-medium text-white hover:border-white/30 hover:bg-interactive-hover-low disabled:opacity-40";
 const iconBtnClass =
   "rounded-md p-1.5 text-tertiary-alt hover:bg-interactive-hover hover:text-white";
+const hostNavItemClass =
+  "flex items-center gap-2 rounded-lg px-2.5 py-2 text-left text-sm font-medium transition-colors";
+const hostSectionHeadingClass = "text-base font-medium text-white";
+const hostCardTitleClass =
+  "block truncate text-sm font-medium leading-snug text-white";
 
 /**
  * Settings → Host: Termius-inspired vault UI
@@ -643,22 +648,25 @@ export default function HostSettingsScreen() {
         </div>
       ) : (
         <div className="flex min-h-0 flex-1">
-          <nav className="flex w-[148px] shrink-0 flex-col gap-0.5 border-r border-[var(--oh-border-subtle)] bg-base-secondary p-2">
+          <nav className="flex w-[160px] shrink-0 flex-col gap-0.5 border-r border-[var(--oh-border-subtle)] bg-base-secondary p-2">
             {NAV.map((item) => (
               <button
                 key={item.id}
                 type="button"
                 onClick={() => setNav(item.id)}
                 className={cn(
-                  "flex items-center gap-2 rounded-lg px-2.5 py-2 text-left text-sm",
+                  hostNavItemClass,
                   nav === item.id
                     ? "bg-interactive-hover text-white"
-                    : "text-tertiary-light hover:bg-interactive-hover-low hover:text-content",
+                    : "text-[var(--oh-muted)] hover:bg-interactive-hover-low hover:text-white",
                 )}
               >
                 <span
                   className={cn(
-                    nav === item.id ? "text-primary" : "text-tertiary-alt",
+                    "flex h-5 w-5 shrink-0 items-center justify-center",
+                    nav === item.id
+                      ? "text-white"
+                      : "text-[var(--oh-muted)] group-hover:text-white",
                   )}
                 >
                   {item.icon}
@@ -671,12 +679,12 @@ export default function HostSettingsScreen() {
           {nav === "monitor" ? (
             <MonitorPane gwBase={gwBase} />
           ) : nav !== "hosts" ? (
-            <div className="flex flex-1 flex-col items-center justify-center gap-2 px-8 text-center text-tertiary-light">
-              <p className="text-base text-content">
+            <div className="flex flex-1 flex-col items-center justify-center gap-2 px-8 text-center">
+              <p className="text-xl font-medium leading-6 tracking-[-0.02em] text-white">
                 {NAV.find((n) => n.id === nav)?.label}
               </p>
               {/* eslint-disable-next-line i18next/no-literal-string */}
-              <p className="max-w-sm text-sm">
+              <p className="max-w-sm text-sm leading-5 text-tertiary-light">
                 {stubCopy[nav as Exclude<NavId, "hosts" | "monitor">]}
               </p>
             </div>
@@ -739,7 +747,7 @@ export default function HostSettingsScreen() {
                 ) : null}
 
                 <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
-                  <p className="px-3 pt-2 text-sm font-medium text-white">
+                  <p className={cn(hostSectionHeadingClass, "px-3 pt-2")}>
                     Hosts
                   </p>
                   <ul
@@ -775,7 +783,7 @@ export default function HostSettingsScreen() {
                               />
                             </span>
                             <span className="min-w-0 flex-1">
-                              <span className="block truncate text-base font-medium leading-snug text-white">
+                              <span className={hostCardTitleClass}>
                                 {s.name || s.hostname}
                               </span>
                               <span className="mt-0.5 block truncate text-[10px] leading-tight text-tertiary-light">
@@ -826,7 +834,7 @@ export default function HostSettingsScreen() {
                 <section className="flex w-1/4 max-w-[25%] min-w-[260px] shrink-0 flex-col bg-base-secondary">
                   <div className="flex items-start justify-between gap-3 border-b border-[var(--oh-border-subtle)] px-4 py-2.5">
                     <div className="min-w-0">
-                      <h2 className="truncate text-base font-semibold text-white">
+                      <h2 className="truncate text-base font-medium text-white">
                         {draft.id
                           ? draft.label.trim() ||
                             draft.address ||
