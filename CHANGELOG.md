@@ -2,6 +2,12 @@
 
 All notable changes to this workspace are listed here.
 
+## [beta v0.5.22] - 2026-08-20
+
+### Removed
+
+- Host vault toolbar Serial and Details chip buttons (open details via pencil / New host)
+
 ## [beta v0.5.21] - 2026-08-20
 
 ### Fixed
