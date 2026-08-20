@@ -18,6 +18,9 @@ import {
   MoreHorizontal,
   Check,
   Pencil,
+  X,
+  Lock,
+  Folder,
 } from "lucide-react";
 import "@xterm/xterm/css/xterm.css";
 import { BrandButton } from "#/components/features/settings/brand-button";
@@ -523,49 +526,109 @@ export default function HostSettingsScreen() {
       data-testid="settings-host"
       className="flex h-[calc(100vh-6rem)] min-h-[480px] w-full flex-col overflow-hidden rounded-xl border border-[var(--oh-border-subtle)] bg-base text-content"
     >
-      <div className="flex items-center gap-0.5 border-b border-[var(--oh-border-subtle)] bg-base-secondary px-2 pt-1.5">
-        {workspaceTabs.map((tab, i) => (
-          <div
-            key={tab.kind === "vaults" ? "vaults" : tab.id}
-            className={cn(
-              "group flex items-center gap-1.5 rounded-t-md px-3 py-1.5 text-xs",
-              i === activeWorkspace
-                ? "bg-base text-white"
-                : "text-tertiary-alt hover:bg-interactive-hover hover:text-content",
-            )}
-          >
-            <button type="button" onClick={() => setActiveWorkspace(i)}>
-              {tab.kind === "vaults" ? "Vaults" : tab.title}
-            </button>
-            {tab.kind === "terminal" ? (
+      <div
+        className="flex items-center gap-2 overflow-x-auto border-b border-[var(--oh-border-subtle)] bg-base px-3 py-2"
+        data-testid="host-workspace-tabs"
+      >
+        <button
+          type="button"
+          onClick={() => setActiveWorkspace(0)}
+          className={cn(
+            "inline-flex shrink-0 items-center gap-2 rounded-xl px-3 py-2 text-sm font-medium transition-colors",
+            activeWorkspace === 0
+              ? "bg-interactive-hover text-white"
+              : "bg-base-secondary text-[var(--oh-muted)] hover:bg-interactive-hover-low hover:text-white",
+          )}
+        >
+          <Lock className="size-4 shrink-0" strokeWidth={2} />
+          Vaults
+        </button>
+        <button
+          type="button"
+          disabled
+          title="SFTP coming soon"
+          className="inline-flex shrink-0 cursor-not-allowed items-center gap-2 rounded-xl bg-base-secondary px-3 py-2 text-sm font-medium text-[var(--oh-muted)] opacity-60"
+        >
+          <Folder className="size-4 shrink-0" strokeWidth={2} />
+          SFTP
+        </button>
+
+        {workspaceTabs.some((t) => t.kind === "terminal") ? (
+          <span
+            className="mx-1 h-6 w-px shrink-0 bg-[var(--oh-border)]"
+            aria-hidden
+          />
+        ) : null}
+
+        {workspaceTabs.map((tab, i) => {
+          if (tab.kind !== "terminal") return null;
+          const isActive = i === activeWorkspace;
+          return (
+            <div
+              key={tab.id}
+              className={cn(
+                "group flex shrink-0 items-center gap-2 rounded-xl border px-2.5 py-1.5 text-sm font-medium transition-colors",
+                isActive
+                  ? "border-emerald-500/35 bg-emerald-950/70 text-emerald-300"
+                  : "border-transparent bg-base-secondary text-[var(--oh-muted)] hover:border-[var(--oh-border)] hover:text-white",
+              )}
+            >
+              {isActive ? (
+                <button
+                  type="button"
+                  className="rounded-md p-0.5 text-emerald-300/80 hover:bg-emerald-900/50 hover:text-emerald-200"
+                  aria-label="Close tab"
+                  onClick={() => closeWorkspaceTab(i)}
+                >
+                  <X className="size-3.5" strokeWidth={2.5} />
+                </button>
+              ) : null}
               <button
                 type="button"
-                className="text-tertiary-alt hover:text-danger"
-                aria-label="Close tab"
-                onClick={() => closeWorkspaceTab(i)}
+                onClick={() => setActiveWorkspace(i)}
+                className="flex min-w-0 items-center gap-2"
               >
-                ×
+                <span className="relative flex size-7 shrink-0 items-center justify-center rounded-lg bg-interactive-hover text-primary">
+                  <Server className="size-3.5" strokeWidth={2} />
+                  <span
+                    className="absolute -right-0.5 -top-0.5 size-2 rounded-full bg-emerald-400 ring-2 ring-base-secondary"
+                    aria-hidden
+                  />
+                </span>
+                <span className="max-w-[140px] truncate">{tab.title}</span>
               </button>
-            ) : null}
-          </div>
-        ))}
-        <span className="ml-auto px-2 pb-1 text-[10px] text-tertiary-alt">
-          SFTP soon
-        </span>
+              {isActive ? (
+                <Terminal
+                  className="size-3.5 shrink-0 text-emerald-300/90"
+                  strokeWidth={2}
+                />
+              ) : (
+                <button
+                  type="button"
+                  className="rounded-md p-0.5 opacity-0 transition-opacity group-hover:opacity-100 hover:bg-interactive-hover hover:text-white"
+                  aria-label="Close tab"
+                  onClick={() => closeWorkspaceTab(i)}
+                >
+                  <X className="size-3.5" strokeWidth={2} />
+                </button>
+              )}
+            </div>
+          );
+        })}
       </div>
 
       {activeWs?.kind === "terminal" ? (
         <div className="flex min-h-0 flex-1 flex-col">
-          <div className="flex items-center justify-between border-b border-[var(--oh-border-subtle)] bg-base-secondary px-3 py-1.5 text-[11px] text-tertiary-light">
-            <span className="truncate">
+          <div className="flex items-center justify-between gap-3 border-b border-[var(--oh-border-subtle)] bg-base-secondary px-4 py-2.5">
+            <span className="min-w-0 truncate text-sm text-[var(--oh-muted)]">
               {banner || activeWs.title} · {status}
               {error ? ` · ${error}` : ""}
             </span>
-            <div className="flex items-center gap-2">
-              <label className="flex items-center gap-1">
+            <div className="flex shrink-0 items-center gap-2.5">
+              <label className="flex items-center gap-2 text-sm text-[var(--oh-muted)]">
                 Font
                 <select
-                  className={cn(fieldClass, "h-8 w-auto px-2")}
+                  className={cn(fieldClass, "h-9 w-auto min-w-[3.25rem] px-2.5")}
                   value={fontSize}
                   onChange={(e) => setFontSize(Number(e.target.value))}
                 >
@@ -579,6 +642,7 @@ export default function HostSettingsScreen() {
               <BrandButton
                 type="button"
                 variant="secondary"
+                className="min-h-9 px-4 text-sm font-medium"
                 onClick={reconnect}
               >
                 Reconnect

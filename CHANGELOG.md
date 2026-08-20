@@ -2,6 +2,12 @@
 
 All notable changes to this workspace are listed here.
 
+## [beta v0.5.25] - 2026-08-20
+
+### Changed
+
+- SSH workspace tab bar: Termius-style Vaults/SFTP pills, host session chips with status dot, green active tab; roomier status toolbar
+
 ## [beta v0.5.24] - 2026-08-20
 
 ### Removed
