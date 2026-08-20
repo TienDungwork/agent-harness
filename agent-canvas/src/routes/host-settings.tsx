@@ -1,4 +1,5 @@
 import React from "react";
+import { createPortal } from "react-dom";
 import { useSearchParams } from "react-router";
 import {
   Server,
@@ -163,7 +164,12 @@ export default function HostSettingsScreen() {
   const moreMenuRef = React.useRef<HTMLDivElement>(null);
   const [hostPickerOpen, setHostPickerOpen] = React.useState(false);
   const [hostPickerQuery, setHostPickerQuery] = React.useState("");
-  const hostPickerRef = React.useRef<HTMLDivElement>(null);
+  const [hostPickerPos, setHostPickerPos] = React.useState<{
+    top: number;
+    left: number;
+  } | null>(null);
+  const hostPickerBtnRef = React.useRef<HTMLButtonElement>(null);
+  const hostPickerPanelRef = React.useRef<HTMLDivElement>(null);
   const hostPickerSearchRef = React.useRef<HTMLInputElement>(null);
 
   const [workspaceTabs, setWorkspaceTabs] = React.useState<WorkspaceTab[]>([
@@ -250,7 +256,6 @@ export default function HostSettingsScreen() {
     setShowAdvancedAuth(s.auth_type === "key");
     setStatusMsg(null);
     if (opts?.openDetails) setDetailsOpen(true);
-    setActiveWorkspace(0);
   }
 
   function openHostDetails(s: InfraServer) {
@@ -269,14 +274,16 @@ export default function HostSettingsScreen() {
     setNav("hosts");
   }
 
-  function openTerminal(s: InfraServer) {
+  function openTerminal(s: InfraServer, opts?: { forceNew?: boolean }) {
     setWorkspaceTabs((prev) => {
-      const existingIdx = prev.findIndex(
-        (t) => t.kind === "terminal" && t.serverId === s.id,
-      );
-      if (existingIdx >= 0) {
-        setActiveWorkspace(existingIdx);
-        return prev;
+      if (!opts?.forceNew) {
+        const existingIdx = prev.findIndex(
+          (t) => t.kind === "terminal" && t.serverId === s.id,
+        );
+        if (existingIdx >= 0) {
+          setActiveWorkspace(existingIdx);
+          return prev;
+        }
       }
       const tab: WorkspaceTab = {
         kind: "terminal",
@@ -287,6 +294,21 @@ export default function HostSettingsScreen() {
       setActiveWorkspace(prev.length);
       return [...prev, tab];
     });
+  }
+
+  function openHostPicker() {
+    const rect = hostPickerBtnRef.current?.getBoundingClientRect();
+    if (rect) {
+      const width = 360;
+      const left = Math.max(
+        8,
+        Math.min(rect.left, window.innerWidth - width - 8),
+      );
+      setHostPickerPos({ top: rect.bottom + 8, left });
+    } else {
+      setHostPickerPos({ top: 72, left: 16 });
+    }
+    setHostPickerOpen(true);
   }
 
   function closeWorkspaceTab(index: number) {
@@ -494,19 +516,37 @@ export default function HostSettingsScreen() {
     setHostPickerQuery("");
     const t = window.setTimeout(() => hostPickerSearchRef.current?.focus(), 0);
     const onPointerDown = (event: MouseEvent) => {
-      if (!hostPickerRef.current?.contains(event.target as Node)) {
-        setHostPickerOpen(false);
+      const target = event.target as Node;
+      if (
+        hostPickerBtnRef.current?.contains(target) ||
+        hostPickerPanelRef.current?.contains(target)
+      ) {
+        return;
       }
+      setHostPickerOpen(false);
     };
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key === "Escape") setHostPickerOpen(false);
     };
+    const syncPos = () => {
+      const rect = hostPickerBtnRef.current?.getBoundingClientRect();
+      if (!rect) return;
+      const width = 360;
+      setHostPickerPos({
+        top: rect.bottom + 8,
+        left: Math.max(8, Math.min(rect.left, window.innerWidth - width - 8)),
+      });
+    };
     document.addEventListener("mousedown", onPointerDown);
     document.addEventListener("keydown", onKeyDown);
+    window.addEventListener("resize", syncPos);
+    window.addEventListener("scroll", syncPos, true);
     return () => {
       window.clearTimeout(t);
       document.removeEventListener("mousedown", onPointerDown);
       document.removeEventListener("keydown", onKeyDown);
+      window.removeEventListener("resize", syncPos);
+      window.removeEventListener("scroll", syncPos, true);
     };
   }, [hostPickerOpen]);
 
@@ -518,9 +558,7 @@ export default function HostSettingsScreen() {
       const tag = (event.target as HTMLElement | null)?.tagName;
       if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return;
       event.preventDefault();
-      setHostPickerOpen(true);
-      setActiveWorkspace(0);
-      setNav("hosts");
+      openHostPicker();
     };
     document.addEventListener("keydown", onKeyDown);
     return () => document.removeEventListener("keydown", onKeyDown);
@@ -568,8 +606,8 @@ export default function HostSettingsScreen() {
 
   function pickHost(s: InfraServer) {
     setHostPickerOpen(false);
-    selectHost(s);
-    openTerminal(s);
+    setSelectedId(s.id);
+    openTerminal(s, { forceNew: true });
   }
 
   const stubCopy: Record<Exclude<NavId, "hosts">, string> = {
@@ -656,94 +694,101 @@ export default function HostSettingsScreen() {
           );
         })}
 
-        <div className="relative shrink-0" ref={hostPickerRef}>
-          <button
-            type="button"
-            onClick={() => setHostPickerOpen((open) => !open)}
-            className={cn(
-              "flex size-[42px] items-center justify-center rounded-xl border transition-colors",
-              hostPickerOpen
-                ? "border-[var(--oh-border)] bg-interactive-hover text-white"
-                : "border-transparent bg-base-secondary text-[var(--oh-muted)] hover:border-[var(--oh-border)] hover:text-white",
-            )}
-            aria-label="Open host picker"
-            aria-expanded={hostPickerOpen}
-            aria-haspopup="dialog"
-            title="Connect to a host"
-            data-testid="host-vault-add"
-          >
-            <Plus className="size-4" strokeWidth={2.25} />
-          </button>
-          {hostPickerOpen ? (
-            <div
-              role="dialog"
-              aria-label="Recent connections"
-              data-testid="host-picker-popover"
-              className="absolute left-0 top-full z-30 mt-2 w-[min(360px,calc(100vw-2rem))] rounded-xl border border-[var(--oh-border)] bg-base-secondary p-3 shadow-xl"
-            >
-              <div className="relative mb-3">
-                <Search className="pointer-events-none absolute left-2.5 top-1/2 z-[1] size-3.5 -translate-y-1/2 text-tertiary-alt" />
-                <input
-                  ref={hostPickerSearchRef}
-                  className={cn(fieldClass, "pl-8 pr-14")}
-                  placeholder="Search hosts or tabs"
-                  value={hostPickerQuery}
-                  onChange={(e) => setHostPickerQuery(e.target.value)}
-                />
-                <span className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 text-[10px] text-tertiary-alt">
-                  Ctrl+K
-                </span>
-              </div>
-              <div className="mb-2 flex items-center justify-between gap-2">
-                <p className="text-sm font-medium text-white">
-                  Recent connections
-                </p>
-                {canEdit ? (
-                  <button
-                    type="button"
-                    className="rounded-lg bg-interactive-hover px-2.5 py-1 text-xs font-medium text-[var(--oh-muted)] hover:text-white"
-                    onClick={() => {
-                      setHostPickerOpen(false);
-                      startNewHost();
-                    }}
-                  >
-                    New host
-                  </button>
-                ) : null}
-              </div>
-              <ul className="max-h-64 space-y-0.5 overflow-y-auto">
-                {pickerHosts.map((s) => (
-                  <li key={s.id}>
+        <button
+          ref={hostPickerBtnRef}
+          type="button"
+          onClick={() => {
+            if (hostPickerOpen) setHostPickerOpen(false);
+            else openHostPicker();
+          }}
+          className={cn(
+            "flex size-[42px] shrink-0 items-center justify-center rounded-xl border transition-colors",
+            hostPickerOpen
+              ? "border-[var(--oh-border)] bg-interactive-hover text-white"
+              : "border-transparent bg-base-secondary text-[var(--oh-muted)] hover:border-[var(--oh-border)] hover:text-white",
+          )}
+          aria-label="Open host picker"
+          aria-expanded={hostPickerOpen}
+          aria-haspopup="dialog"
+          title="Connect to a host"
+          data-testid="host-vault-add"
+        >
+          <Plus className="size-4" strokeWidth={2.25} />
+        </button>
+        {hostPickerOpen && hostPickerPos
+          ? createPortal(
+              <div
+                ref={hostPickerPanelRef}
+                role="dialog"
+                aria-label="Recent connections"
+                data-testid="host-picker-popover"
+                style={{ top: hostPickerPos.top, left: hostPickerPos.left }}
+                className="fixed z-[80] w-[min(360px,calc(100vw-2rem))] rounded-xl border border-[var(--oh-border)] bg-base-secondary p-3 shadow-xl"
+              >
+                <div className="relative mb-3">
+                  <Search className="pointer-events-none absolute left-2.5 top-1/2 z-[1] size-3.5 -translate-y-1/2 text-tertiary-alt" />
+                  <input
+                    ref={hostPickerSearchRef}
+                    className={cn(fieldClass, "pl-8 pr-14")}
+                    placeholder="Search hosts or tabs"
+                    value={hostPickerQuery}
+                    onChange={(e) => setHostPickerQuery(e.target.value)}
+                  />
+                  <span className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 text-[10px] text-tertiary-alt">
+                    Ctrl+K
+                  </span>
+                </div>
+                <div className="mb-2 flex items-center justify-between gap-2">
+                  <p className="text-sm font-medium text-white">
+                    Recent connections
+                  </p>
+                  {canEdit ? (
                     <button
                       type="button"
-                      className="flex w-full items-center gap-3 rounded-lg px-2.5 py-2.5 text-left transition-colors hover:bg-interactive-hover"
-                      onClick={() => pickHost(s)}
+                      className="rounded-lg bg-interactive-hover px-2.5 py-1 text-xs font-medium text-[var(--oh-muted)] hover:text-white"
+                      onClick={() => {
+                        setHostPickerOpen(false);
+                        startNewHost();
+                      }}
                     >
-                      <span className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-interactive-hover text-primary">
-                        <Server className="size-3.5" strokeWidth={2} />
-                      </span>
-                      <span className="min-w-0 flex-1 truncate text-sm font-medium text-white">
-                        {s.name || s.hostname}
-                      </span>
-                      <span className="shrink-0 text-xs text-[var(--oh-muted)]">
-                        Personal
-                      </span>
+                      New host
                     </button>
-                  </li>
-                ))}
-                {!pickerHosts.length ? (
-                  <li className="px-2 py-6 text-center text-xs text-tertiary-alt">
-                    {servers.length
-                      ? "No hosts match that search."
-                      : canEdit
-                        ? "No hosts yet. Click New host to add one."
-                        : "No hosts granted."}
-                  </li>
-                ) : null}
-              </ul>
-            </div>
-          ) : null}
-        </div>
+                  ) : null}
+                </div>
+                <ul className="max-h-64 space-y-0.5 overflow-y-auto">
+                  {pickerHosts.map((s) => (
+                    <li key={s.id}>
+                      <button
+                        type="button"
+                        className="flex w-full items-center gap-3 rounded-lg px-2.5 py-2.5 text-left transition-colors hover:bg-interactive-hover"
+                        onClick={() => pickHost(s)}
+                      >
+                        <span className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-interactive-hover text-primary">
+                          <Server className="size-3.5" strokeWidth={2} />
+                        </span>
+                        <span className="min-w-0 flex-1 truncate text-sm font-medium text-white">
+                          {s.name || s.hostname}
+                        </span>
+                        <span className="shrink-0 text-xs text-[var(--oh-muted)]">
+                          Personal
+                        </span>
+                      </button>
+                    </li>
+                  ))}
+                  {!pickerHosts.length ? (
+                    <li className="px-2 py-6 text-center text-xs text-tertiary-alt">
+                      {servers.length
+                        ? "No hosts match that search."
+                        : canEdit
+                          ? "No hosts yet. Click New host to add one."
+                          : "No hosts granted."}
+                    </li>
+                  ) : null}
+                </ul>
+              </div>,
+              document.body,
+            )
+          : null}
       </div>
 
       {activeWs?.kind === "terminal" ? (
