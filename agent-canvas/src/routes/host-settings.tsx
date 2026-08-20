@@ -161,6 +161,10 @@ export default function HostSettingsScreen() {
   const [detailsOpen, setDetailsOpen] = React.useState(false);
   const [moreMenuOpen, setMoreMenuOpen] = React.useState(false);
   const moreMenuRef = React.useRef<HTMLDivElement>(null);
+  const [hostPickerOpen, setHostPickerOpen] = React.useState(false);
+  const [hostPickerQuery, setHostPickerQuery] = React.useState("");
+  const hostPickerRef = React.useRef<HTMLDivElement>(null);
+  const hostPickerSearchRef = React.useRef<HTMLInputElement>(null);
 
   const [workspaceTabs, setWorkspaceTabs] = React.useState<WorkspaceTab[]>([
     { kind: "vaults" },
@@ -485,6 +489,43 @@ export default function HostSettingsScreen() {
     };
   }, [moreMenuOpen]);
 
+  React.useEffect(() => {
+    if (!hostPickerOpen) return;
+    setHostPickerQuery("");
+    const t = window.setTimeout(() => hostPickerSearchRef.current?.focus(), 0);
+    const onPointerDown = (event: MouseEvent) => {
+      if (!hostPickerRef.current?.contains(event.target as Node)) {
+        setHostPickerOpen(false);
+      }
+    };
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setHostPickerOpen(false);
+    };
+    document.addEventListener("mousedown", onPointerDown);
+    document.addEventListener("keydown", onKeyDown);
+    return () => {
+      window.clearTimeout(t);
+      document.removeEventListener("mousedown", onPointerDown);
+      document.removeEventListener("keydown", onKeyDown);
+    };
+  }, [hostPickerOpen]);
+
+  React.useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (!(event.ctrlKey || event.metaKey) || event.key.toLowerCase() !== "k") {
+        return;
+      }
+      const tag = (event.target as HTMLElement | null)?.tagName;
+      if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return;
+      event.preventDefault();
+      setHostPickerOpen(true);
+      setActiveWorkspace(0);
+      setNav("hosts");
+    };
+    document.addEventListener("keydown", onKeyDown);
+    return () => document.removeEventListener("keydown", onKeyDown);
+  }, []);
+
   if (!localAuth) {
     return (
       <p className="text-sm text-tertiary-light">
@@ -512,6 +553,24 @@ export default function HostSettingsScreen() {
       (s.tags || []).some((t) => t.toLowerCase().includes(q))
     );
   });
+
+  const pickerHosts = React.useMemo(() => {
+    const q = hostPickerQuery.trim().toLowerCase();
+    if (!q) return servers;
+    return servers.filter(
+      (s) =>
+        s.name.toLowerCase().includes(q) ||
+        s.hostname.toLowerCase().includes(q) ||
+        s.username.toLowerCase().includes(q) ||
+        (s.tags || []).some((t) => t.toLowerCase().includes(q)),
+    );
+  }, [servers, hostPickerQuery]);
+
+  function pickHost(s: InfraServer) {
+    setHostPickerOpen(false);
+    selectHost(s);
+    openTerminal(s);
+  }
 
   const stubCopy: Record<Exclude<NavId, "hosts">, string> = {
     keychain: "Store reusable passwords and SSH keys (coming soon).",
@@ -597,18 +656,94 @@ export default function HostSettingsScreen() {
           );
         })}
 
-        {canEdit ? (
+        <div className="relative shrink-0" ref={hostPickerRef}>
           <button
             type="button"
-            onClick={startNewHost}
-            className="flex size-[42px] shrink-0 items-center justify-center rounded-xl border border-transparent bg-base-secondary text-[var(--oh-muted)] transition-colors hover:border-[var(--oh-border)] hover:text-white"
-            aria-label="New host"
-            title="New host"
+            onClick={() => setHostPickerOpen((open) => !open)}
+            className={cn(
+              "flex size-[42px] items-center justify-center rounded-xl border transition-colors",
+              hostPickerOpen
+                ? "border-[var(--oh-border)] bg-interactive-hover text-white"
+                : "border-transparent bg-base-secondary text-[var(--oh-muted)] hover:border-[var(--oh-border)] hover:text-white",
+            )}
+            aria-label="Open host picker"
+            aria-expanded={hostPickerOpen}
+            aria-haspopup="dialog"
+            title="Connect to a host"
             data-testid="host-vault-add"
           >
             <Plus className="size-4" strokeWidth={2.25} />
           </button>
-        ) : null}
+          {hostPickerOpen ? (
+            <div
+              role="dialog"
+              aria-label="Recent connections"
+              data-testid="host-picker-popover"
+              className="absolute left-0 top-full z-30 mt-2 w-[min(360px,calc(100vw-2rem))] rounded-xl border border-[var(--oh-border)] bg-base-secondary p-3 shadow-xl"
+            >
+              <div className="relative mb-3">
+                <Search className="pointer-events-none absolute left-2.5 top-1/2 z-[1] size-3.5 -translate-y-1/2 text-tertiary-alt" />
+                <input
+                  ref={hostPickerSearchRef}
+                  className={cn(fieldClass, "pl-8 pr-14")}
+                  placeholder="Search hosts or tabs"
+                  value={hostPickerQuery}
+                  onChange={(e) => setHostPickerQuery(e.target.value)}
+                />
+                <span className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 text-[10px] text-tertiary-alt">
+                  Ctrl+K
+                </span>
+              </div>
+              <div className="mb-2 flex items-center justify-between gap-2">
+                <p className="text-sm font-medium text-white">
+                  Recent connections
+                </p>
+                {canEdit ? (
+                  <button
+                    type="button"
+                    className="rounded-lg bg-interactive-hover px-2.5 py-1 text-xs font-medium text-[var(--oh-muted)] hover:text-white"
+                    onClick={() => {
+                      setHostPickerOpen(false);
+                      startNewHost();
+                    }}
+                  >
+                    New host
+                  </button>
+                ) : null}
+              </div>
+              <ul className="max-h-64 space-y-0.5 overflow-y-auto">
+                {pickerHosts.map((s) => (
+                  <li key={s.id}>
+                    <button
+                      type="button"
+                      className="flex w-full items-center gap-3 rounded-lg px-2.5 py-2.5 text-left transition-colors hover:bg-interactive-hover"
+                      onClick={() => pickHost(s)}
+                    >
+                      <span className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-interactive-hover text-primary">
+                        <Server className="size-3.5" strokeWidth={2} />
+                      </span>
+                      <span className="min-w-0 flex-1 truncate text-sm font-medium text-white">
+                        {s.name || s.hostname}
+                      </span>
+                      <span className="shrink-0 text-xs text-[var(--oh-muted)]">
+                        Personal
+                      </span>
+                    </button>
+                  </li>
+                ))}
+                {!pickerHosts.length ? (
+                  <li className="px-2 py-6 text-center text-xs text-tertiary-alt">
+                    {servers.length
+                      ? "No hosts match that search."
+                      : canEdit
+                        ? "No hosts yet. Click New host to add one."
+                        : "No hosts granted."}
+                  </li>
+                ) : null}
+              </ul>
+            </div>
+          ) : null}
+        </div>
       </div>
 
       {activeWs?.kind === "terminal" ? (

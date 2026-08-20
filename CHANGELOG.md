@@ -2,6 +2,12 @@
 
 All notable changes to this workspace are listed here.
 
+## [beta v0.5.33] - 2026-08-20
+
+### Changed
+
+- Host tab-bar `+` opens a Termius-style Recent connections picker (search + pick existing host to SSH); New host stays inside the popover for admins; Ctrl+K opens the picker
+
 ## [beta v0.5.32] - 2026-08-20
 
 ### Changed
