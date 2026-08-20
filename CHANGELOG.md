@@ -2,6 +2,12 @@
 
 All notable changes to this workspace are listed here.
 
+## [beta v0.5.28] - 2026-08-20
+
+### Changed
+
+- Creanova Beszel wordmark gap to Search tightened to `0.15rem`
+
 ## [beta v0.5.27] - 2026-08-20
 
 ### Changed

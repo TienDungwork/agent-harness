@@ -20,7 +20,7 @@
 
   const BOOT_CSS =
     'a[aria-label="Home"]>svg:not(#creanova-logo){visibility:hidden!important;position:absolute!important;width:0!important;height:0!important;overflow:hidden!important}' +
-    'a[aria-label="Home"]{margin-inline-end:0.25rem!important;padding-block:0.25rem!important;padding-inline:0!important}';
+    'a[aria-label="Home"]{margin-inline-end:0.15rem!important;padding-block:0.25rem!important;padding-inline:0!important}';
 
   function ensureBootCss() {
     if (document.getElementById("creanova-boot-css")) return;
