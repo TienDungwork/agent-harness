@@ -10,13 +10,11 @@ import {
   FileCode2,
   ShieldCheck,
   ScrollText,
-  Usb,
   Eye,
   EyeOff,
   Search,
   ChevronDown,
   PanelRightClose,
-  PanelRightOpen,
   MoreHorizontal,
   Check,
   Home,
@@ -201,7 +199,7 @@ export default function HostSettingsScreen() {
   const [savedDraft, setSavedDraft] = React.useState<Draft | null>(null);
   const [allChangesSaved, setAllChangesSaved] = React.useState(false);
   const [fontSize, setFontSize] = React.useState(13);
-  /** Show / hide the New Host · Host Details panel (open via edit / New host / Details) */
+  /** Show / hide the New Host · Host Details panel (open via edit / New host) */
   const [detailsOpen, setDetailsOpen] = React.useState(false);
   const [moreMenuOpen, setMoreMenuOpen] = React.useState(false);
   const moreMenuRef = React.useRef<HTMLDivElement>(null);
@@ -722,23 +720,6 @@ export default function HostSettingsScreen() {
                     >
                       <Terminal className="size-3.5" /> Terminal
                     </button>
-                    <button
-                      type="button"
-                      disabled
-                      title="Serial connections coming soon"
-                      className={cn(chipBtnClass, "opacity-50")}
-                    >
-                      <Usb className="size-3.5" /> Serial
-                    </button>
-                    {!detailsOpen ? (
-                      <button
-                        type="button"
-                        onClick={() => setDetailsOpen(true)}
-                        className={chipBtnClass}
-                      >
-                        <PanelRightOpen className="size-3.5" /> Details
-                      </button>
-                    ) : null}
                   </div>
                 </div>
 
