@@ -241,7 +241,7 @@ export async function createLiveConversation(
         kind: "NeverConfirm",
       },
       agent_settings: {
-        agent_kind: "Creanova",
+        agent_kind: "openhands",
         llm: buildLiveLlmSettings(),
         condenser: {
           enabled: false,

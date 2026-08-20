@@ -35,6 +35,7 @@ import {
   LEGACY_CANVAS_UI_TOOL_NAME,
   type ClientToolSpec,
 } from "./canvas-ui-client-tool";
+import { API_DEFAULT_AGENT_KIND, toApiAgentKind } from "./agent-kind";
 
 export interface DirectConversationInfo {
   id: string;
@@ -828,6 +829,12 @@ function buildConfiguredCreanovaAgentSettings(
 
   return {
     ...agentSettings,
+    agent_kind:
+      toApiAgentKind(
+        typeof agentSettings.agent_kind === "string"
+          ? agentSettings.agent_kind
+          : undefined,
+      ) ?? API_DEFAULT_AGENT_KIND,
     llm,
     agent_context: buildAgentContext(agentSettings),
     tools: getAgentTools(agentSettings),
@@ -975,8 +982,7 @@ export function buildStartConversationRequest(
       ? { agent_profile_id: options.agentProfileId }
       : { agent_settings: agentSettings }),
     workspace: conversationSettings.workspace,
-    client_tools:
-      launchAgentKind === "Creanova" ? [CANVAS_UI_CLIENT_TOOL] : [],
+    client_tools: launchAgentKind === "Creanova" ? [CANVAS_UI_CLIENT_TOOL] : [],
     confirmation_policy:
       getConversationConfirmationPolicy(conversationSettings),
     max_iterations:

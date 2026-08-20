@@ -524,7 +524,7 @@ export async function ensureMockLLMAgentProfile(
       // disabled_skills omitted: an Creanova profile launches with all
       // discovered skills by default (an empty deny-list) — software-agent-sdk#4017.
       data: {
-        agent_kind: "Creanova",
+        agent_kind: "openhands",
         llm_profile_ref: llmProfileRef,
       },
     },
@@ -979,7 +979,7 @@ export async function resetToCreanovaAgent(request: APIRequestContext) {
     },
     data: {
       agent_settings_diff: {
-        agent_kind: "Creanova",
+        agent_kind: "openhands",
       },
     },
   });

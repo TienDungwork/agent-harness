@@ -2,6 +2,12 @@
 
 All notable changes to this workspace are listed here.
 
+## [beta v0.5.36] - 2026-08-20
+
+### Fixed
+
+- Map UI agent_kind Creanova → wire openhands so saving agent profiles no longer 422s against agent-server
+
 ## [beta v0.5.35] - 2026-08-20
 
 ### Fixed

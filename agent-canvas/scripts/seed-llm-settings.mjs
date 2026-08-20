@@ -148,7 +148,7 @@ export async function seedLlmSettings(options = {}) {
       `/api/profiles/${encodeURIComponent(cfg.profileName)}/activate`,
     );
     await request(base, sessionKey, "POST", "/api/agent-profiles/default", {
-      agent_kind: "Creanova",
+      agent_kind: "openhands",
       llm_profile_ref: cfg.profileName,
     });
   }

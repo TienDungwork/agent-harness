@@ -1403,7 +1403,7 @@ describe("buildStartConversationRequest — ACP discriminator", () => {
     };
 
     expect(payload.agent).toBeUndefined();
-    expect(payload.agent_settings.agent_kind).toBe("Creanova");
+    expect(payload.agent_settings.agent_kind).toBe("openhands");
     expect(payload.agent_settings.acp_command).toBeUndefined();
     expect(payload.agent_settings.acp_server).toBeUndefined();
     expect(payload.agent_settings.llm.model).toBe("gpt-4");
@@ -1613,7 +1613,7 @@ describe("buildStartConversationRequest — ACP discriminator", () => {
       };
     };
 
-    expect(ohPayload.agent_settings.agent_kind).toBe("Creanova");
+    expect(ohPayload.agent_settings.agent_kind).toBe("openhands");
     expect(ohPayload.agent_settings.acp_command).toBeUndefined();
     expect(ohPayload.agent_settings.acp_env).toBeUndefined();
     expect(ohPayload.agent_settings.acp_model).toBeUndefined();

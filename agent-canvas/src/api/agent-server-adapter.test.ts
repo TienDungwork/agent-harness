@@ -45,7 +45,7 @@ describe("buildStartConversationRequest", () => {
       secretsEncrypted: true,
     });
 
-    expect(payload.agent_settings!.agent_kind).toBe("Creanova");
+    expect(payload.agent_settings!.agent_kind).toBe("openhands");
     expect(payload.agent_settings!.mcp_config).toEqual(
       agentSettings.mcp_config,
     );

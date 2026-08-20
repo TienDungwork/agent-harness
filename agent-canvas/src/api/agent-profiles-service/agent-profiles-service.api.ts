@@ -25,6 +25,7 @@ import type {
   ActivateAgentProfileResponse,
   ExposeSecretsMode,
 } from "@Creanova/typescript-client";
+import { fromApiAgentKind, toApiAgentKind } from "../agent-kind";
 import { getAgentServerClientOptions } from "../agent-server-client-options";
 import { getActiveBackend } from "../backend-registry/active-store";
 import {
@@ -38,6 +39,22 @@ import {
 
 function isCloud(): boolean {
   return getActiveBackend().backend.kind === "cloud";
+}
+
+function toWireAgentProfile(
+  profile: AgentProfileSaveInput,
+): AgentProfileSaveInput {
+  return {
+    ...profile,
+    agent_kind: toApiAgentKind(profile.agent_kind) as AgentProfileSaveInput["agent_kind"],
+  };
+}
+
+function fromWireAgentProfile<T extends { agent_kind: string }>(profile: T): T {
+  return {
+    ...profile,
+    agent_kind: fromApiAgentKind(profile.agent_kind) as T["agent_kind"],
+  };
 }
 
 /**
@@ -62,10 +79,17 @@ export type {
 
 class AgentProfilesService {
   static async listProfiles(): Promise<AgentProfileListResponse> {
-    if (isCloud()) return listCloudAgentProfiles();
-    return new AgentProfilesClient(
-      getAgentServerClientOptions(),
-    ).listAgentProfiles();
+    const response = isCloud()
+      ? await listCloudAgentProfiles()
+      : await new AgentProfilesClient(
+          getAgentServerClientOptions(),
+        ).listAgentProfiles();
+    return {
+      ...response,
+      profiles: response.profiles.map((profile) =>
+        fromWireAgentProfile(profile),
+      ),
+    };
   }
 
   static async getProfile(
@@ -76,13 +100,21 @@ class AgentProfilesService {
     // `mcp_tools` were removed in #4017 — a profile carries only refs + the
     // `disabled_skills` deny-list of names), so `exposeSecrets` is vestigial and
     // cloud ignores it; kept for local signature parity with ProfilesService.
-    if (isCloud()) return getCloudAgentProfile(name);
-    const options: GetAgentProfileOptions = exposeSecrets
-      ? { exposeSecrets }
-      : {};
-    return new AgentProfilesClient(
-      getAgentServerClientOptions(),
-    ).getAgentProfile(name, options);
+    let response: AgentProfileDetailResponse;
+    if (isCloud()) {
+      response = await getCloudAgentProfile(name);
+    } else {
+      const options: GetAgentProfileOptions = exposeSecrets
+        ? { exposeSecrets }
+        : {};
+      response = await new AgentProfilesClient(
+        getAgentServerClientOptions(),
+      ).getAgentProfile(name, options);
+    }
+    return {
+      ...response,
+      profile: fromWireAgentProfile(response.profile),
+    };
   }
 
   /** Create or overwrite a profile by name (upsert). */
@@ -90,10 +122,11 @@ class AgentProfilesService {
     name: string,
     profile: AgentProfileSaveInput,
   ): Promise<AgentProfileMutationResponse> {
-    if (isCloud()) return saveCloudAgentProfile(name, profile);
+    const wired = toWireAgentProfile(profile);
+    if (isCloud()) return saveCloudAgentProfile(name, wired);
     return new AgentProfilesClient(
       getAgentServerClientOptions(),
-    ).saveAgentProfile(name, profile);
+    ).saveAgentProfile(name, wired);
   }
 
   static async deleteProfile(
