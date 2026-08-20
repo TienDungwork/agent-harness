@@ -238,8 +238,27 @@ async def proxy_beszel(
     out_headers = {
         k: v for k, v in upstream.headers.items() if k.lower() not in excluded
     }
+    content: bytes = upstream.content
+    media = upstream.headers.get('content-type') or ''
+    if 'text/html' in media and b'</body>' in content and b'BESZEL' in content:
+        inject = (
+            b'<script>(function(){function goHome(e){e&&e.preventDefault();'
+            b'var h=document.querySelector(\'a[aria-label="Home"]\');'
+            b'if(h){h.click();return;}location.assign("/");}'
+            b'function mount(){if(document.getElementById("creanova-beszel-home"))return;'
+            b'var h=document.querySelector(\'a[aria-label="Home"]\');'
+            b'if(!h||!h.parentElement)return;var a=document.createElement("a");'
+            b'a.id="creanova-beszel-home";a.href=h.getAttribute("href")||"/";'
+            b'a.setAttribute("aria-label","All Systems");a.textContent="All Systems";'
+            b'a.style.cssText="display:inline-flex;align-items:center;margin-inline-end:0.75rem;'
+            b'font-size:0.875rem;font-weight:500;opacity:0.9;text-decoration:none;color:inherit;'
+            b'cursor:pointer;white-space:nowrap";a.addEventListener("click",goHome);'
+            b'h.parentElement.insertBefore(a,h.nextSibling);}setInterval(mount,400);})();</script>'
+        )
+        content = content.replace(b'</body>', inject + b'</body>', 1)
+
     return Response(
-        content=upstream.content,
+        content=content,
         status_code=upstream.status_code,
         headers=out_headers,
         media_type=upstream.headers.get('content-type'),

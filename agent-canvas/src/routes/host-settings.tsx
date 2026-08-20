@@ -19,6 +19,7 @@ import {
   PanelRightOpen,
   MoreHorizontal,
   Check,
+  Home,
 } from "lucide-react";
 import "@xterm/xterm/css/xterm.css";
 import { BrandButton } from "#/components/features/settings/brand-button";
@@ -95,6 +96,50 @@ function draftFromServer(s: InfraServer): Draft {
     authType: s.auth_type === "key" ? "key" : "password",
     privateKey: "",
   };
+}
+
+function MonitorPane({ gwBase }: { gwBase: string }) {
+  const [frameKey, setFrameKey] = React.useState(0);
+  const beszelSrc = React.useMemo(() => {
+    const fromEnv = (
+      import.meta.env.VITE_BESZEL_URL as string | undefined
+    )?.replace(/\/+$/, "");
+    if (fromEnv) {
+      return `${fromEnv}/`;
+    }
+    // Prefer public Beszel UI (nginx injects All Systems). Fall back to GW proxy.
+    if (typeof window !== "undefined") {
+      const { protocol, hostname } = window.location;
+      return `${protocol}//${hostname}:18090/`;
+    }
+    return `${gwBase}/beszel/`;
+  }, [gwBase]);
+
+  return (
+    <div className="flex min-h-0 min-w-0 flex-1 flex-col">
+      <div className="flex items-center gap-2 border-b border-[var(--oh-border-subtle)] bg-base-secondary px-3 py-1.5">
+        <button
+          type="button"
+          className="inline-flex items-center gap-1.5 rounded-md px-2 py-1 text-xs text-tertiary-light hover:bg-interactive-hover hover:text-content"
+          onClick={() => setFrameKey((k) => k + 1)}
+          aria-label="All Systems"
+        >
+          <Home className="size-3.5" />
+          All Systems
+        </button>
+        <span className="text-[10px] text-tertiary-alt">
+          Back to Beszel system list
+        </span>
+      </div>
+      <iframe
+        key={frameKey}
+        src={beszelSrc}
+        title="Monitor"
+        className="min-h-0 flex-1 border-0"
+        allow="same-origin"
+      />
+    </div>
+  );
 }
 
 const NAV: Array<{ id: NavId; label: string; icon: React.ReactNode }> = [
@@ -623,13 +668,7 @@ export default function HostSettingsScreen() {
           </nav>
 
           {nav === "monitor" ? (
-            <iframe
-              key="beszel"
-              src={`${gwBase}/beszel/`}
-              title="Monitor"
-              className="min-h-0 flex-1 border-0"
-              allow="same-origin"
-            />
+            <MonitorPane gwBase={gwBase} />
           ) : nav !== "hosts" ? (
             <div className="flex flex-1 flex-col items-center justify-center gap-2 px-8 text-center text-tertiary-light">
               <p className="text-base text-content">

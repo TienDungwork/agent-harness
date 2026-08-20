@@ -9,6 +9,12 @@ All notable changes to this workspace are listed here.
 - Host vault cards show IP · username on the subtitle instead of `ssh`/tags
 - Canvas Docker overlay rebuild skips `npm ci` when `node_modules` already exists; prefer host `npm run build:app` for UI tweaks
 
+## [beta v0.5.11] - 2026-08-20
+
+### Added
+
+- Beszel “All Systems” home control (next to logo on `:18090`, plus Host → Monitor toolbar) to leave a system detail page
+
 ## [beta v0.5.10] - 2026-08-20
 
 ### Fixed
