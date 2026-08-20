@@ -7,10 +7,17 @@
 #   ../services/local-gateway → auth + SSH inventory
 #   henrygd/beszel + agent     → host/container monitoring (http://localhost:18090)
 #
-# First time (or after UI changes):
+# First time only (full install + build inside Docker — slow):
 #   docker compose --profile overlay-build run --rm canvas-ui-build
 # Then:
 #   docker compose up
+#
+# Fast UI iteration while Docker is already up (preferred):
+#   # fix root-owned build/locales if a prior Docker build wrote them:
+#   #   sudo chown -R "$USER:$USER" build public/locales
+#   VITE_BASE_PATH=/canvas VITE_LOCAL_AUTH_ENABLED=true npm run build:app
+#   docker compose restart agent-canvas
+#   # hard-refresh http://localhost:18010/canvas/
 #
 # UI: http://localhost:18010/canvas/
 # Local login (after overlay): admin / admin123
@@ -30,7 +37,8 @@ services:
       VITE_BASE_PATH: /canvas
       VITE_LOCAL_AUTH_ENABLED: "true"
       VITE_DO_NOT_TRACK: "1"
-    command: sh -c "npm ci && npm run build:app"
+    # Skip npm ci when the named volume already has deps (saves ~minutes).
+    command: sh -c "if [ ! -x node_modules/.bin/vite ]; then npm ci; fi && npm run build:app"
 
   local-gateway:
     build:
@@ -157,6 +165,8 @@ services:
     container_name: creanova-beszel-agent
     restart: unless-stopped
     network_mode: host
+    # NVIDIA: requires nvidia-container-toolkit on the host.
+    gpus: all
     depends_on:
       beszel-bootstrap:
         condition: service_completed_successfully
@@ -169,6 +179,10 @@ services:
       HUB_URL: ${BESZEL_HUB_URL:-http://127.0.0.1:18090}
       TOKEN_FILE: /beszel_shared/token
       KEY_FILE: /beszel_shared/id_ed25519.pub
+      NVIDIA_VISIBLE_DEVICES: all
+      NVIDIA_DRIVER_CAPABILITIES: compute,utility
+      # Minimal agent image has no nvidia-smi; use NVML when GPUs are passed through.
+      GPU_COLLECTOR: nvml
 
 volumes:
   canvas_ui_npm:
