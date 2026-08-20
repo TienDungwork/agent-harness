@@ -2,6 +2,12 @@
 
 All notable changes to this workspace are listed here.
 
+## [beta v0.5.20] - 2026-08-20
+
+### Changed
+
+- Host vault chrome (left nav, Hosts heading, toolbar chips, card titles) matches LLM settings text size/brightness (`text-sm`/`text-base` medium white)
+
 ## [beta v0.5.19] - 2026-08-20
 
 ### Fixed
