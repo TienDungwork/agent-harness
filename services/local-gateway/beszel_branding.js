@@ -1,20 +1,36 @@
 (() => {
   const BRAND = "Creanova";
+  // Tight viewBox (~Beszel width at h-5 ≈ 76–96px). Explicit height/width
+  // so the Home link does not stretch wider than the wordmark.
   const LOGO_SVG =
-    '<svg id="creanova-logo" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 152 24" class="h-[1.2rem] md:h-5 fill-foreground" aria-hidden="true" style="display:block">' +
+    '<svg id="creanova-logo" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 96 18" width="96" height="18" class="fill-foreground" aria-hidden="true" style="display:block;height:1.35rem;width:auto;max-width:6.25rem">' +
     '<defs><linearGradient id="creanova-logo-g" x1="0%" y1="20%" x2="100%" y2="120%">' +
     '<stop offset="10%" stop-color="#747bff"/><stop offset="90%" stop-color="#24eb5c"/>' +
     "</linearGradient></defs>" +
-    '<text class="creanova-logo-base" x="0" y="18" fill="currentColor" ' +
+    '<text class="creanova-logo-base" x="0" y="14.5" fill="currentColor" ' +
     'font-family="ui-sans-serif,system-ui,-apple-system,Segoe UI,sans-serif" ' +
-    'font-size="20" font-weight="700" letter-spacing="-0.03em">' +
+    'font-size="15.5" font-weight="800" letter-spacing="-0.04em" ' +
+    'textLength="94" lengthAdjust="spacingAndGlyphs">' +
     BRAND +
     "</text>" +
-    '<text class="creanova-logo-hover" x="0" y="18" fill="url(#creanova-logo-g)" opacity="0" ' +
+    '<text class="creanova-logo-hover" x="0" y="14.5" fill="url(#creanova-logo-g)" opacity="0" ' +
     'font-family="ui-sans-serif,system-ui,-apple-system,Segoe UI,sans-serif" ' +
-    'font-size="20" font-weight="700" letter-spacing="-0.03em">' +
+    'font-size="15.5" font-weight="800" letter-spacing="-0.04em" ' +
+    'textLength="94" lengthAdjust="spacingAndGlyphs">' +
     BRAND +
     "</text></svg>";
+
+  const BOOT_CSS =
+    'a[aria-label="Home"]>svg:not(#creanova-logo){visibility:hidden!important;position:absolute!important;width:0!important;height:0!important;overflow:hidden!important}' +
+    'a[aria-label="Home"]{margin-inline-end:0.5rem!important;padding-block:0.25rem!important;padding-inline:0!important}';
+
+  function ensureBootCss() {
+    if (document.getElementById("creanova-boot-css")) return;
+    const style = document.createElement("style");
+    style.id = "creanova-boot-css";
+    style.textContent = BOOT_CSS;
+    (document.head || document.documentElement).appendChild(style);
+  }
 
   function brandTitle() {
     const raw = document.title || "";
@@ -36,10 +52,10 @@
       const style = document.createElement("style");
       style.id = "creanova-logo-style";
       style.textContent =
-        'a[aria-label="Home"].group:hover .creanova-logo-base{opacity:0;transition:opacity .25s ease-out}' +
-        'a[aria-label="Home"].group:hover .creanova-logo-hover{opacity:1;transition:opacity .25s ease-in-out}' +
-        'a[aria-label="Home"] .creanova-logo-base{transition:opacity .25s ease-out}' +
-        'a[aria-label="Home"] .creanova-logo-hover{transition:opacity .25s ease-in-out}';
+        'a[aria-label="Home"].group:hover .creanova-logo-base{opacity:0;transition:opacity .2s ease-out}' +
+        'a[aria-label="Home"].group:hover .creanova-logo-hover{opacity:1;transition:opacity .2s ease-in-out}' +
+        'a[aria-label="Home"] .creanova-logo-base{transition:opacity .2s ease-out}' +
+        'a[aria-label="Home"] .creanova-logo-hover{transition:opacity .2s ease-in-out}';
       document.head.appendChild(style);
     }
   }
@@ -105,7 +121,10 @@
     mountAllSystems();
   }
 
+  ensureBootCss();
   brandTitle();
+  tick();
+
   const titleEl = document.querySelector("title");
   if (titleEl) {
     new MutationObserver(brandTitle).observe(titleEl, {
@@ -114,5 +133,11 @@
       subtree: true,
     });
   }
-  setInterval(tick, 400);
+
+  // Replace as soon as React mounts the navbar (no 400ms FOUC gap).
+  const rootObs = new MutationObserver(() => {
+    tick();
+  });
+  rootObs.observe(document.documentElement, { childList: true, subtree: true });
+  setInterval(tick, 1000);
 })();

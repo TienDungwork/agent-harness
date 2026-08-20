@@ -2,6 +2,12 @@
 
 All notable changes to this workspace are listed here.
 
+## [beta v0.5.19] - 2026-08-20
+
+### Fixed
+
+- Beszel Creanova branding: larger tighter wordmark, no Beszel flash on refresh, Home icon mounts as soon as the navbar appears
+
 ## [beta v0.5.18] - 2026-08-20
 
 ### Changed

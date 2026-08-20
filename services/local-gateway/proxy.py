@@ -256,12 +256,27 @@ async def proxy_beszel(
         content = content.replace(
             b'<title>Beszel</title>', b'<title>Creanova</title>', 1
         )
+        boot = (
+            b'<style id="creanova-boot">'
+            b'a[aria-label="Home"]>svg:not(#creanova-logo)'
+            b'{visibility:hidden!important;position:absolute!important;'
+            b'width:0!important;height:0!important;overflow:hidden!important}'
+            b'a[aria-label="Home"]{margin-inline-end:.5rem!important;'
+            b'padding-block:.25rem!important;padding-inline:0!important}'
+            b'</style>'
+        )
+        if b'id="creanova-boot"' not in content and b'</head>' in content:
+            content = content.replace(b'</head>', boot + b'</head>', 1)
         try:
             inject = _beszel_branding_inject()
         except OSError:
             inject = b''
         if inject:
-            content = content.replace(b'</body>', inject + b'</body>', 1)
+            # Prefer </head> so MutationObserver is ready before React paints.
+            if b'</head>' in content:
+                content = content.replace(b'</head>', inject + b'</head>', 1)
+            else:
+                content = content.replace(b'</body>', inject + b'</body>', 1)
 
     return Response(
         content=content,
