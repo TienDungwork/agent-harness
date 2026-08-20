@@ -1,0 +1,29 @@
+---
+description: Host vault card hover edit affordance — pencil opens details; single click does not.
+globs: agent-canvas/src/routes/host-settings.tsx
+alwaysApply: false
+---
+
+# Host vault card edit affordance
+
+When changing Host vault cards (`agent-canvas/src/routes/host-settings.tsx`):
+
+## Interaction
+
+- **Single click** on the card body: select the host only (update selection / draft). Do **not** open the Host Details panel (`detailsOpen`).
+- **Hover** (and keyboard focus-within): reveal a **pencil** edit control; hide or fade the idle `ssh` chip in the same slot.
+- **Click pencil**: open Host Details (`openHostDetails` / `selectHost(s, { openDetails: true })`).
+- **New host** / explicit **Details** toolbar control may still open the panel.
+- Default `detailsOpen` is `false` on page load.
+
+## Visual style
+
+- Reuse the existing icon button language: `iconBtnClass` (`rounded-md p-1.5 text-tertiary-alt hover:bg-interactive-hover hover:text-white`).
+- Lucide `Pencil`, `size-3.5`, same stroke weight as nearby chrome icons.
+- No nested `<button>` inside `<button>` — card chrome is a `group` container; select and edit are sibling controls.
+- Keep selection / border / circular server badge styling consistent with the current Termius-inspired cards.
+
+## Do not
+
+- Do not auto-open the details column (`w-1/4 max-w-[25%] … bg-base-secondary`) on card select.
+- Do not invent a different edit glyph or colored “primary” CTA for this hover affordance unless the surrounding Host UI already uses that pattern.

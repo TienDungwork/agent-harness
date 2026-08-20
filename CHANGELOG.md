@@ -2,6 +2,12 @@
 
 All notable changes to this workspace are listed here.
 
+## [beta v0.5.16] - 2026-08-20
+
+### Changed
+
+- Host vault cards: single click selects only; hover pencil opens Host Details (panel no longer auto-opens on select)
+
 ## [beta v0.5.15] - 2026-08-20
 
 ### Changed

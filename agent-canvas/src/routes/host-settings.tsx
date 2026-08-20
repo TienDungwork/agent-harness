@@ -20,6 +20,7 @@ import {
   MoreHorizontal,
   Check,
   Home,
+  Pencil,
 } from "lucide-react";
 import "@xterm/xterm/css/xterm.css";
 import { BrandButton } from "#/components/features/settings/brand-button";
@@ -196,8 +197,8 @@ export default function HostSettingsScreen() {
   const [savedDraft, setSavedDraft] = React.useState<Draft | null>(null);
   const [allChangesSaved, setAllChangesSaved] = React.useState(false);
   const [fontSize, setFontSize] = React.useState(13);
-  /** Show / hide the New Host · Host Details panel */
-  const [detailsOpen, setDetailsOpen] = React.useState(true);
+  /** Show / hide the New Host · Host Details panel (open via edit / New host / Details) */
+  const [detailsOpen, setDetailsOpen] = React.useState(false);
   const [moreMenuOpen, setMoreMenuOpen] = React.useState(false);
   const moreMenuRef = React.useRef<HTMLDivElement>(null);
 
@@ -275,7 +276,7 @@ export default function HostSettingsScreen() {
 
   const canEdit = Boolean(me?.is_admin);
 
-  function selectHost(s: InfraServer) {
+  function selectHost(s: InfraServer, opts?: { openDetails?: boolean }) {
     setSelectedId(s.id);
     const d = draftFromServer(s);
     setDraft(d);
@@ -283,8 +284,12 @@ export default function HostSettingsScreen() {
     setAllChangesSaved(false);
     setShowAdvancedAuth(s.auth_type === "key");
     setStatusMsg(null);
-    setDetailsOpen(true);
+    if (opts?.openDetails) setDetailsOpen(true);
     setActiveWorkspace(0);
+  }
+
+  function openHostDetails(s: InfraServer) {
+    selectHost(s, { openDetails: true });
   }
 
   function startNewHost() {
@@ -741,33 +746,61 @@ export default function HostSettingsScreen() {
                   <ul className="grid flex-1 auto-rows-min grid-cols-[repeat(auto-fill,minmax(220px,1fr))] content-start gap-3 overflow-y-auto p-3 pt-2">
                     {filtered.map((s) => (
                       <li key={s.id} className="min-w-0">
-                        <button
-                          type="button"
-                          onClick={() => selectHost(s)}
-                          onDoubleClick={() => openTerminal(s)}
+                        <div
                           className={cn(
-                            "flex w-full min-h-[72px] items-center gap-3 rounded-2xl border px-3.5 py-3.5 text-left transition-colors",
+                            "group flex w-full min-h-[72px] items-center rounded-2xl border transition-colors",
                             selectedId === s.id
                               ? "border-primary/60 bg-interactive-hover shadow-[inset_0_0_0_1px_rgba(255,255,255,0.04)]"
                               : "border-[var(--oh-border-subtle)] bg-base-secondary hover:border-[var(--oh-border)] hover:bg-interactive-hover-low",
                           )}
                         >
-                          <span className="flex size-11 shrink-0 items-center justify-center rounded-full bg-[color-mix(in_srgb,var(--oh-color-primary)_22%,var(--oh-color-base-secondary))] text-primary ring-1 ring-primary/35">
-                            <Server className="size-[18px]" strokeWidth={2} />
-                          </span>
-                          <span className="min-w-0 flex-1">
-                            <span className="block truncate text-base font-medium leading-snug text-white">
-                              {s.name || s.hostname}
+                          <button
+                            type="button"
+                            onClick={() => selectHost(s)}
+                            onDoubleClick={() => openTerminal(s)}
+                            className="flex min-w-0 flex-1 items-center gap-3 px-3.5 py-3.5 text-left"
+                          >
+                            <span className="flex size-11 shrink-0 items-center justify-center rounded-full bg-[color-mix(in_srgb,var(--oh-color-primary)_22%,var(--oh-color-base-secondary))] text-primary ring-1 ring-primary/35">
+                              <Server
+                                className="size-[18px]"
+                                strokeWidth={2}
+                              />
                             </span>
-                            <span className="mt-0.5 block truncate text-[10px] leading-tight text-tertiary-light">
-                              {s.hostname}
-                              {s.username ? ` · ${s.username}` : ""}
+                            <span className="min-w-0 flex-1">
+                              <span className="block truncate text-base font-medium leading-snug text-white">
+                                {s.name || s.hostname}
+                              </span>
+                              <span className="mt-0.5 block truncate text-[10px] leading-tight text-tertiary-light">
+                                {s.hostname}
+                                {s.username ? ` · ${s.username}` : ""}
+                              </span>
                             </span>
-                          </span>
-                          <span className="shrink-0 rounded-md border border-[var(--oh-border-subtle)] bg-interactive-hover/60 px-1.5 py-0.5 text-[9px] font-medium uppercase tracking-wide text-tertiary-alt">
-                            ssh
-                          </span>
-                        </button>
+                          </button>
+                          <div className="relative mr-2.5 flex size-8 shrink-0 items-center justify-center">
+                            <span
+                              className={cn(
+                                "rounded-md border border-[var(--oh-border-subtle)] bg-interactive-hover/60 px-1.5 py-0.5 text-[9px] font-medium uppercase tracking-wide text-tertiary-alt transition-opacity",
+                                "group-hover:pointer-events-none group-hover:opacity-0 group-focus-within:pointer-events-none group-focus-within:opacity-0",
+                              )}
+                            >
+                              ssh
+                            </span>
+                            <button
+                              type="button"
+                              className={cn(
+                                iconBtnClass,
+                                "absolute inset-0 flex items-center justify-center opacity-0 transition-opacity",
+                                "group-hover:opacity-100 group-focus-within:opacity-100",
+                              )}
+                              aria-label="Edit host"
+                              title="Edit"
+                              data-testid={`host-card-edit-${s.id}`}
+                              onClick={() => openHostDetails(s)}
+                            >
+                              <Pencil className="size-3.5" strokeWidth={2} />
+                            </button>
+                          </div>
+                        </div>
                       </li>
                     ))}
                     {!filtered.length ? (
