@@ -2,6 +2,12 @@
 
 All notable changes to this workspace are listed here.
 
+## [beta v0.5.18] - 2026-08-20
+
+### Changed
+
+- Host Details headings (Address / General / Credentials / panel title) use brighter white semibold text, closer to Termius
+
 ## [beta v0.5.17] - 2026-08-20
 
 ### Changed

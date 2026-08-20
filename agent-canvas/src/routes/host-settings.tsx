@@ -166,9 +166,8 @@ const multilineClass = cn(
   formControlMultilineFieldClassName,
   "min-h-[100px] font-mono text-[11px]",
 );
-const labelClass = "mb-1 block text-xs text-tertiary-light";
-const sectionTitleClass =
-  "mb-2 text-xs font-medium uppercase tracking-wide text-tertiary-alt";
+const labelClass = "mb-1.5 block text-sm font-semibold text-white";
+const sectionTitleClass = "mb-2.5 text-sm font-semibold text-white";
 const chipBtnClass =
   "inline-flex items-center gap-1 rounded-lg border border-[var(--oh-border)] bg-base-secondary px-2 py-1 text-xs text-content hover:border-white/30 hover:text-white disabled:opacity-40";
 const iconBtnClass =
@@ -827,7 +826,7 @@ export default function HostSettingsScreen() {
                 <section className="flex w-1/4 max-w-[25%] min-w-[260px] shrink-0 flex-col bg-base-secondary">
                   <div className="flex items-start justify-between gap-3 border-b border-[var(--oh-border-subtle)] px-4 py-2.5">
                     <div className="min-w-0">
-                      <h2 className="truncate text-sm font-medium text-white">
+                      <h2 className="truncate text-base font-semibold text-white">
                         {draft.id
                           ? draft.label.trim() ||
                             draft.address ||
@@ -1004,7 +1003,7 @@ export default function HostSettingsScreen() {
                       <div>
                         <label className={labelClass} htmlFor="host-port">
                           SSH on{" "}
-                          <span className="text-primary">
+                          <span className="font-semibold text-primary">
                             [{draft.port || "22"}]
                           </span>{" "}
                           port
