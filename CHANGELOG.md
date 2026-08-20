@@ -2,6 +2,12 @@
 
 All notable changes to this workspace are listed here.
 
+## [beta v0.5.29] - 2026-08-20
+
+### Changed
+
+- SSH tab bar: drop SFTP; close (X) always after the tab title; remove session status/Font/Reconnect toolbar
+
 ## [beta v0.5.28] - 2026-08-20
 
 ### Changed
