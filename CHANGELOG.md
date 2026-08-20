@@ -2,6 +2,12 @@
 
 All notable changes to this workspace are listed here.
 
+## [beta v0.5.12] - 2026-08-20
+
+### Changed
+
+- Host vault cards polished: always-on border, richer circular icon, taller card, larger title, smaller IP · user line, compact `ssh` chip
+
 ## [beta v0.5.11] - 2026-08-20
 
 ### Changed

@@ -741,7 +741,7 @@ export default function HostSettingsScreen() {
                   <p className="px-3 pt-2 text-sm font-medium text-white">
                     Hosts
                   </p>
-                  <ul className="grid flex-1 auto-rows-min grid-cols-[repeat(auto-fill,minmax(200px,1fr))] content-start gap-2.5 overflow-y-auto p-3 pt-2">
+                  <ul className="grid flex-1 auto-rows-min grid-cols-[repeat(auto-fill,minmax(220px,1fr))] content-start gap-3 overflow-y-auto p-3 pt-2">
                     {filtered.map((s) => (
                       <li key={s.id} className="min-w-0">
                         <button
@@ -749,23 +749,26 @@ export default function HostSettingsScreen() {
                           onClick={() => selectHost(s)}
                           onDoubleClick={() => openTerminal(s)}
                           className={cn(
-                            "flex w-full items-center gap-3 rounded-2xl border px-3 py-3 text-left transition-colors",
+                            "flex w-full min-h-[72px] items-center gap-3 rounded-2xl border px-3.5 py-3.5 text-left transition-colors",
                             selectedId === s.id
-                              ? "border-primary/50 bg-interactive-hover"
-                              : "border-transparent bg-base-secondary hover:border-[var(--oh-border)] hover:bg-interactive-hover-low",
+                              ? "border-primary/60 bg-interactive-hover shadow-[inset_0_0_0_1px_rgba(255,255,255,0.04)]"
+                              : "border-[var(--oh-border-subtle)] bg-base-secondary hover:border-[var(--oh-border)] hover:bg-interactive-hover-low",
                           )}
                         >
-                          <span className="flex size-10 shrink-0 items-center justify-center rounded-full bg-interactive-hover text-primary">
-                            <Server className="size-4" />
+                          <span className="flex size-11 shrink-0 items-center justify-center rounded-full bg-[color-mix(in_srgb,var(--oh-color-primary)_22%,var(--oh-color-base-secondary))] text-primary ring-1 ring-primary/35">
+                            <Server className="size-[18px]" strokeWidth={2} />
                           </span>
                           <span className="min-w-0 flex-1">
-                            <span className="block truncate text-sm text-white">
+                            <span className="block truncate text-base font-medium leading-snug text-white">
                               {s.name || s.hostname}
                             </span>
-                            <span className="block truncate text-[11px] text-tertiary-light">
+                            <span className="mt-0.5 block truncate text-[10px] leading-tight text-tertiary-light">
                               {s.hostname}
                               {s.username ? ` · ${s.username}` : ""}
                             </span>
+                          </span>
+                          <span className="shrink-0 rounded-md border border-[var(--oh-border-subtle)] bg-interactive-hover/60 px-1.5 py-0.5 text-[9px] font-medium uppercase tracking-wide text-tertiary-alt">
+                            ssh
                           </span>
                         </button>
                       </li>
