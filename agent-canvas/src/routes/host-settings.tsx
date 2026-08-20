@@ -20,7 +20,6 @@ import {
   Pencil,
   X,
   Lock,
-  Folder,
 } from "lucide-react";
 import "@xterm/xterm/css/xterm.css";
 import { BrandButton } from "#/components/features/settings/brand-button";
@@ -157,7 +156,7 @@ export default function HostSettingsScreen() {
   const [statusMsg, setStatusMsg] = React.useState<string | null>(null);
   const [savedDraft, setSavedDraft] = React.useState<Draft | null>(null);
   const [allChangesSaved, setAllChangesSaved] = React.useState(false);
-  const [fontSize, setFontSize] = React.useState(13);
+  const [fontSize] = React.useState(13);
   /** Show / hide the New Host · Host Details panel (open via edit / New host) */
   const [detailsOpen, setDetailsOpen] = React.useState(false);
   const [moreMenuOpen, setMoreMenuOpen] = React.useState(false);
@@ -171,8 +170,9 @@ export default function HostSettingsScreen() {
   const activeWs = workspaceTabs[activeWorkspace] ?? workspaceTabs[0];
   const terminalServerId =
     activeWs?.kind === "terminal" ? activeWs.serverId : null;
-  const { containerRef, status, error, banner, reconnect, disconnect } =
-    useSshTerminal(terminalServerId, { fontSize });
+  const { containerRef, disconnect } = useSshTerminal(terminalServerId, {
+    fontSize,
+  });
 
   const draftRef = React.useRef(draft);
   draftRef.current = draft;
@@ -543,15 +543,6 @@ export default function HostSettingsScreen() {
           <Lock className="size-4 shrink-0" strokeWidth={2} />
           Vaults
         </button>
-        <button
-          type="button"
-          disabled
-          title="SFTP coming soon"
-          className="inline-flex shrink-0 cursor-not-allowed items-center gap-2 rounded-xl bg-base-secondary px-3 py-2 text-sm font-medium text-[var(--oh-muted)] opacity-60"
-        >
-          <Folder className="size-4 shrink-0" strokeWidth={2} />
-          SFTP
-        </button>
 
         {workspaceTabs.some((t) => t.kind === "terminal") ? (
           <span
@@ -573,16 +564,6 @@ export default function HostSettingsScreen() {
                   : "border-transparent bg-base-secondary text-[var(--oh-muted)] hover:border-[var(--oh-border)] hover:text-white",
               )}
             >
-              {isActive ? (
-                <button
-                  type="button"
-                  className="rounded-md p-0.5 text-emerald-300/80 hover:bg-emerald-900/50 hover:text-emerald-200"
-                  aria-label="Close tab"
-                  onClick={() => closeWorkspaceTab(i)}
-                >
-                  <X className="size-3.5" strokeWidth={2.5} />
-                </button>
-              ) : null}
               <button
                 type="button"
                 onClick={() => setActiveWorkspace(i)}
@@ -597,21 +578,19 @@ export default function HostSettingsScreen() {
                 </span>
                 <span className="max-w-[140px] truncate">{tab.title}</span>
               </button>
-              {isActive ? (
-                <Terminal
-                  className="size-3.5 shrink-0 text-emerald-300/90"
-                  strokeWidth={2}
-                />
-              ) : (
-                <button
-                  type="button"
-                  className="rounded-md p-0.5 opacity-0 transition-opacity group-hover:opacity-100 hover:bg-interactive-hover hover:text-white"
-                  aria-label="Close tab"
-                  onClick={() => closeWorkspaceTab(i)}
-                >
-                  <X className="size-3.5" strokeWidth={2} />
-                </button>
-              )}
+              <button
+                type="button"
+                className={cn(
+                  "rounded-md p-0.5",
+                  isActive
+                    ? "text-emerald-300/80 hover:bg-emerald-900/50 hover:text-emerald-200"
+                    : "text-[var(--oh-muted)] opacity-0 group-hover:opacity-100 hover:bg-interactive-hover hover:text-white",
+                )}
+                aria-label="Close tab"
+                onClick={() => closeWorkspaceTab(i)}
+              >
+                <X className="size-3.5" strokeWidth={2.5} />
+              </button>
             </div>
           );
         })}
@@ -619,36 +598,6 @@ export default function HostSettingsScreen() {
 
       {activeWs?.kind === "terminal" ? (
         <div className="flex min-h-0 flex-1 flex-col">
-          <div className="flex items-center justify-between gap-3 border-b border-[var(--oh-border-subtle)] bg-base-secondary px-4 py-2.5">
-            <span className="min-w-0 truncate text-sm text-[var(--oh-muted)]">
-              {banner || activeWs.title} · {status}
-              {error ? ` · ${error}` : ""}
-            </span>
-            <div className="flex shrink-0 items-center gap-2.5">
-              <label className="flex items-center gap-2 text-sm text-[var(--oh-muted)]">
-                Font
-                <select
-                  className={cn(fieldClass, "h-9 w-auto min-w-[3.25rem] px-2.5")}
-                  value={fontSize}
-                  onChange={(e) => setFontSize(Number(e.target.value))}
-                >
-                  {[11, 12, 13, 14, 16, 18].map((n) => (
-                    <option key={n} value={n}>
-                      {n}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <BrandButton
-                type="button"
-                variant="secondary"
-                className="min-h-9 px-4 text-sm font-medium"
-                onClick={reconnect}
-              >
-                Reconnect
-              </BrandButton>
-            </div>
-          </div>
           <div className="min-h-0 flex-1 bg-base p-2">
             <div
               ref={containerRef}
