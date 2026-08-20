@@ -2,6 +2,12 @@
 
 All notable changes to this workspace are listed here.
 
+## [beta v0.5.30] - 2026-08-20
+
+### Changed
+
+- SSH host tabs are wider by default; the active tab stretches further for clearer selection
+
 ## [beta v0.5.29] - 2026-08-20
 
 ### Changed

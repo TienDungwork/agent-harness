@@ -558,16 +558,16 @@ export default function HostSettingsScreen() {
             <div
               key={tab.id}
               className={cn(
-                "group flex shrink-0 items-center gap-2 rounded-xl border px-2.5 py-1.5 text-sm font-medium transition-colors",
+                "group flex shrink-0 items-center gap-2 rounded-xl border px-3.5 py-2 text-sm font-medium transition-[min-width,padding,colors]",
                 isActive
-                  ? "border-emerald-500/35 bg-emerald-950/70 text-emerald-300"
-                  : "border-transparent bg-base-secondary text-[var(--oh-muted)] hover:border-[var(--oh-border)] hover:text-white",
+                  ? "min-w-[168px] border-emerald-500/35 bg-emerald-950/70 px-4 py-2.5 text-emerald-300"
+                  : "min-w-[132px] border-transparent bg-base-secondary text-[var(--oh-muted)] hover:border-[var(--oh-border)] hover:text-white",
               )}
             >
               <button
                 type="button"
                 onClick={() => setActiveWorkspace(i)}
-                className="flex min-w-0 items-center gap-2"
+                className="flex min-w-0 flex-1 items-center gap-2"
               >
                 <span className="relative flex size-7 shrink-0 items-center justify-center rounded-lg bg-interactive-hover text-primary">
                   <Server className="size-3.5" strokeWidth={2} />
@@ -576,7 +576,9 @@ export default function HostSettingsScreen() {
                     aria-hidden
                   />
                 </span>
-                <span className="max-w-[140px] truncate">{tab.title}</span>
+                <span className="min-w-0 flex-1 truncate text-left">
+                  {tab.title}
+                </span>
               </button>
               <button
                 type="button"
