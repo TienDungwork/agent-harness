@@ -17,7 +17,6 @@ import {
   PanelRightClose,
   MoreHorizontal,
   Check,
-  Home,
   Pencil,
 } from "lucide-react";
 import "@xterm/xterm/css/xterm.css";
@@ -49,8 +48,7 @@ type NavId =
   | "port-forwarding"
   | "snippets"
   | "known-hosts"
-  | "logs"
-  | "monitor";
+  | "logs";
 
 type WorkspaceTab =
   | { kind: "vaults" }
@@ -97,47 +95,6 @@ function draftFromServer(s: InfraServer): Draft {
   };
 }
 
-function MonitorPane({ gwBase }: { gwBase: string }) {
-  const [frameKey, setFrameKey] = React.useState(0);
-  const beszelSrc = React.useMemo(() => {
-    const fromEnv = (
-      import.meta.env.VITE_BESZEL_URL as string | undefined
-    )?.replace(/\/+$/, "");
-    if (fromEnv) {
-      return `${fromEnv}/`;
-    }
-    // Prefer public Beszel UI (nginx injects All Systems). Fall back to GW proxy.
-    if (typeof window !== "undefined") {
-      const { protocol, hostname } = window.location;
-      return `${protocol}//${hostname}:18090/`;
-    }
-    return `${gwBase}/beszel/`;
-  }, [gwBase]);
-
-  return (
-    <div className="flex min-h-0 min-w-0 flex-1 flex-col">
-      <div className="flex items-center gap-1 border-b border-[var(--oh-border-subtle)] bg-base-secondary px-2 py-1">
-        <button
-          type="button"
-          className="inline-flex size-8 items-center justify-center rounded-md text-tertiary-light hover:bg-interactive-hover hover:text-content"
-          onClick={() => setFrameKey((k) => k + 1)}
-          aria-label="All Systems"
-          title="All Systems"
-        >
-          <Home className="size-[1.2rem]" strokeWidth={1.5} />
-        </button>
-      </div>
-      <iframe
-        key={frameKey}
-        src={beszelSrc}
-        title="Monitor"
-        className="min-h-0 flex-1 border-0"
-        allow="same-origin"
-      />
-    </div>
-  );
-}
-
 const NAV: Array<{ id: NavId; label: string; icon: React.ReactNode }> = [
   { id: "hosts", label: "Hosts", icon: <Server className="size-4" /> },
   { id: "keychain", label: "Keychain", icon: <KeyRound className="size-4" /> },
@@ -153,7 +110,6 @@ const NAV: Array<{ id: NavId; label: string; icon: React.ReactNode }> = [
     icon: <ShieldCheck className="size-4" />,
   },
   { id: "logs", label: "Logs", icon: <ScrollText className="size-4" /> },
-  { id: "monitor", label: "Monitor", icon: <Eye className="size-4" /> },
 ];
 
 const fieldClass = cn(
@@ -554,21 +510,13 @@ export default function HostSettingsScreen() {
     );
   });
 
-  const stubCopy: Record<Exclude<NavId, "hosts" | "monitor">, string> = {
+  const stubCopy: Record<Exclude<NavId, "hosts">, string> = {
     keychain: "Store reusable passwords and SSH keys (coming soon).",
     "port-forwarding": "Local / remote / dynamic tunnels (coming soon).",
     snippets: "Reusable command snippets for sessions (coming soon).",
     "known-hosts": "Manage host key fingerprints (coming soon).",
     logs: "Connection and session audit log (coming soon).",
   };
-
-  const gwBase = (() => {
-    const base =
-      (import.meta.env.VITE_LOCAL_AUTH_BASE_URL as string | undefined) ||
-      (import.meta.env.VITE_BACKEND_BASE_URL as string | undefined) ||
-      "";
-    return base.replace(/\/+$/, "");
-  })();
 
   return (
     <div
@@ -674,16 +622,14 @@ export default function HostSettingsScreen() {
             ))}
           </nav>
 
-          {nav === "monitor" ? (
-            <MonitorPane gwBase={gwBase} />
-          ) : nav !== "hosts" ? (
+          {nav !== "hosts" ? (
             <div className="flex flex-1 flex-col items-center justify-center gap-2 px-8 text-center">
               <p className="text-xl font-medium leading-6 tracking-[-0.02em] text-white">
                 {NAV.find((n) => n.id === nav)?.label}
               </p>
               {/* eslint-disable-next-line i18next/no-literal-string */}
               <p className="max-w-sm text-sm leading-5 text-tertiary-light">
-                {stubCopy[nav as Exclude<NavId, "hosts" | "monitor">]}
+                {stubCopy[nav as Exclude<NavId, "hosts">]}
               </p>
             </div>
           ) : (
