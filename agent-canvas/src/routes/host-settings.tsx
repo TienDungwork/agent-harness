@@ -596,6 +596,19 @@ export default function HostSettingsScreen() {
             </div>
           );
         })}
+
+        {canEdit ? (
+          <button
+            type="button"
+            onClick={startNewHost}
+            className="flex size-[42px] shrink-0 items-center justify-center rounded-xl border border-transparent bg-base-secondary text-[var(--oh-muted)] transition-colors hover:border-[var(--oh-border)] hover:text-white"
+            aria-label="New host"
+            title="New host"
+            data-testid="host-vault-add"
+          >
+            <Plus className="size-4" strokeWidth={2.25} />
+          </button>
+        ) : null}
       </div>
 
       {activeWs?.kind === "terminal" ? (
@@ -680,24 +693,9 @@ export default function HostSettingsScreen() {
                 ) : null}
 
                 <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
-                  <div className="flex items-center justify-between gap-2 px-3 pt-2">
-                    <p className={hostSectionHeadingClass}>Hosts</p>
-                    {canEdit ? (
-                      <button
-                        type="button"
-                        onClick={startNewHost}
-                        className={cn(
-                          chipBtnClass,
-                          "size-8 justify-center gap-0 px-0 py-0",
-                        )}
-                        aria-label="New host"
-                        title="New host"
-                        data-testid="host-vault-add"
-                      >
-                        <Plus className="size-4" strokeWidth={2.25} />
-                      </button>
-                    ) : null}
-                  </div>
+                  <p className={cn(hostSectionHeadingClass, "px-3 pt-2")}>
+                    Hosts
+                  </p>
                   <ul
                     className="grid flex-1 auto-rows-min grid-cols-[repeat(auto-fill,minmax(220px,1fr))] content-start gap-3 overflow-y-auto p-3 pt-2"
                     data-testid="host-vault-grid"

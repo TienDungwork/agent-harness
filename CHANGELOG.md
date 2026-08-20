@@ -2,6 +2,12 @@
 
 All notable changes to this workspace are listed here.
 
+## [beta v0.5.32] - 2026-08-20
+
+### Changed
+
+- Host vault quick-add `+` sits on the Vaults/SSH tab bar (same row as session chips)
+
 ## [beta v0.5.31] - 2026-08-20
 
 ### Changed
