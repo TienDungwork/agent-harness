@@ -1,0 +1,23 @@
+"""Regression: LLM profile list must not be served from a stale per-user blob.
+
+Creates/updates go to ``/api/profiles/{name}`` and forward to agent-server, but
+the gateway used to cache ``GET /api/profiles`` in ``user_settings_blobs``.
+After a successful create the UI still saw the old list.
+"""
+
+from __future__ import annotations
+
+from proxy import _blob_kind_for_path
+
+
+def test_profiles_paths_are_not_blob_cached():
+    """Profiles must always forward; list mutations never refresh the blob."""
+    assert _blob_kind_for_path('/api/profiles') is None
+    assert _blob_kind_for_path('/api/profiles/nemotron') is None
+    assert _blob_kind_for_path('/api/profiles/nemotron/activate') is None
+
+
+def test_settings_and_secrets_still_use_blobs():
+    assert _blob_kind_for_path('/api/settings') == 'settings'
+    assert _blob_kind_for_path('/api/settings/secrets') == 'secrets'
+    assert _blob_kind_for_path('/api/settings/secrets/FOO') == 'secrets'

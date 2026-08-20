@@ -82,8 +82,9 @@ def _blob_kind_for_path(path: str) -> str | None:
         return 'settings'
     if path == '/api/settings/secrets' or path.startswith('/api/settings/secrets/'):
         return 'secrets'
-    if path == '/api/profiles' or path.startswith('/api/profiles/'):
-        return 'profiles'
+    # Do not blob-cache /api/profiles. Saves go to /api/profiles/{name} and
+    # forward to agent-server, so a cached GET list never picks up creates,
+    # renames, deletes, or activate — the UI appears stuck on one profile.
     return None
 
 
@@ -319,15 +320,14 @@ async def proxy_api(
 
     assert user is not None or _is_public(path)
 
-    # Per-user opaque blobs for settings / secrets / profiles.
+    # Per-user opaque blobs for settings / secrets (profiles always forward).
     blob_kind = _blob_kind_for_path(path) if user is not None else None
     if blob_kind and user is not None:
-        # Only intercept collection-level reads/writes for secrets/profiles;
+        # Only intercept collection-level reads/writes for secrets;
         # nested paths still forward but we keep ownership via cookie gate.
         collection_only = path in (
             '/api/settings',
             '/api/settings/secrets',
-            '/api/profiles',
         )
         if collection_only and request.method == 'GET':
             blob = _get_blob(db, user.id, blob_kind)

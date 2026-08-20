@@ -2,6 +2,12 @@
 
 All notable changes to this workspace are listed here.
 
+## [beta v0.5.35] - 2026-08-20
+
+### Fixed
+
+- local-gateway: stop caching GET /api/profiles in per-user blobs so Add LLM Profile updates the Available Profiles list
+
 ## [beta v0.5.34] - 2026-08-20
 
 ### Fixed
