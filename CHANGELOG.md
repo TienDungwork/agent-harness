@@ -2,6 +2,12 @@
 
 All notable changes to this workspace are listed here.
 
+## [beta v0.5.15] - 2026-08-20
+
+### Changed
+
+- Beszel public UI (`:18090`) rewrites `<title>` to Creanova at the nginx layer (faster first paint)
+
 ## [beta v0.5.14] - 2026-08-20
 
 ### Changed
