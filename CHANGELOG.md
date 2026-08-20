@@ -2,6 +2,12 @@
 
 All notable changes to this workspace are listed here.
 
+## [beta v0.5.17] - 2026-08-20
+
+### Changed
+
+- Clicking empty space in the Host vault grid closes the Host Details panel when it is open
+
 ## [beta v0.5.16] - 2026-08-20
 
 ### Changed

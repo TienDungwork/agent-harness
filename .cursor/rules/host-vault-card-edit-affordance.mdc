@@ -13,6 +13,7 @@ When changing Host vault cards (`agent-canvas/src/routes/host-settings.tsx`):
 - **Single click** on the card body: select the host only (update selection / draft). Do **not** open the Host Details panel (`detailsOpen`).
 - **Hover** (and keyboard focus-within): reveal a **pencil** edit control; hide or fade the idle `ssh` chip in the same slot.
 - **Click pencil**: open Host Details (`openHostDetails` / `selectHost(s, { openDetails: true })`).
+- **Click empty space** in the host grid (`ul` gutter / padding, `e.target === e.currentTarget`): close Host Details when it is open.
 - **New host** / explicit **Details** toolbar control may still open the panel.
 - Default `detailsOpen` is `false` on page load.
 

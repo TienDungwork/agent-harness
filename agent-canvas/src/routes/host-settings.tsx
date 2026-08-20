@@ -743,7 +743,16 @@ export default function HostSettingsScreen() {
                   <p className="px-3 pt-2 text-sm font-medium text-white">
                     Hosts
                   </p>
-                  <ul className="grid flex-1 auto-rows-min grid-cols-[repeat(auto-fill,minmax(220px,1fr))] content-start gap-3 overflow-y-auto p-3 pt-2">
+                  <ul
+                    className="grid flex-1 auto-rows-min grid-cols-[repeat(auto-fill,minmax(220px,1fr))] content-start gap-3 overflow-y-auto p-3 pt-2"
+                    data-testid="host-vault-grid"
+                    onClick={(e) => {
+                      // Empty grid gutters only — not a host card.
+                      if (e.target === e.currentTarget && detailsOpen) {
+                        setDetailsOpen(false);
+                      }
+                    }}
+                  >
                     {filtered.map((s) => (
                       <li key={s.id} className="min-w-0">
                         <div
