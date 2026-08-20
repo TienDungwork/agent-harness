@@ -137,7 +137,7 @@ services:
       retries: 12
       start_period: 10s
 
-  # Public Beszel entry (18090): proxies hub + injects "All Systems" next to logo.
+  # Public Beszel entry (18090): proxies hub + injects Creanova branding / All Systems.
   beszel-ui:
     image: nginx:1.27-alpine
     container_name: creanova-beszel-ui
@@ -149,7 +149,7 @@ services:
       - "0.0.0.0:${BESZEL_PORT:-18090}:8090"
     volumes:
       - ./docker/beszel-ui-nginx.conf:/etc/nginx/nginx.conf:ro
-      - ./docker/creanova-beszel-home.js:/creanova-static/creanova-beszel-home.js:ro
+      - ../services/local-gateway/beszel_branding.js:/creanova-static/creanova-beszel-home.js:ro
     networks:
       - default
 

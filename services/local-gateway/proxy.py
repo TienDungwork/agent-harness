@@ -3,6 +3,8 @@ from __future__ import annotations
 import json
 import re
 import uuid
+from functools import lru_cache
+from pathlib import Path
 from typing import Any
 
 import httpx
@@ -26,6 +28,16 @@ from storage.users import (
 )
 
 router = APIRouter(tags=['proxy'])
+
+_BRANDING_JS = Path(__file__).resolve().parent / 'beszel_branding.js'
+
+
+@lru_cache(maxsize=1)
+def _beszel_branding_inject() -> bytes:
+    """Inline Creanova branding script (title + logo SVG + All Systems)."""
+    script = _BRANDING_JS.read_text(encoding='utf-8')
+    return b'<script>' + script.encode('utf-8') + b'</script>'
+
 
 _CONV_RE = re.compile(
     r'^/api/conversations(?:/(?P<cid>[0-9a-fA-F-]{36}))?(?P<rest>/.*)?$'
@@ -241,21 +253,15 @@ async def proxy_beszel(
     content: bytes = upstream.content
     media = upstream.headers.get('content-type') or ''
     if 'text/html' in media and b'</body>' in content and b'BESZEL' in content:
-        inject = (
-            b'<script>(function(){function goHome(e){e&&e.preventDefault();'
-            b'var h=document.querySelector(\'a[aria-label="Home"]\');'
-            b'if(h){h.click();return;}location.assign("/");}'
-            b'function mount(){if(document.getElementById("creanova-beszel-home"))return;'
-            b'var h=document.querySelector(\'a[aria-label="Home"]\');'
-            b'if(!h||!h.parentElement)return;var a=document.createElement("a");'
-            b'a.id="creanova-beszel-home";a.href=h.getAttribute("href")||"/";'
-            b'a.setAttribute("aria-label","All Systems");a.textContent="All Systems";'
-            b'a.style.cssText="display:inline-flex;align-items:center;margin-inline-end:0.75rem;'
-            b'font-size:0.875rem;font-weight:500;opacity:0.9;text-decoration:none;color:inherit;'
-            b'cursor:pointer;white-space:nowrap";a.addEventListener("click",goHome);'
-            b'h.parentElement.insertBefore(a,h.nextSibling);}setInterval(mount,400);})();</script>'
+        content = content.replace(
+            b'<title>Beszel</title>', b'<title>Creanova</title>', 1
         )
-        content = content.replace(b'</body>', inject + b'</body>', 1)
+        try:
+            inject = _beszel_branding_inject()
+        except OSError:
+            inject = b''
+        if inject:
+            content = content.replace(b'</body>', inject + b'</body>', 1)
 
     return Response(
         content=content,

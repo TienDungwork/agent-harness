@@ -2,6 +2,18 @@
 
 All notable changes to this workspace are listed here.
 
+## [beta v0.5.14] - 2026-08-20
+
+### Changed
+
+- Beszel “All Systems” control is a Home icon in the top-right icon row (same Lucide style as containers / settings), not text
+
+## [beta v0.5.13] - 2026-08-20
+
+### Changed
+
+- Beszel hub UI branding: header logo + browser tab title show **Creanova** (SVG wordmark via nginx `:18090` and Host → Monitor proxy)
+
 ## [beta v0.5.12] - 2026-08-20
 
 ### Changed

@@ -117,19 +117,16 @@ function MonitorPane({ gwBase }: { gwBase: string }) {
 
   return (
     <div className="flex min-h-0 min-w-0 flex-1 flex-col">
-      <div className="flex items-center gap-2 border-b border-[var(--oh-border-subtle)] bg-base-secondary px-3 py-1.5">
+      <div className="flex items-center gap-1 border-b border-[var(--oh-border-subtle)] bg-base-secondary px-2 py-1">
         <button
           type="button"
-          className="inline-flex items-center gap-1.5 rounded-md px-2 py-1 text-xs text-tertiary-light hover:bg-interactive-hover hover:text-content"
+          className="inline-flex size-8 items-center justify-center rounded-md text-tertiary-light hover:bg-interactive-hover hover:text-content"
           onClick={() => setFrameKey((k) => k + 1)}
           aria-label="All Systems"
+          title="All Systems"
         >
-          <Home className="size-3.5" />
-          All Systems
+          <Home className="size-[1.2rem]" strokeWidth={1.5} />
         </button>
-        <span className="text-[10px] text-tertiary-alt">
-          Back to Beszel system list
-        </span>
       </div>
       <iframe
         key={frameKey}
