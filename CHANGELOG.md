@@ -2,6 +2,12 @@
 
 All notable changes to this workspace are listed here.
 
+## [beta v0.5.21] - 2026-08-20
+
+### Fixed
+
+- Creanova Beszel wordmark no longer horizontally stretched (removed SVG `textLength`)
+
 ## [beta v0.5.20] - 2026-08-20
 
 ### Changed

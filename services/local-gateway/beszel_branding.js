@@ -1,22 +1,20 @@
 (() => {
   const BRAND = "Creanova";
-  // Tight viewBox (~Beszel width at h-5 ≈ 76–96px). Explicit height/width
-  // so the Home link does not stretch wider than the wordmark.
+  // Natural glyph proportions — do NOT use textLength (it stretches letters).
+  // Height-only CSS; width follows viewBox aspect ratio.
   const LOGO_SVG =
-    '<svg id="creanova-logo" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 96 18" width="96" height="18" class="fill-foreground" aria-hidden="true" style="display:block;height:1.35rem;width:auto;max-width:6.25rem">' +
+    '<svg id="creanova-logo" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 108 20" class="fill-foreground" aria-hidden="true" style="display:block;height:1.35rem;width:auto">' +
     '<defs><linearGradient id="creanova-logo-g" x1="0%" y1="20%" x2="100%" y2="120%">' +
     '<stop offset="10%" stop-color="#747bff"/><stop offset="90%" stop-color="#24eb5c"/>' +
     "</linearGradient></defs>" +
-    '<text class="creanova-logo-base" x="0" y="14.5" fill="currentColor" ' +
+    '<text class="creanova-logo-base" x="0" y="15.5" fill="currentColor" ' +
     'font-family="ui-sans-serif,system-ui,-apple-system,Segoe UI,sans-serif" ' +
-    'font-size="15.5" font-weight="800" letter-spacing="-0.04em" ' +
-    'textLength="94" lengthAdjust="spacingAndGlyphs">' +
+    'font-size="16" font-weight="800" letter-spacing="-0.02em">' +
     BRAND +
     "</text>" +
-    '<text class="creanova-logo-hover" x="0" y="14.5" fill="url(#creanova-logo-g)" opacity="0" ' +
+    '<text class="creanova-logo-hover" x="0" y="15.5" fill="url(#creanova-logo-g)" opacity="0" ' +
     'font-family="ui-sans-serif,system-ui,-apple-system,Segoe UI,sans-serif" ' +
-    'font-size="15.5" font-weight="800" letter-spacing="-0.04em" ' +
-    'textLength="94" lengthAdjust="spacingAndGlyphs">' +
+    'font-size="16" font-weight="800" letter-spacing="-0.02em">' +
     BRAND +
     "</text></svg>";
 
