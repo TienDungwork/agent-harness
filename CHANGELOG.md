@@ -2,6 +2,12 @@
 
 All notable changes to this workspace are listed here.
 
+## [beta v0.5.27] - 2026-08-20
+
+### Changed
+
+- Containers table: GPU sits next to VRAM (renamed from GPU Mem)
+
 ## [beta v0.5.26] - 2026-08-20
 
 ### Changed
