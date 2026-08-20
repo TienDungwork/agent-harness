@@ -2,6 +2,18 @@
 
 All notable changes to this workspace are listed here.
 
+## [beta v0.5.24] - 2026-08-20
+
+### Removed
+
+- Beszel command-palette “Documentation” (beszel.dev) entry under Creanova branding
+
+## [beta v0.5.23] - 2026-08-20
+
+### Removed
+
+- Host vault Monitor tab (Beszel at `:18090` owns monitoring)
+
 ## [beta v0.5.22] - 2026-08-20
 
 ### Removed

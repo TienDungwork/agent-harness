@@ -113,10 +113,30 @@
     logoHome.parentElement.insertBefore(a, logoHome.nextSibling);
   }
 
+  function hideDocumentation() {
+    // Command palette / menus: hide Beszel docs entry (Creanova rebrand).
+    const nodes = document.querySelectorAll(
+      '[cmdk-item], [data-slot="command-item"], [role="option"], [role="menuitem"]',
+    );
+    for (const el of nodes) {
+      if (!(el instanceof HTMLElement)) continue;
+      if (el.dataset.creanovaDocsHidden === "1") continue;
+      const text = (el.textContent || "").replace(/\s+/g, " ").trim();
+      const isDocs =
+        (text.includes("Documentation") && text.includes("beszel.dev")) ||
+        !!el.querySelector('a[href*="beszel.dev/guide"]');
+      if (!isDocs) continue;
+      el.dataset.creanovaDocsHidden = "1";
+      el.style.display = "none";
+      el.setAttribute("aria-hidden", "true");
+    }
+  }
+
   function tick() {
     brandTitle();
     brandLogo();
     mountAllSystems();
+    hideDocumentation();
   }
 
   ensureBootCss();
