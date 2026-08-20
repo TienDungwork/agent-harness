@@ -2,6 +2,12 @@
 
 All notable changes to this workspace are listed here.
 
+## [beta v0.5.34] - 2026-08-20
+
+### Fixed
+
+- Active SSH session tabs keep a fixed 42px height (only widen horizontally); no longer grow taller and shift the tab bar
+
 ## [beta v0.5.33] - 2026-08-20
 
 ### Changed

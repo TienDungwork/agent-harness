@@ -617,9 +617,9 @@ export default function HostSettingsScreen() {
             <div
               key={tab.id}
               className={cn(
-                "group flex shrink-0 items-center gap-2 rounded-xl border px-3.5 py-2 text-sm font-medium transition-[min-width,padding,colors]",
+                "group flex h-[42px] shrink-0 items-center gap-2 rounded-xl border px-3.5 text-sm font-medium transition-[min-width,padding-inline,colors]",
                 isActive
-                  ? "min-w-[168px] border-emerald-500/35 bg-emerald-950/70 px-4 py-2.5 text-emerald-300"
+                  ? "min-w-[168px] border-emerald-500/35 bg-emerald-950/70 px-4 text-emerald-300"
                   : "min-w-[132px] border-transparent bg-base-secondary text-[var(--oh-muted)] hover:border-[var(--oh-border)] hover:text-white",
               )}
             >
