@@ -3,7 +3,7 @@
   // Natural glyph proportions — do NOT use textLength (it stretches letters).
   // Height-only CSS; width follows viewBox aspect ratio.
   const LOGO_SVG =
-    '<svg id="creanova-logo" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 108 20" class="fill-foreground" aria-hidden="true" style="display:block;height:1.35rem;width:auto">' +
+    '<svg id="creanova-logo" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 108 20" class="fill-foreground" aria-hidden="true" style="display:block;height:1.5rem;width:auto">' +
     '<defs><linearGradient id="creanova-logo-g" x1="0%" y1="20%" x2="100%" y2="120%">' +
     '<stop offset="10%" stop-color="#747bff"/><stop offset="90%" stop-color="#24eb5c"/>' +
     "</linearGradient></defs>" +
@@ -20,7 +20,7 @@
 
   const BOOT_CSS =
     'a[aria-label="Home"]>svg:not(#creanova-logo){visibility:hidden!important;position:absolute!important;width:0!important;height:0!important;overflow:hidden!important}' +
-    'a[aria-label="Home"]{margin-inline-end:0.5rem!important;padding-block:0.25rem!important;padding-inline:0!important}';
+    'a[aria-label="Home"]{margin-inline-end:0.25rem!important;padding-block:0.25rem!important;padding-inline:0!important}';
 
   function ensureBootCss() {
     if (document.getElementById("creanova-boot-css")) return;

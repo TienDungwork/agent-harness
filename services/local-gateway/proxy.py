@@ -261,7 +261,7 @@ async def proxy_beszel(
             b'a[aria-label="Home"]>svg:not(#creanova-logo)'
             b'{visibility:hidden!important;position:absolute!important;'
             b'width:0!important;height:0!important;overflow:hidden!important}'
-            b'a[aria-label="Home"]{margin-inline-end:.5rem!important;'
+            b'a[aria-label="Home"]{margin-inline-end:.25rem!important;'
             b'padding-block:.25rem!important;padding-inline:0!important}'
             b'</style>'
         )
