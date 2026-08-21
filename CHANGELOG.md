@@ -2,6 +2,12 @@
 
 All notable changes to this workspace are listed here.
 
+## [beta v0.5.42] - 2026-08-21
+
+### Fixed
+
+- local-gateway forwards `POST /api/auth/workspace-session` to agent-server (was 404 `Not found` after adding/using an LLM profile)
+
 ## [beta v0.5.41] - 2026-08-21
 
 ### Added

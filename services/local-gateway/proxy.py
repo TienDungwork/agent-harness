@@ -77,6 +77,20 @@ def _extract_conversation_id(path: str) -> str | None:
     return m.group('cid')
 
 
+def _gateway_blocks_forward(path: str) -> bool:
+    """True when the catch-all must 404 instead of forwarding to agent-server.
+
+    Credits/admin/infra are gateway-only. ``/api/auth/*`` is not blocked:
+    login/me/logout are on the dedicated auth router, and unmatched routes
+    such as ``/api/auth/workspace-session`` belong to agent-server.
+    """
+    return (
+        path.startswith('/api/credits/')
+        or path.startswith('/api/admin/')
+        or path.startswith('/api/infra/')
+    )
+
+
 def _blob_kind_for_path(path: str) -> str | None:
     if path == '/api/settings':
         return 'settings'
@@ -299,12 +313,7 @@ async def proxy_api(
 ) -> Response:
     path = f'/api/{full_path}'
 
-    if (
-        path.startswith('/api/auth/')
-        or path.startswith('/api/credits/')
-        or path.startswith('/api/admin/')
-        or path.startswith('/api/infra/')
-    ):
+    if _gateway_blocks_forward(path):
         raise HTTPException(status_code=404, detail='Not found')
 
     user: AuthUser | None = None

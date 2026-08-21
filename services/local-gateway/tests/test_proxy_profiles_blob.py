@@ -7,7 +7,7 @@ After a successful create the UI still saw the old list.
 
 from __future__ import annotations
 
-from proxy import _blob_kind_for_path
+from proxy import _blob_kind_for_path, _gateway_blocks_forward
 
 
 def test_profiles_paths_are_not_blob_cached():
@@ -21,3 +21,11 @@ def test_settings_and_secrets_still_use_blobs():
     assert _blob_kind_for_path('/api/settings') == 'settings'
     assert _blob_kind_for_path('/api/settings/secrets') == 'secrets'
     assert _blob_kind_for_path('/api/settings/secrets/FOO') == 'secrets'
+
+
+def test_workspace_session_forwards_to_agent_server():
+    """Agent-server mints the workspace cookie; gateway must not 404 it."""
+    assert _gateway_blocks_forward('/api/auth/workspace-session') is False
+    assert _gateway_blocks_forward('/api/credits/balance') is True
+    assert _gateway_blocks_forward('/api/admin/users') is True
+    assert _gateway_blocks_forward('/api/infra/servers') is True
