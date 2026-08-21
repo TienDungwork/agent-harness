@@ -2,6 +2,16 @@
 
 All notable changes to this workspace are listed here.
 
+## [beta v0.5.43] - 2026-08-21
+
+### Fixed
+
+- Beszel Containers hang: removed MutationObserver-fighting DOM pin injection from branding.js
+
+### Changed
+
+- Native Containers pin column (lucide Pin icon, ghost icon button); pinned rows float to top; account pins still in gateway DB via `/creanova-api` nginx proxy
+
 ## [beta v0.5.42] - 2026-08-21
 
 ### Fixed

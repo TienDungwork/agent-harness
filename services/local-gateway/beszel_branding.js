@@ -132,240 +132,21 @@
     }
   }
 
-  // ── Pinned containers → local-gateway (per Creanova user) ─────────────────
-  const GATEWAY_URL =
-    (globalThis.__CREANOVA_GATEWAY_URL__ ||
-      `http://${location.hostname}:18110`).replace(/\/$/, "");
-
-  function pbAuth() {
-    try {
-      const raw = localStorage.getItem("pocketbase_auth");
-      if (!raw) return null;
-      const parsed = JSON.parse(raw);
-      const token = parsed?.token;
-      const email = parsed?.record?.email || parsed?.model?.email;
-      if (!token) return null;
-      return { token, email };
-    } catch {
-      return null;
-    }
-  }
-
-  async function gatewayFetch(path, opts = {}) {
-    const auth = pbAuth();
-    const headers = Object.assign(
-      { "Content-Type": "application/json", Accept: "application/json" },
-      opts.headers || {},
-    );
-    if (auth?.token) headers["X-Beszel-Token"] = auth.token;
-    const res = await fetch(`${GATEWAY_URL}${path}`, {
-      ...opts,
-      headers,
-      credentials: "include",
-    });
-    if (!res.ok) {
-      const text = await res.text();
-      throw new Error(`${res.status}: ${text.slice(0, 200)}`);
-    }
-    if (res.status === 204) return null;
-    return res.json();
-  }
-
-  function toast(msg, ok) {
-    let el = document.getElementById("creanova-pin-toast");
-    if (!el) {
-      el = document.createElement("div");
-      el.id = "creanova-pin-toast";
-      el.style.cssText =
-        "position:fixed;bottom:1rem;right:1rem;z-index:99999;padding:.6rem .9rem;" +
-        "border-radius:.5rem;font:500 13px/1.3 system-ui,sans-serif;max-width:22rem;" +
-        "box-shadow:0 8px 24px rgba(0,0,0,.25);color:#fff";
-      document.body.appendChild(el);
-    }
-    el.style.background = ok ? "#15803d" : "#b91c1c";
-    el.textContent = msg;
-    clearTimeout(el._t);
-    el._t = setTimeout(() => {
-      el.remove();
-    }, 3200);
-  }
-
-  function ensurePinCss() {
-    if (document.getElementById("creanova-pin-css")) return;
-    const style = document.createElement("style");
-    style.id = "creanova-pin-css";
-    style.textContent =
-      ".creanova-pin-btn{margin-inline-start:.35rem;padding:.15rem .4rem;font:600 11px/1 system-ui,sans-serif;" +
-      "border-radius:.35rem;border:1px solid currentColor;opacity:.75;cursor:pointer;background:transparent;color:inherit}" +
-      ".creanova-pin-btn[data-pinned='1']{opacity:1;background:rgba(116,123,255,.2)}" +
-      ".creanova-pin-btn:hover{opacity:1}" +
-      "#creanova-pins-panel{position:fixed;bottom:1rem;left:1rem;z-index:99990;max-width:18rem;" +
-      "background:rgba(15,15,20,.92);color:#eee;border-radius:.6rem;padding:.55rem .7rem;" +
-      "font:13px/1.35 system-ui,sans-serif;box-shadow:0 8px 28px rgba(0,0,0,.35)}" +
-      "#creanova-pins-panel h3{margin:0 0 .35rem;font-size:12px;letter-spacing:.04em;text-transform:uppercase;opacity:.8}" +
-      "#creanova-pins-panel li{margin:.2rem 0;display:flex;gap:.4rem;align-items:baseline}" +
-      "#creanova-pins-panel button{border:0;background:transparent;color:#f87171;cursor:pointer;font-size:12px}";
-    document.head.appendChild(style);
-  }
-
-  let pinCache = null;
-  let pinCacheAt = 0;
-
-  async function loadPins(force) {
-    if (!force && pinCache && Date.now() - pinCacheAt < 8000) return pinCache;
-    try {
-      const data = await gatewayFetch("/api/infra/pinned-containers");
-      pinCache = data?.items || [];
-      pinCacheAt = Date.now();
-      return pinCache;
-    } catch (e) {
-      pinCache = [];
-      pinCacheAt = Date.now();
-      return pinCache;
-    }
-  }
-
-  function pinKey(host, name) {
-    return `${host}::${name}`.toLowerCase();
-  }
-
-  async function togglePin(host, name, btn) {
-    const auth = pbAuth();
-    if (!auth) {
-      toast("Login Beszel (Keycloak) first to pin", false);
-      return;
-    }
-    const pins = await loadPins(true);
-    const existing = pins.find(
-      (p) => pinKey(p.host, p.container_name) === pinKey(host, name),
-    );
-    try {
-      if (existing) {
-        await gatewayFetch(`/api/infra/pinned-containers/${existing.id}`, {
-          method: "DELETE",
-        });
-        toast(`Unpinned ${name}`, true);
-        if (btn) btn.dataset.pinned = "0";
-      } else {
-        await gatewayFetch("/api/infra/pinned-containers", {
-          method: "POST",
-          body: JSON.stringify({ host, container_name: name }),
-        });
-        toast(`Pinned ${name} @ ${host}`, true);
-        if (btn) btn.dataset.pinned = "1";
-      }
-      await loadPins(true);
-      renderPinsPanel();
-      syncPinButtons();
-    } catch (e) {
-      toast(String(e.message || e), false);
-    }
-  }
-
-  function syncPinButtons() {
-    const pins = pinCache || [];
-    const set = new Set(pins.map((p) => pinKey(p.host, p.container_name)));
-    document.querySelectorAll(".creanova-pin-btn").forEach((btn) => {
-      if (!(btn instanceof HTMLElement)) return;
-      const host = btn.dataset.host || "";
-      const name = btn.dataset.name || "";
-      btn.dataset.pinned = set.has(pinKey(host, name)) ? "1" : "0";
-      btn.textContent = btn.dataset.pinned === "1" ? "Pinned" : "Pin";
-      btn.title =
-        btn.dataset.pinned === "1"
-          ? "Unpin for Creanova agent focus"
-          : "Pin for Creanova agent focus";
-    });
-  }
-
-  function mountPinButtons() {
-    // Container name cells: span.truncate inside table rows.
-    const rows = document.querySelectorAll("table tbody tr");
-    rows.forEach((tr) => {
-      if (!(tr instanceof HTMLElement)) return;
-      if (tr.querySelector(".creanova-pin-btn")) return;
-      const cells = tr.querySelectorAll("td");
-      if (cells.length < 2) return;
-      const nameEl = cells[0].querySelector("span.truncate, span.block.truncate");
-      const sysEl = cells[1].querySelector("div.truncate, div.max-w-40");
-      const name = (nameEl?.textContent || "").trim();
-      const host = (sysEl?.textContent || "").trim();
-      if (!name || !host) return;
-      const btn = document.createElement("button");
-      btn.type = "button";
-      btn.className = "creanova-pin-btn";
-      btn.dataset.host = host;
-      btn.dataset.name = name;
-      btn.dataset.pinned = "0";
-      btn.textContent = "Pin";
-      btn.addEventListener("click", (e) => {
-        e.preventDefault();
-        e.stopPropagation();
-        togglePin(host, name, btn);
-      });
-      (nameEl || cells[0]).appendChild(btn);
-    });
-    syncPinButtons();
-  }
-
-  function renderPinsPanel() {
-    const pins = pinCache || [];
-    let panel = document.getElementById("creanova-pins-panel");
-    if (!pins.length) {
-      if (panel) panel.remove();
-      return;
-    }
-    if (!panel) {
-      panel = document.createElement("div");
-      panel.id = "creanova-pins-panel";
-      document.body.appendChild(panel);
-    }
-    const items = pins
-      .slice(0, 12)
-      .map(
-        (p) =>
-          `<li><span title="${p.host}">${p.container_name}</span>` +
-          `<button type="button" data-id="${p.id}" aria-label="Unpin">×</button></li>`,
-      )
-      .join("");
-    panel.innerHTML = `<h3>Agent pins (${pins.length})</h3><ul style="margin:0;padding:0;list-style:none">${items}</ul>`;
-    panel.querySelectorAll("button[data-id]").forEach((b) => {
-      b.addEventListener("click", async () => {
-        try {
-          await gatewayFetch(`/api/infra/pinned-containers/${b.dataset.id}`, {
-            method: "DELETE",
-          });
-          await loadPins(true);
-          renderPinsPanel();
-          syncPinButtons();
-          toast("Unpinned", true);
-        } catch (e) {
-          toast(String(e.message || e), false);
-        }
-      });
-    });
-  }
-
-  let pinBooted = false;
-  function tickPins() {
-    ensurePinCss();
-    if (!pbAuth()) return;
-    mountPinButtons();
-    if (!pinBooted) {
-      pinBooted = true;
-      loadPins(true).then(() => {
-        renderPinsPanel();
-        syncPinButtons();
-      });
-    }
-  }
-
+  let scheduled = false;
   function tick() {
     brandTitle();
     brandLogo();
     mountAllSystems();
     hideDocumentation();
-    tickPins();
+  }
+
+  function scheduleTick() {
+    if (scheduled) return;
+    scheduled = true;
+    requestAnimationFrame(() => {
+      scheduled = false;
+      tick();
+    });
   }
 
   ensureBootCss();
@@ -381,10 +162,10 @@
     });
   }
 
-  // Replace as soon as React mounts the navbar (no 400ms FOUC gap).
+  // Debounced: avoid thrashing when Containers virtual table mutates heavily.
   const rootObs = new MutationObserver(() => {
-    tick();
+    scheduleTick();
   });
   rootObs.observe(document.documentElement, { childList: true, subtree: true });
-  setInterval(tick, 1000);
+  setInterval(tick, 2000);
 })();
