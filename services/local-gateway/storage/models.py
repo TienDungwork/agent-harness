@@ -258,6 +258,7 @@ class UserSettingsBlob(Base):
 
 class InfraServer(Base):
     __tablename__ = 'infra_servers'
+    __table_args__ = (Index('infra_servers_hostname_idx', 'hostname'),)
 
     id: Mapped[str] = mapped_column(
         CompatibleUUID(), primary_key=True, default=lambda: str(uuid4())

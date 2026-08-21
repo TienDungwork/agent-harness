@@ -6,7 +6,12 @@ uv run --with fastapi --with uvicorn --with httpx --with pydantic python main.py
 ```
 
 - Port: **18120** (loopback)
-- Env: `GATEWAY_URL`, `GATEWAY_COOKIE`, `PORT`
+- Env: `GATEWAY_URL`, `GATEWAY_COOKIE` and/or `INFRA_AGENT_TOKEN`, `PORT`
 
 List tools: `GET /tools`
-Call tool: `POST /tools/call` with `{ "name", "arguments", "cookie" }`
+Call tool: `POST /tools/call` with `{ "name", "arguments", "cookie"? }`
+
+Harness tools:
+
+- `infra_resolve_server` — `{ q, limit? }` → ranked hosts
+- `infra_run` — `{ server_id, command, confirm_destructive?, timeout_sec? }`

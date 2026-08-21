@@ -107,6 +107,25 @@ if [ -z "${LOCAL_BACKEND_API_KEY:-}" ] && [ -z "${OH_SESSION_API_KEYS_0:-}" ]; t
   export OH_SESSION_API_KEYS_0="$LOCAL_BACKEND_API_KEY"
 fi
 
+# Shared token so agent harness can call local-gateway infra APIs without a browser cookie.
+INFRA_TOKEN_FILE="${STATE_DIR}/infra-agent-token.txt"
+if [ -z "${INFRA_AGENT_TOKEN:-}" ]; then
+  if [ -f "$INFRA_TOKEN_FILE" ]; then
+    INFRA_AGENT_TOKEN="$(cat "$INFRA_TOKEN_FILE")"
+  else
+    INFRA_AGENT_TOKEN="$(head -c 32 /dev/urandom | od -An -tx1 | tr -d ' \n')"
+    mkdir -p "$(dirname "$INFRA_TOKEN_FILE")"
+    printf '%s' "$INFRA_AGENT_TOKEN" > "$INFRA_TOKEN_FILE"
+    chmod 600 "$INFRA_TOKEN_FILE"
+    log "Generated INFRA_AGENT_TOKEN (persisted to $INFRA_TOKEN_FILE)"
+  fi
+else
+  mkdir -p "$(dirname "$INFRA_TOKEN_FILE")"
+  printf '%s' "$INFRA_AGENT_TOKEN" > "$INFRA_TOKEN_FILE"
+  chmod 600 "$INFRA_TOKEN_FILE"
+fi
+export INFRA_AGENT_TOKEN
+
 # Both backends share the same API key value and the same `X-Session-API-Key`
 # header for authentication.  Default Creanova_AUTOMATION_API_KEY to the
 # API key so a single credential secures the whole stack.

@@ -2,6 +2,15 @@
 
 All notable changes to this workspace are listed here.
 
+## [beta v0.5.39] - 2026-08-21
+
+### Added
+
+- Remote SSH harness: `GET /api/infra/servers/resolve` (exact-first host lookup) and `POST /api/infra/servers/{id}/run` (full shell via gateway credentials)
+- Destructive remote commands require `confirm_destructive=true` after user confirmation
+- Agent auth via `X-Creanova-Infra-Token` / `INFRA_AGENT_TOKEN` (persisted with canvas state)
+- LOCAL_HARNESS rules for resolve → sticky target → run; infra-mcp tools `infra_resolve_server` / `infra_run`
+
 ## [beta v0.5.38] - 2026-08-21
 
 ### Fixed

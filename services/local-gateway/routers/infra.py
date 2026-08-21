@@ -8,14 +8,16 @@ from uuid import uuid4
 from auth.deps import require_admin, require_session
 from auth.session import SessionManager
 from config import Settings, get_settings
-from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request
 from infra.access import user_has_server_access
 from infra.audit import write_audit
 from infra.beszel import clear_system_fingerprint as clear_beszel_fingerprint
 from infra.beszel import upsert_system as upsert_beszel_system
 from infra.commands import CommandDenied, render_command
 from infra.crypto import CryptoError, decrypt_text, encrypt_text
+from infra.destructive import destructive_reason, looks_destructive
 from infra.gpu import is_nvidia_smi_missing, parse_nvidia_smi_csv
+from infra.resolve import rank_servers
 from infra.services import parse_systemctl_list_units
 from infra.ssh_client import SSHError, run_ssh
 from pydantic import BaseModel, Field
@@ -34,6 +36,7 @@ from storage.users import AuthUser, to_auth_user
 router = APIRouter(tags=['infra'])
 
 _NAME_RE = re.compile(r'^[A-Za-z0-9][A-Za-z0-9._ -]{0,127}$')
+_INFRA_TOKEN_HEADER = 'X-Creanova-Infra-Token'
 
 # Simple in-process single-flight cache for GPU (also backed by DB freshness).
 _gpu_cache: dict[str, tuple[datetime, list[dict[str, Any]]]] = {}
@@ -49,6 +52,12 @@ class ServerCreate(BaseModel):
     tags: list[str] = Field(default_factory=list)
     credential: str | None = None
     passphrase: str | None = None
+
+
+class ServerRunBody(BaseModel):
+    command: str = Field(min_length=1, max_length=32_000)
+    confirm_destructive: bool = False
+    timeout_sec: float = Field(default=120.0, ge=1.0, le=600.0)
 
 
 class ServerUpdate(BaseModel):
@@ -87,7 +96,24 @@ def _current_user(
     return row
 
 
-from fastapi import Request  # noqa: E402
+def _auth_user_from_infra_token(
+    request: Request,
+    settings: Settings,
+    db: Session,
+) -> AuthUser | None:
+    token = (request.headers.get(_INFRA_TOKEN_HEADER) or '').strip()
+    expected = (settings.infra_agent_token or '').strip()
+    if not token or not expected or token != expected:
+        return None
+    admin = (
+        db.query(User)
+        .filter(User.is_admin.is_(True), User.is_active.is_(True))
+        .order_by(User.created_at.asc())
+        .first()
+    )
+    if admin is None:
+        raise HTTPException(status_code=503, detail='No admin user for infra token')
+    return to_auth_user(admin)
 
 
 def get_auth_user(
@@ -95,6 +121,9 @@ def get_auth_user(
     settings: Settings = Depends(get_settings),
     db: Session = Depends(get_db),
 ) -> AuthUser:
+    via_token = _auth_user_from_infra_token(request, settings, db)
+    if via_token is not None:
+        return via_token
     session = require_session(request, settings, SessionManager(settings))
     row = db.query(User).filter(User.id == session.user_id).one_or_none()
     if row is None or not row.is_active:
@@ -157,6 +186,21 @@ async def _run_on_server(
     )
 
 
+def _servers_visible_to(user: User, db: Session):
+    q = db.query(InfraServer).filter(InfraServer.is_active.is_(True))
+    if not user.is_admin:
+        granted = {
+            str(g.server_id)
+            for g in db.query(InfraServerAccessGrant)
+            .filter(InfraServerAccessGrant.user_id == user.id)
+            .all()
+        }
+        if not granted:
+            return []
+        q = q.filter(InfraServer.id.in_(granted))
+    return q.all()
+
+
 @router.get('/api/infra/servers')
 async def list_servers(
     user: AuthUser = Depends(get_auth_user),
@@ -175,6 +219,144 @@ async def list_servers(
             return []
         q = q.filter(InfraServer.id.in_(granted))
     return [_server_public(s) for s in q.order_by(InfraServer.name).all()]
+
+
+@router.get('/api/infra/servers/resolve')
+async def resolve_servers(
+    q: str,
+    limit: int = 10,
+    user: AuthUser = Depends(get_auth_user),
+    db: Session = Depends(get_db),
+) -> dict[str, Any]:
+    """Fast host lookup by IP / name / tag (exact-first ranking)."""
+    query = (q or '').strip()
+    if not query:
+        raise HTTPException(status_code=400, detail='q is required')
+    limit = max(1, min(int(limit or 10), 50))
+    u = _current_user(user, db)
+    rows = _servers_visible_to(u, db)
+    ranked = rank_servers(query, rows, limit=limit)
+    return {
+        'query': query,
+        'count': len(ranked),
+        'items': [
+            {
+                'id': c.server_id,
+                'name': c.name,
+                'hostname': c.hostname,
+                'port': c.port,
+                'username': c.username,
+                'tags': list(c.tags),
+                'score': c.score,
+                'match': c.match,
+            }
+            for c in ranked
+        ],
+    }
+
+
+@router.post('/api/infra/servers/{server_id}/run')
+async def run_on_server(
+    server_id: str,
+    body: ServerRunBody,
+    user: AuthUser = Depends(get_auth_user),
+    db: Session = Depends(get_db),
+) -> dict[str, Any]:
+    """Run an arbitrary remote shell command via stored SSH credentials."""
+    u = _current_user(user, db)
+    if not user_has_server_access(db, user=u, server_id=server_id, required='operate'):
+        write_audit(
+            db,
+            actor_user_id=user.id,
+            action='access.denied',
+            success=False,
+            server_id=server_id,
+            error_excerpt='shell.run denied',
+        )
+        raise HTTPException(status_code=403, detail='Forbidden')
+
+    server = db.query(InfraServer).filter(InfraServer.id == server_id).one_or_none()
+    if server is None or not server.is_active:
+        raise HTTPException(status_code=404, detail='Server not found')
+
+    command = body.command.strip()
+    if not command:
+        raise HTTPException(status_code=400, detail='command is required')
+
+    if looks_destructive(command) and not body.confirm_destructive:
+        reason = destructive_reason(command) or 'destructive command'
+        write_audit(
+            db,
+            actor_user_id=user.id,
+            action='shell.run.blocked',
+            success=False,
+            server_id=server_id,
+            server_name=server.name,
+            command_rendered=command[:500],
+            error_excerpt=reason,
+        )
+        db.commit()
+        raise HTTPException(
+            status_code=409,
+            detail={
+                'needs_confirmation': True,
+                'reason': reason,
+                'server_id': server_id,
+                'server_name': server.name,
+                'hostname': server.hostname,
+            },
+        )
+
+    try:
+        result = await _run_on_server(
+            db, server, command, timeout=float(body.timeout_sec)
+        )
+        ok = result.exit_code == 0
+        if ok:
+            server.last_seen_at = datetime.now(timezone.utc)
+            server.last_error = None
+        else:
+            server.last_error = (result.stderr or result.stdout or '')[:500]
+        write_audit(
+            db,
+            actor_user_id=user.id,
+            action='shell.run',
+            success=ok,
+            server_id=server_id,
+            server_name=server.name,
+            command_rendered=command[:2000],
+            exit_code=result.exit_code,
+            duration_ms=result.duration_ms,
+            error_excerpt=None if ok else (result.stderr or '')[:500],
+        )
+        db.commit()
+        return {
+            'ok': ok,
+            'server_id': server_id,
+            'server_name': server.name,
+            'hostname': server.hostname,
+            'exit_code': result.exit_code,
+            'stdout': result.stdout,
+            'stderr': result.stderr,
+            'duration_ms': result.duration_ms,
+        }
+    except (SSHError, HTTPException) as exc:
+        msg = str(exc.detail if isinstance(exc, HTTPException) else exc)
+        server.last_error = msg[:500]
+        write_audit(
+            db,
+            actor_user_id=user.id,
+            action='shell.run',
+            success=False,
+            server_id=server_id,
+            server_name=server.name,
+            command_rendered=command[:2000],
+            error_excerpt=msg[:500],
+        )
+        db.commit()
+        if isinstance(exc, HTTPException):
+            raise
+        raise HTTPException(status_code=400, detail=msg) from exc
 
 
 async def _sync_and_maybe_deploy_beszel(

@@ -34,6 +34,39 @@ TOOLS = [
         'inputSchema': {'type': 'object', 'properties': {}},
     },
     {
+        'name': 'infra_resolve_server',
+        'description': (
+            'Resolve a host by IP, name, or tag from the InfraServer inventory '
+            '(exact-first ranking). Use before ssh/run.'
+        ),
+        'inputSchema': {
+            'type': 'object',
+            'properties': {
+                'q': {'type': 'string', 'description': 'IP, hostname, name, or tag'},
+                'limit': {'type': 'integer', 'default': 10},
+            },
+            'required': ['q'],
+        },
+    },
+    {
+        'name': 'infra_run',
+        'description': (
+            'Run a shell command on a server via gateway SSH credentials. '
+            'Destructive commands (rm/dd/…) require confirm_destructive=true '
+            'after the user explicitly agrees in chat.'
+        ),
+        'inputSchema': {
+            'type': 'object',
+            'properties': {
+                'server_id': {'type': 'string'},
+                'command': {'type': 'string'},
+                'confirm_destructive': {'type': 'boolean', 'default': False},
+                'timeout_sec': {'type': 'number', 'default': 120},
+            },
+            'required': ['server_id', 'command'],
+        },
+    },
+    {
         'name': 'infra_gpu_status',
         'description': 'Query GPU utilization for a server',
         'inputSchema': {
@@ -80,12 +113,40 @@ async def list_tools() -> list[dict[str, Any]]:
 @app.post('/tools/call')
 async def call_tool(body: ToolCall) -> Any:
     cookie = body.cookie or os.environ.get('GATEWAY_COOKIE', '')
-    if not cookie:
-        raise HTTPException(status_code=401, detail='cookie required')
-    headers = {'Cookie': cookie}
-    async with httpx.AsyncClient(timeout=30.0) as client:
+    token = os.environ.get('INFRA_AGENT_TOKEN', '').strip()
+    headers: dict[str, str] = {}
+    if cookie:
+        headers['Cookie'] = cookie
+    if token:
+        headers['X-Creanova-Infra-Token'] = token
+    if not headers:
+        raise HTTPException(
+            status_code=401, detail='cookie or INFRA_AGENT_TOKEN required'
+        )
+    async with httpx.AsyncClient(timeout=120.0) as client:
         if body.name == 'infra_list_servers':
             r = await client.get(f'{GATEWAY_URL}/api/infra/servers', headers=headers)
+        elif body.name == 'infra_resolve_server':
+            q = body.arguments.get('q', '')
+            limit = body.arguments.get('limit', 10)
+            r = await client.get(
+                f'{GATEWAY_URL}/api/infra/servers/resolve',
+                headers=headers,
+                params={'q': q, 'limit': limit},
+            )
+        elif body.name == 'infra_run':
+            sid = body.arguments['server_id']
+            r = await client.post(
+                f'{GATEWAY_URL}/api/infra/servers/{sid}/run',
+                headers=headers,
+                json={
+                    'command': body.arguments['command'],
+                    'confirm_destructive': bool(
+                        body.arguments.get('confirm_destructive', False)
+                    ),
+                    'timeout_sec': float(body.arguments.get('timeout_sec', 120)),
+                },
+            )
         elif body.name == 'infra_gpu_status':
             sid = body.arguments.get('server_id')
             r = await client.get(

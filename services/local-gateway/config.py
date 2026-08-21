@@ -42,6 +42,10 @@ class Settings(BaseSettings):
     #   python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
     infra_encryption_key: str = ''
 
+    # Shared token for agent harness → gateway infra APIs (X-Creanova-Infra-Token).
+    # Empty disables token auth (cookie session only).
+    infra_agent_token: str = ''
+
     # Beszel integration (shared volume written by beszel-bootstrap container)
     beszel_shared_path: str = '/beszel_shared'
     beszel_agent_port: int = 45876

@@ -45,12 +45,13 @@
  */
 
 import { spawn, spawnSync } from "node:child_process";
-import { mkdirSync, existsSync, readFileSync } from "node:fs";
+import { mkdirSync, existsSync, readFileSync, writeFileSync } from "node:fs";
 import { join, resolve, dirname } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { homedir } from "node:os";
 import { setTimeout as delay } from "node:timers/promises";
 import process from "node:process";
+import { randomBytes } from "node:crypto";
 
 import {
   assertPortsFree,
@@ -792,6 +793,36 @@ function buildAgentServerAutomationEnv(config) {
   };
 }
 
+function ensureInfraAgentToken(stateDir) {
+  if (process.env.INFRA_AGENT_TOKEN) {
+    const tok = process.env.INFRA_AGENT_TOKEN.trim();
+    try {
+      mkdirSync(stateDir, { recursive: true });
+      writeFileSync(join(stateDir, "infra-agent-token.txt"), tok, { mode: 0o600 });
+    } catch {
+      /* ignore */
+    }
+    return tok;
+  }
+  const p = join(stateDir, "infra-agent-token.txt");
+  try {
+    if (existsSync(p)) {
+      const existing = readFileSync(p, "utf8").trim();
+      if (existing) return existing;
+    }
+  } catch {
+    /* ignore */
+  }
+  const tok = randomBytes(32).toString("hex");
+  try {
+    mkdirSync(stateDir, { recursive: true });
+    writeFileSync(p, tok, { mode: 0o600 });
+  } catch {
+    /* ignore */
+  }
+  return tok;
+}
+
 function startAgentServer(config) {
   logService(
     "agent-server",
@@ -818,6 +849,7 @@ function startAgentServer(config) {
     // Ensure the agent-server uses the resolved key from config. This is
     // LOCAL_BACKEND_API_KEY when set, or the auto-generated persisted key.
     OH_SESSION_API_KEYS_0: config.sessionApiKey,
+    INFRA_AGENT_TOKEN: ensureInfraAgentToken(config.stateDir),
     // Emit structured JSON log lines instead of Rich-formatted output.
     // Rich wraps long messages across multiple lines and prepends its own
     // timestamp; LOG_JSON=true produces one JSON object per record which
@@ -1122,6 +1154,7 @@ function startLocalGateway(config) {
               "postgresql+psycopg://creanova:creanova_dev_change_me@127.0.0.1:54288/creanova"
             : `sqlite:///${join(config.stateDir, "local-gateway.db")}`),
         INFRA_ENCRYPTION_KEY: process.env.INFRA_ENCRYPTION_KEY || "",
+        INFRA_AGENT_TOKEN: ensureInfraAgentToken(config.stateDir),
         CORS_ORIGINS: cors,
       },
     },
