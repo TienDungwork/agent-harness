@@ -46,6 +46,30 @@ export function normalizeLlmModelForLiteLLM(
   return trimmed;
 }
 
+/**
+ * OpenAI-compatible proxies (Ollama/LiteLLM tunnels) expect ``.../v1``.
+ * Users often paste the tunnel host root; LiteLLM then calls ``/chat/completions``
+ * and gets FastAPI ``{"detail":"Not Found"}``.
+ */
+export function normalizeOpenAiCompatibleBaseUrl(
+  baseUrl?: string | null,
+): string | null | undefined {
+  if (baseUrl == null) return baseUrl;
+  const trimmed = baseUrl.trim();
+  if (!trimmed) return trimmed;
+  try {
+    const url = new URL(trimmed);
+    const path = url.pathname.replace(/\/+$/, "") || "";
+    if (path === "" || path === "/") {
+      url.pathname = "/v1";
+      return url.toString().replace(/\/$/, "");
+    }
+    return trimmed.replace(/\/+$/, "");
+  } catch {
+    return trimmed.replace(/\/+$/, "");
+  }
+}
+
 export function getUnsupportedLlmProfileReason(
   model: string,
   baseUrl?: string | null,

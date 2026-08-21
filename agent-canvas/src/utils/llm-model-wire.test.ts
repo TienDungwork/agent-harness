@@ -65,4 +65,19 @@ describe("llm-model-wire", () => {
       ),
     ).toBeNull();
   });
+
+  it("appends /v1 to OpenAI-compatible host roots", async () => {
+    const { normalizeOpenAiCompatibleBaseUrl } = await import("./llm-model-wire");
+    expect(
+      normalizeOpenAiCompatibleBaseUrl(
+        "https://pmid-catering-formed-shop.trycloudflare.com/",
+      ),
+    ).toBe("https://pmid-catering-formed-shop.trycloudflare.com/v1");
+    expect(
+      normalizeOpenAiCompatibleBaseUrl(
+        "https://pmid-catering-formed-shop.trycloudflare.com/v1",
+      ),
+    ).toBe("https://pmid-catering-formed-shop.trycloudflare.com/v1");
+    expect(normalizeOpenAiCompatibleBaseUrl(null)).toBeNull();
+  });
 });

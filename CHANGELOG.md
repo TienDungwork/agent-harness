@@ -12,6 +12,14 @@ All notable changes to this workspace are listed here.
 
 - Native Containers pin column (lucide Pin icon, ghost icon button); pinned rows float to top; account pins still in gateway DB via `/creanova-api` nginx proxy
 
+## [beta v0.5.43] - 2026-08-21
+
+### Fixed
+
+- local-gateway settings blob no longer stores PATCH diffs (base_url/API key looked wiped after LLM profile updates)
+- Invalidate settings blob on profile activate so UI picks up the applied model
+- Preserve custom LLM `base_url` when changing model in Basic tab; auto-append `/v1` for OpenAI-compatible host roots
+
 ## [beta v0.5.42] - 2026-08-21
 
 ### Fixed

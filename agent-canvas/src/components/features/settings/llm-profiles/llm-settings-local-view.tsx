@@ -278,10 +278,13 @@ export function LlmSettingsLocalView() {
       llmConfig.auth_type = LLM_AUTH_TYPE_API_KEY;
       llmConfig.subscription_vendor = null;
 
-      // The Basic tab has no base_url field. Preserve an existing hidden value
-      // when the model did not actually change; if the user chooses a new model,
-      // drop the old base URL so provider defaults can apply to that model.
-      if (didChangeModelInBasic) {
+      // Keep a custom OpenAI-compatible base_url across Basic-tab model
+      // changes. Dropping it made local proxy profiles (Qwen/Nemotron tunnels)
+      // lose their endpoint on every edit and look like the API key broke.
+      if (
+        didChangeModelInBasic &&
+        !(typeof baseConfig.base_url === "string" && baseConfig.base_url.trim())
+      ) {
         delete llmConfig.base_url;
       }
 

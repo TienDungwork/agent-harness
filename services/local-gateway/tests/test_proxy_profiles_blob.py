@@ -7,7 +7,11 @@ After a successful create the UI still saw the old list.
 
 from __future__ import annotations
 
-from proxy import _blob_kind_for_path, _gateway_blocks_forward
+from proxy import (
+    _blob_kind_for_path,
+    _gateway_blocks_forward,
+    _is_usable_settings_blob,
+)
 
 
 def test_profiles_paths_are_not_blob_cached():
@@ -29,3 +33,16 @@ def test_workspace_session_forwards_to_agent_server():
     assert _gateway_blocks_forward('/api/credits/balance') is True
     assert _gateway_blocks_forward('/api/admin/users') is True
     assert _gateway_blocks_forward('/api/infra/servers') is True
+
+
+def test_settings_patch_diff_is_not_a_usable_blob():
+    assert _is_usable_settings_blob({'agent_settings_diff': {}}) is False
+    assert (
+        _is_usable_settings_blob(
+            {
+                'agent_settings': {'llm': {'model': 'openai/x'}},
+                'conversation_settings': {},
+            }
+        )
+        is True
+    )

@@ -34,6 +34,7 @@ import { getActiveBackend } from "../backend-registry/active-store";
 import {
   assertLlmProfileCompatibleWithLiteLLM,
   normalizeLlmModelForLiteLLM,
+  normalizeOpenAiCompatibleBaseUrl,
 } from "#/utils/llm-model-wire";
 import {
   activateCloudProfile,
@@ -85,7 +86,11 @@ class ProfilesService {
   ): Promise<ProfileMutationResponse> {
     const llm = { ...(request.llm as Record<string, unknown>) };
     const rawModel = typeof llm.model === "string" ? llm.model : "";
-    const baseUrl = typeof llm.base_url === "string" ? llm.base_url : null;
+    const rawBaseUrl = typeof llm.base_url === "string" ? llm.base_url : null;
+    const baseUrl = normalizeOpenAiCompatibleBaseUrl(rawBaseUrl) ?? rawBaseUrl;
+    if (typeof baseUrl === "string") {
+      llm.base_url = baseUrl;
+    }
     if (rawModel) {
       assertLlmProfileCompatibleWithLiteLLM(rawModel, baseUrl);
       llm.model = normalizeLlmModelForLiteLLM(rawModel, baseUrl);

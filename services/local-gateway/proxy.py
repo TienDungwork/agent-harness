@@ -102,6 +102,22 @@ def _blob_kind_for_path(path: str) -> str | None:
     return None
 
 
+def _is_usable_settings_blob(payload: Any) -> bool:
+    """Reject PATCH request bodies mistakenly stored as the settings document.
+
+    A real settings GET returns ``agent_settings`` / ``conversation_settings``.
+    Storing ``{"agent_settings_diff": ...}`` made later GETs look like the
+    LLM base_url and API key were wiped after every profile update.
+    """
+    if not isinstance(payload, dict):
+        return False
+    if 'agent_settings_diff' in payload and 'agent_settings' not in payload:
+        return False
+    if 'conversation_settings_diff' in payload and 'agent_settings' not in payload:
+        return False
+    return 'agent_settings' in payload or 'conversation_settings' in payload
+
+
 def _is_chargeable_conversation_post(
     path: str,
 ) -> tuple[bool, str | None, float | None]:
@@ -154,6 +170,17 @@ def _put_blob(db: Session, user_id: str, kind: str, payload: Any) -> Any:
         row.payload = payload
     db.commit()
     return payload
+
+
+def _delete_blob(db: Session, user_id: str, kind: str) -> None:
+    row = (
+        db.query(UserSettingsBlob)
+        .filter(UserSettingsBlob.user_id == user_id, UserSettingsBlob.kind == kind)
+        .one_or_none()
+    )
+    if row is not None:
+        db.delete(row)
+        db.commit()
 
 
 async def _forward(
@@ -340,7 +367,9 @@ async def proxy_api(
         )
         if collection_only and request.method == 'GET':
             blob = _get_blob(db, user.id, blob_kind)
-            if blob is not None:
+            if blob is not None and (
+                blob_kind != 'settings' or _is_usable_settings_blob(blob)
+            ):
                 return Response(
                     content=json.dumps(blob),
                     media_type='application/json',
@@ -350,18 +379,33 @@ async def proxy_api(
             if resp.status_code == 200:
                 try:
                     data = json.loads(resp.body)
-                    _put_blob(db, user.id, blob_kind, data)
+                    if blob_kind != 'settings' or _is_usable_settings_blob(data):
+                        _put_blob(db, user.id, blob_kind, data)
                 except Exception:
                     pass
             return resp
         if collection_only and request.method in ('PUT', 'POST', 'PATCH'):
             body = await request.body()
             try:
-                data = json.loads(body.decode('utf-8') or '{}')
+                json.loads(body.decode('utf-8') or '{}')
             except json.JSONDecodeError as exc:
                 raise HTTPException(status_code=400, detail='Invalid JSON') from exc
-            _put_blob(db, user.id, blob_kind, data)
-            return await _forward(request, settings, body=body)
+            # Store the upstream *response* (full document), never the PATCH
+            # request body — otherwise GET /api/settings serves diffs and the
+            # UI thinks base_url / api_key were cleared.
+            resp = await _forward(request, settings, body=body)
+            if 200 <= resp.status_code < 300:
+                if blob_kind == 'settings':
+                    try:
+                        data = json.loads(resp.body)
+                        if _is_usable_settings_blob(data):
+                            _put_blob(db, user.id, blob_kind, data)
+                    except Exception:
+                        pass
+                else:
+                    # Secrets mutations: drop cache so the next GET refreshes.
+                    _delete_blob(db, user.id, blob_kind)
+            return resp
 
     # Conversation ownership + credits
     if user is not None and path.startswith('/api/conversations'):
@@ -527,5 +571,20 @@ async def proxy_api(
                 payload = [x for x in payload if str(x) in allowed]
                 body = json.dumps(payload).encode('utf-8')
             return await _forward(request, settings, body=body)
+
+    # Activate rewrites agent-server settings; invalidate the per-user settings
+    # blob so the next GET does not keep showing the previous model/base_url.
+    if (
+        user is not None
+        and request.method == 'POST'
+        and path.endswith('/activate')
+        and (
+            path.startswith('/api/profiles/') or path.startswith('/api/agent-profiles/')
+        )
+    ):
+        resp = await _forward(request, settings)
+        if 200 <= resp.status_code < 300:
+            _delete_blob(db, user.id, 'settings')
+        return resp
 
     return await _forward(request, settings)
