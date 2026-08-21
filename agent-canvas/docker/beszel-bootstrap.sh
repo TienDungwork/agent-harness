@@ -1,7 +1,8 @@
 #!/bin/sh
 # Bootstrap Beszel hub:
 #   1. Generate hub public key + universal token for the local agent (once).
-#   2. Sync InfraServer rows from local-gateway SQLite → Beszel systems (every run).
+#   2. Enable SMTP (default: local Mailpit) so alert emails can be delivered.
+#   3. Sync InfraServer rows from local-gateway SQLite → Beszel systems (every run).
 #      Match key: hostname (stable, unique per machine).
 set -eu
 
@@ -11,6 +12,15 @@ PASSWORD="${BESZEL_USER_PASSWORD:-admin123}"
 SHARED="${SHARED_DIR:-/beszel_shared}"
 DATA="${BESZEL_DATA_DIR:-/beszel_data}"
 AGENT_PORT="${BESZEL_AGENT_PORT:-45876}"
+# Default SMTP → Mailpit in compose (catch alerts locally). Override via env for real mail.
+SMTP_ENABLED="${BESZEL_SMTP_ENABLED:-true}"
+SMTP_HOST="${BESZEL_SMTP_HOST:-mailpit}"
+SMTP_PORT="${BESZEL_SMTP_PORT:-1025}"
+SMTP_USER="${BESZEL_SMTP_USER:-}"
+SMTP_PASSWORD="${BESZEL_SMTP_PASSWORD:-}"
+SMTP_TLS="${BESZEL_SMTP_TLS:-false}"
+SMTP_SENDER_NAME="${BESZEL_SMTP_SENDER_NAME:-Creanova Alerts}"
+SMTP_SENDER_ADDRESS="${BESZEL_SMTP_SENDER_ADDRESS:-alerts@creanova.local}"
 GW_DB="/canvas_state/agent-canvas/local-gateway.db"
 TOKEN_FILE="$SHARED/token"
 KEY_FILE="$SHARED/id_ed25519.pub"
@@ -69,6 +79,46 @@ PB_TOKEN="$(printf '%s' "$AUTH_JSON" | jq -r '.token')"
 [ -n "$PB_TOKEN" ] && [ "$PB_TOKEN" != "null" ] || { echo "beszel-bootstrap: auth failed" >&2; exit 1; }
 
 TOKEN_VAL="$(cat "$TOKEN_FILE")"
+
+# ── SMTP (PocketBase settings; requires superuser) ────────────────────────────
+# Regular Beszel user login cannot open /_/#/settings/mail. Bootstrap applies
+# SMTP so alert emails work without hand-editing the admin UI.
+if [ "$SMTP_ENABLED" = "true" ] || [ "$SMTP_ENABLED" = "1" ]; then
+  SU_JSON="$(curl -sf -X POST "$HUB_URL/api/collections/_superusers/auth-with-password" \
+    -H "Content-Type: application/json" \
+    -d "{\"identity\":\"$EMAIL\",\"password\":\"$PASSWORD\"}" || true)"
+  SU_TOKEN="$(printf '%s' "$SU_JSON" | jq -r '.token // empty')"
+  if [ -z "$SU_TOKEN" ] || [ "$SU_TOKEN" = "null" ]; then
+    echo "beszel-bootstrap: superuser auth failed; skipping SMTP configure" >&2
+  else
+    SETTINGS_JSON="$(curl -sf "$HUB_URL/api/settings" -H "Authorization: $SU_TOKEN")"
+    PATCHED="$(printf '%s' "$SETTINGS_JSON" | jq \
+      --arg host "$SMTP_HOST" \
+      --argjson port "$SMTP_PORT" \
+      --arg user "$SMTP_USER" \
+      --arg pass "$SMTP_PASSWORD" \
+      --argjson tls "$SMTP_TLS" \
+      --arg sname "$SMTP_SENDER_NAME" \
+      --arg saddr "$SMTP_SENDER_ADDRESS" \
+      '.smtp.enabled = true
+       | .smtp.host = $host
+       | .smtp.port = $port
+       | .smtp.username = $user
+       | .smtp.password = $pass
+       | .smtp.tls = $tls
+       | .meta.hideControls = false
+       | .meta.senderName = $sname
+       | .meta.senderAddress = $saddr')"
+    if curl -sf -X PATCH "$HUB_URL/api/settings" \
+      -H "Authorization: $SU_TOKEN" \
+      -H "Content-Type: application/json" \
+      -d "$PATCHED" >/dev/null; then
+      echo "beszel-bootstrap: SMTP enabled → $SMTP_HOST:$SMTP_PORT (from $SMTP_SENDER_ADDRESS)"
+    else
+      echo "beszel-bootstrap: SMTP settings patch failed" >&2
+    fi
+  fi
+fi
 
 # ── Sync InfraServer → Beszel systems ────────────────────────────────────────
 if [ ! -f "$GW_DB" ]; then

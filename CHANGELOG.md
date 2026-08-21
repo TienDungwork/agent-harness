@@ -2,6 +2,12 @@
 
 All notable changes to this workspace are listed here.
 
+## [beta v0.5.40] - 2026-08-21
+
+### Added
+
+- Beszel alert SMTP via Mailpit by default (`mailpit` service, UI `:18025`); `beszel-bootstrap` enables PocketBase SMTP + unhides admin controls so alert emails work without manual `/_/#/settings/mail`
+
 ## [beta v0.5.39] - 2026-08-21
 
 ### Added

@@ -124,6 +124,19 @@ services:
     stdin_open: true
     tty: true
 
+  # Local SMTP catcher for Beszel alert emails (UI: http://127.0.0.1:18025).
+  # Override BESZEL_SMTP_* to point at a real provider (Gmail, SMTP2GO, …).
+  mailpit:
+    image: axllent/mailpit:v1.21
+    container_name: creanova-mailpit
+    restart: unless-stopped
+    ports:
+      - "0.0.0.0:${MAILPIT_UI_PORT:-18025}:8025"
+    expose:
+      - "1025"
+    networks:
+      - default
+
   beszel:
     image: creanova/beszel:gpu-containers
     pull_policy: never
@@ -140,6 +153,8 @@ services:
       - beszel_data:/beszel_data
     networks:
       - default
+    depends_on:
+      - mailpit
     healthcheck:
       test: ["CMD", "/beszel", "health", "--url", "http://localhost:8090"]
       interval: 10s
@@ -170,11 +185,21 @@ services:
     depends_on:
       beszel:
         condition: service_healthy
+      mailpit:
+        condition: service_started
     environment:
       HUB_URL: http://beszel:8090
       BESZEL_USER_EMAIL: ${BESZEL_USER_EMAIL:-admin@creanova.local}
       BESZEL_USER_PASSWORD: ${BESZEL_USER_PASSWORD:-admin123}
       BESZEL_AGENT_PORT: "45876"
+      BESZEL_SMTP_ENABLED: ${BESZEL_SMTP_ENABLED:-true}
+      BESZEL_SMTP_HOST: ${BESZEL_SMTP_HOST:-mailpit}
+      BESZEL_SMTP_PORT: ${BESZEL_SMTP_PORT:-1025}
+      BESZEL_SMTP_USER: ${BESZEL_SMTP_USER:-}
+      BESZEL_SMTP_PASSWORD: ${BESZEL_SMTP_PASSWORD:-}
+      BESZEL_SMTP_TLS: ${BESZEL_SMTP_TLS:-false}
+      BESZEL_SMTP_SENDER_NAME: ${BESZEL_SMTP_SENDER_NAME:-Creanova Alerts}
+      BESZEL_SMTP_SENDER_ADDRESS: ${BESZEL_SMTP_SENDER_ADDRESS:-alerts@creanova.local}
     volumes:
       - beszel_data:/beszel_data:ro
       - beszel_shared:/beszel_shared
