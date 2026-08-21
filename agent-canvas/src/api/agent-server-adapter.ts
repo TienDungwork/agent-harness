@@ -36,6 +36,7 @@ import {
   type ClientToolSpec,
 } from "./canvas-ui-client-tool";
 import { API_DEFAULT_AGENT_KIND, toApiAgentKind } from "./agent-kind";
+import { normalizeLlmModelForLiteLLM } from "#/utils/llm-model-wire";
 
 export interface DirectConversationInfo {
   id: string;
@@ -782,7 +783,10 @@ function buildConfiguredCreanovaAgentSettings(
 
   llm.model =
     typeof llm.model === "string" && llm.model.trim().length > 0
-      ? llm.model
+      ? normalizeLlmModelForLiteLLM(
+          llm.model,
+          typeof llm.base_url === "string" ? llm.base_url : null,
+        )
       : DEFAULT_SETTINGS.llm_model;
 
   // Stream assistant tokens (parity with ACP agents). The agent-server only

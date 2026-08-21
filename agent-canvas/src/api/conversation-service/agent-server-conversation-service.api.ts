@@ -14,6 +14,10 @@ import { AgentKind, Provider } from "#/types/settings";
 import type { ConversationRuntimeContext } from "#/api/conversation-file-upload.api";
 import { buildHttpBaseUrl } from "#/utils/websocket-url";
 import {
+  assertLlmProfileCompatibleWithLiteLLM,
+  normalizeLlmModelForLiteLLM,
+} from "#/utils/llm-model-wire";
+import {
   buildConversationWorkingDir,
   getAgentServerWorkingDir,
 } from "../agent-server-config";
@@ -814,9 +818,15 @@ class AgentServerConversationService {
       profileName,
       { exposeSecrets: "encrypted" },
     );
-    const model =
+    const rawModel =
       typeof profile.config.model === "string" ? profile.config.model : "";
-    if (!model) throw new Error(`Profile '${profileName}' has no model.`);
+    if (!rawModel) throw new Error(`Profile '${profileName}' has no model.`);
+    const baseUrl =
+      typeof profile.config.base_url === "string"
+        ? profile.config.base_url
+        : null;
+    assertLlmProfileCompatibleWithLiteLLM(rawModel, baseUrl);
+    const model = normalizeLlmModelForLiteLLM(rawModel, baseUrl);
     await assertSubscriptionAuthReady({ llm: profile.config });
     await conversationClient.switchLLM(conversationId, {
       ...profile.config,

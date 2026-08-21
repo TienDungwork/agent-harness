@@ -7,6 +7,7 @@ import { useLlmProfiles } from "#/hooks/query/use-llm-profiles";
 import { useSwitchLlmProfileAndLog } from "#/hooks/mutation/use-switch-llm-profile-and-log";
 import { SWITCH_LLM_PROFILE_MUTATION_KEY } from "#/hooks/mutation/use-switch-llm-profile";
 import { useModelStore } from "#/stores/model-store";
+import { llmModelsMatch } from "#/utils/llm-model-wire";
 
 export interface ChatInputLlmProfileState {
   profiles: ProfileInfo[];
@@ -65,7 +66,8 @@ export function useChatInputLlmProfileState(): ChatInputLlmProfileState {
     optimisticActiveProfile ??
     conversationProfile ??
     (conversationModel
-      ? (profiles.find((p) => p.model === conversationModel)?.name ?? null)
+      ? (profiles.find((p) => llmModelsMatch(p.model, conversationModel))
+          ?.name ?? null)
       : (data?.active_profile ?? null));
   const currentProfileModel =
     profiles.find((p) => p.name === currentProfileName)?.model ??

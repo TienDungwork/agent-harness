@@ -32,6 +32,10 @@ import type {
 import { getAgentServerClientOptions } from "../agent-server-client-options";
 import { getActiveBackend } from "../backend-registry/active-store";
 import {
+  assertLlmProfileCompatibleWithLiteLLM,
+  normalizeLlmModelForLiteLLM,
+} from "#/utils/llm-model-wire";
+import {
   activateCloudProfile,
   deleteCloudProfile,
   fetchCloudProfile,
@@ -79,10 +83,21 @@ class ProfilesService {
     name: string,
     request: SaveProfileRequest,
   ): Promise<ProfileMutationResponse> {
-    if (isCloudBackend()) return saveCloudProfile(name, request);
+    const llm = { ...(request.llm as Record<string, unknown>) };
+    const rawModel = typeof llm.model === "string" ? llm.model : "";
+    const baseUrl = typeof llm.base_url === "string" ? llm.base_url : null;
+    if (rawModel) {
+      assertLlmProfileCompatibleWithLiteLLM(rawModel, baseUrl);
+      llm.model = normalizeLlmModelForLiteLLM(rawModel, baseUrl);
+    }
+    const normalizedRequest: SaveProfileRequest = {
+      ...request,
+      llm: llm as SaveProfileRequest["llm"],
+    };
+    if (isCloudBackend()) return saveCloudProfile(name, normalizedRequest);
     return new ProfilesClient(getAgentServerClientOptions()).saveProfile(
       name,
-      request,
+      normalizedRequest,
     );
   }
 
