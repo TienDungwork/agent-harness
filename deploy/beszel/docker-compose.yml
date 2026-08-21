@@ -29,12 +29,19 @@ services:
 
   beszel-agent:
     profiles: ["agent"]
-    image: henrygd/beszel-agent:latest
+    # :alpine includes smartmontools (scratch image cannot do S.M.A.R.T.).
+    # Docs: https://beszel.dev/guide/smart-data
+    image: henrygd/beszel-agent:alpine
     container_name: creanova-beszel-agent
     restart: unless-stopped
     network_mode: host
     depends_on:
       - beszel
+    devices:
+      - /dev/nvme0:/dev/nvme0
+    cap_add:
+      - SYS_RAWIO
+      - SYS_ADMIN
     volumes:
       - beszel_agent_data:/var/lib/beszel-agent
       - beszel_socket:/beszel_socket

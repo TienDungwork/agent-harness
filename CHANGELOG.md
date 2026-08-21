@@ -2,6 +2,12 @@
 
 All notable changes to this workspace are listed here.
 
+## [beta v0.5.37] - 2026-08-21
+
+### Changed
+
+- Beszel S.M.A.R.T. (approach A): Canvas agent uses `beszel-agent-nvidia` with `/dev/nvme0` + `SYS_RAWIO`/`SYS_ADMIN`; Infra deploy installs `smartmontools`, setcap/udev for binary agents, and `:alpine` + device caps for Docker agents
+
 ## [beta v0.5.36] - 2026-08-20
 
 ### Fixed

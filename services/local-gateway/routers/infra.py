@@ -810,7 +810,74 @@ if command -v nvidia-smi >/dev/null 2>&1; then
     HAS_NVIDIA=1
 fi
 
-# NVIDIA: official Docker agent image cannot use NVML/nvidia-smi (no glibc).
+_run_root() {
+    if [ "$(id -u)" = "0" ]; then
+        "$@"
+    elif command -v sudo >/dev/null 2>&1 && sudo -n true 2>/dev/null; then
+        sudo "$@"
+    else
+        return 1
+    fi
+}
+
+# S.M.A.R.T. (Beszel-native): smartctl + caps / device access.
+# Docs: https://beszel.dev/guide/smart-data
+ensure_smartctl() {
+    if command -v smartctl >/dev/null 2>&1; then
+        return 0
+    fi
+    if _run_root sh -c 'command -v apt-get >/dev/null && DEBIAN_FRONTEND=noninteractive apt-get install -y smartmontools'; then
+        :
+    elif _run_root sh -c 'command -v dnf >/dev/null && dnf install -y smartmontools'; then
+        :
+    elif _run_root sh -c 'command -v pacman >/dev/null && pacman -Sy --noconfirm smartmontools'; then
+        :
+    else
+        echo "beszel-agent: smartctl missing — install smartmontools for S.M.A.R.T." >&2
+        return 1
+    fi
+    command -v smartctl >/dev/null 2>&1
+}
+
+# Non-root agents need RAWIO/SYS_ADMIN on smartctl and group access to NVMe char nodes.
+ensure_smart_permissions() {
+    ensure_smartctl || return 0
+    SMARTCTL_BIN="$(command -v smartctl)"
+    if [ "$(id -u)" != "0" ]; then
+        _run_root setcap cap_sys_rawio,cap_sys_admin+ep "$SMARTCTL_BIN" 2>/dev/null || \
+            echo "beszel-agent: could not setcap smartctl (S.M.A.R.T. may need root)" >&2
+        if getent group disk >/dev/null 2>&1; then
+            _run_root usermod -aG disk "$(id -un)" 2>/dev/null || true
+        fi
+        # Many distros ship /dev/nvmeN as 600 root:root; Beszel docs recommend disk:0660.
+        if [ ! -f /etc/udev/rules.d/99-beszel-smart.rules ]; then
+            _run_root tee /etc/udev/rules.d/99-beszel-smart.rules >/dev/null <<'UDEV' || true
+KERNEL=="nvme[0-9]*", GROUP="disk", MODE="0660"
+UDEV
+            _run_root udevadm control --reload-rules 2>/dev/null || true
+            _run_root udevadm trigger 2>/dev/null || true
+        fi
+    fi
+}
+
+# Disk controller nodes for Docker --device (not partitions).
+smart_device_args() {
+    for d in /dev/nvme[0-9] /dev/sd[a-z]; do
+        if [ -e "$d" ]; then
+            printf ' --device=%s:%s' "$d" "$d"
+        fi
+    done
+}
+
+systemd_device_allow_lines() {
+    for d in /dev/nvme[0-9] /dev/sd[a-z]; do
+        if [ -e "$d" ]; then
+            printf 'DeviceAllow=%s r\n' "$d"
+        fi
+    done
+}
+
+# NVIDIA: official Docker scratch agent cannot use NVML/nvidia-smi (no glibc).
 # Prefer host binary + systemd so nvidia-smi on the host works.
 install_binary() {
     ARCH="$(uname -m)"
@@ -851,6 +918,8 @@ install_binary() {
         SYSTEMCTL=""
     fi
 
+    ensure_smart_permissions || true
+
     if [ "$HAS_DOCKER" = "1" ]; then
         docker rm -f "$NAME" 2>/dev/null || true
     fi
@@ -860,6 +929,7 @@ install_binary() {
 
     if [ -n "$UNIT_DIR" ] && [ -d "$UNIT_DIR" ]; then
         UNIT_FILE="$UNIT_DIR/${NAME}.service"
+        DEVICE_ALLOW="$(systemd_device_allow_lines)"
         UNIT_BODY=$(cat <<EOF2
 [Unit]
 Description=Beszel Agent ($NAME)
@@ -872,7 +942,9 @@ Environment=TOKEN=$TOKEN
 Environment=KEY=$KEY
 Environment=LISTEN=$PORT
 Environment=HUB_URL=$HUB
-
+AmbientCapabilities=CAP_SYS_RAWIO CAP_SYS_ADMIN
+CapabilityBoundingSet=CAP_SYS_RAWIO CAP_SYS_ADMIN
+$DEVICE_ALLOW
 [Install]
 WantedBy=multi-user.target
 EOF2
@@ -909,17 +981,24 @@ fi
 
 if [ "$HAS_DOCKER" = "1" ]; then
     docker rm -f "$NAME" 2>/dev/null || true
+    # :alpine includes smartmontools; scratch image cannot do S.M.A.R.T.
+    IMAGE=henrygd/beszel-agent:alpine
+    DEVICE_ARGS="$(smart_device_args)"
+    # shellcheck disable=SC2086
     docker run -d \
         --name "$NAME" \
         --network host \
         --restart unless-stopped \
+        --cap-add SYS_RAWIO \
+        --cap-add SYS_ADMIN \
+        $DEVICE_ARGS \
         -v /var/run/docker.sock:/var/run/docker.sock:ro \
         -e TOKEN="$TOKEN" \
         -e KEY="$KEY" \
         -e LISTEN="$PORT" \
         -e HUB_URL="$HUB" \
-        henrygd/beszel-agent:latest
-    echo "beszel-agent: $NAME listening $PORT hub $HUB (docker)"
+        "$IMAGE"
+    echo "beszel-agent: $NAME listening $PORT hub $HUB (docker $IMAGE)"
     exit 0
 fi
 
