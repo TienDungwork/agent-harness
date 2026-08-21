@@ -56,11 +56,13 @@ class Settings(BaseSettings):
     beszel_user_email: str = 'admin@creanova.local'
     beszel_user_password: str = 'admin123'
 
-    # CORS / frontend origins
+    # CORS / frontend origins (include Beszel UI for pin buttons)
     cors_origins: str = (
         'http://127.0.0.1:18010,http://localhost:18010,'
         'http://127.0.0.1:3001,http://localhost:3001,'
-        'http://192.168.1.191:18010'
+        'http://192.168.1.191:18010,'
+        'http://127.0.0.1:18090,http://localhost:18090,'
+        'http://192.168.1.191:18090'
     )
 
     @property

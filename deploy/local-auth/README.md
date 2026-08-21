@@ -34,7 +34,8 @@ docker compose -f deploy/local-auth/docker-compose.yml up -d
 
 - Keycloak admin: http://127.0.0.1:18180 — `admin` / `admin`
 - Realm: `creanova`
-- Client: `creanova-local` / `creanova-local-secret`
+- Client: `creanova-local` / `creanova-local-secret` (Agents / local-gateway)
+- Client: `beszel` / `beszel-local-secret` — OIDC for monitor UI (`:18090/api/oauth2-redirect`)
 - Network: `creanova_local_auth_net` → `10.240.122.0/24`
 
 ### Docker network rule (tóm tắt)

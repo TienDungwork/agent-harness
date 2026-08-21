@@ -146,6 +146,10 @@ services:
       APP_URL: ${BESZEL_APP_URL:-http://127.0.0.1:18090}
       USER_EMAIL: ${BESZEL_USER_EMAIL:-admin@creanova.local}
       USER_PASSWORD: ${BESZEL_USER_PASSWORD:-admin123}
+      # Allow Keycloak OIDC users to self-register on first login (email must match gateway).
+      USER_CREATION: ${BESZEL_USER_CREATION:-true}
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     # Port published via beszel-ui (injects All Systems home control).
     expose:
       - "8090"
@@ -200,6 +204,11 @@ services:
       BESZEL_SMTP_TLS: ${BESZEL_SMTP_TLS:-false}
       BESZEL_SMTP_SENDER_NAME: ${BESZEL_SMTP_SENDER_NAME:-Creanova Alerts}
       BESZEL_SMTP_SENDER_ADDRESS: ${BESZEL_SMTP_SENDER_ADDRESS:-alerts@creanova.local}
+      BESZEL_OIDC_ENABLED: ${BESZEL_OIDC_ENABLED:-true}
+      KEYCLOAK_PUBLIC_URL: ${KEYCLOAK_PUBLIC_URL:-http://192.168.1.191:18180}
+      KEYCLOAK_REALM: ${KEYCLOAK_REALM:-creanova}
+      BESZEL_OIDC_CLIENT_ID: ${BESZEL_OIDC_CLIENT_ID:-beszel}
+      BESZEL_OIDC_CLIENT_SECRET: ${BESZEL_OIDC_CLIENT_SECRET:-beszel-local-secret}
     volumes:
       - beszel_data:/beszel_data:ro
       - beszel_shared:/beszel_shared

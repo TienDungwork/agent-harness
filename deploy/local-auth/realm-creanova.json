@@ -75,6 +75,58 @@
         "access.token.lifespan": "3600"
       },
       "protocol": "openid-connect"
+    },
+    {
+      "clientId": "beszel",
+      "name": "Creanova Beszel Monitor",
+      "enabled": true,
+      "publicClient": false,
+      "secret": "beszel-local-secret",
+      "directAccessGrantsEnabled": false,
+      "standardFlowEnabled": true,
+      "implicitFlowEnabled": false,
+      "serviceAccountsEnabled": false,
+      "redirectUris": [
+        "http://127.0.0.1:18090/api/oauth2-redirect",
+        "http://localhost:18090/api/oauth2-redirect",
+        "http://192.168.1.191:18090/api/oauth2-redirect"
+      ],
+      "webOrigins": ["+"],
+      "attributes": {
+        "access.token.lifespan": "3600",
+        "pkce.code.challenge.method": "S256"
+      },
+      "protocol": "openid-connect",
+      "protocolMappers": [
+        {
+          "name": "email",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-usermodel-property-mapper",
+          "consentRequired": false,
+          "config": {
+            "userinfo.token.claim": "true",
+            "user.attribute": "email",
+            "id.token.claim": "true",
+            "access.token.claim": "true",
+            "claim.name": "email",
+            "jsonType.label": "String"
+          }
+        },
+        {
+          "name": "email verified",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-usermodel-property-mapper",
+          "consentRequired": false,
+          "config": {
+            "userinfo.token.claim": "true",
+            "user.attribute": "emailVerified",
+            "id.token.claim": "true",
+            "access.token.claim": "true",
+            "claim.name": "email_verified",
+            "jsonType.label": "boolean"
+          }
+        }
+      ]
     }
   ]
 }

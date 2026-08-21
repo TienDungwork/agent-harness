@@ -415,6 +415,46 @@ class InfraAuditLog(Base):
     )
 
 
+class InfraPinnedContainer(Base):
+    """User-scoped container focus list (pinned from Beszel UI for agents)."""
+
+    __tablename__ = 'infra_pinned_containers'
+    __table_args__ = (
+        UniqueConstraint(
+            'user_id',
+            'host',
+            'container_name',
+            name='infra_pinned_containers_uniq',
+        ),
+        Index('infra_pinned_containers_user_idx', 'user_id'),
+        Index('infra_pinned_containers_host_idx', 'host'),
+    )
+
+    id: Mapped[str] = mapped_column(
+        CompatibleUUID(), primary_key=True, default=lambda: str(uuid4())
+    )
+    user_id: Mapped[str] = mapped_column(
+        String(64), ForeignKey('users.id', ondelete='CASCADE'), index=True
+    )
+    host: Mapped[str] = mapped_column(String(255))
+    container_name: Mapped[str] = mapped_column(String(255))
+    container_id: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    image: Mapped[str | None] = mapped_column(String(512), nullable=True)
+    tags: Mapped[list] = mapped_column(CompatibleStringArray(), default=list)
+    note: Mapped[str | None] = mapped_column(Text, nullable=True)
+    server_id: Mapped[str | None] = mapped_column(
+        CompatibleUUID(),
+        ForeignKey('infra_servers.id', ondelete='SET NULL'),
+        nullable=True,
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=_utcnow
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=_utcnow, onupdate=_utcnow
+    )
+
+
 _engine = None
 SessionLocal = None
 

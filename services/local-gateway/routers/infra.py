@@ -5,10 +5,11 @@ from datetime import datetime, timedelta, timezone
 from typing import Any
 from uuid import uuid4
 
+from auth.beszel_bridge import resolve_auth_user_from_beszel
 from auth.deps import require_admin, require_session
 from auth.session import SessionManager
 from config import Settings, get_settings
-from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request
+from fastapi import APIRouter, BackgroundTasks, Depends, Header, HTTPException, Request
 from infra.access import user_has_server_access
 from infra.audit import write_audit
 from infra.beszel import clear_system_fingerprint as clear_beszel_fingerprint
@@ -17,6 +18,7 @@ from infra.commands import CommandDenied, render_command
 from infra.crypto import CryptoError, decrypt_text, encrypt_text
 from infra.destructive import destructive_reason, looks_destructive
 from infra.gpu import is_nvidia_smi_missing, parse_nvidia_smi_csv
+from infra.pins import rank_pins
 from infra.resolve import rank_servers
 from infra.services import parse_systemctl_list_units
 from infra.ssh_client import SSHError, run_ssh
@@ -24,6 +26,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 from storage.models import (
     InfraGpuMetric,
+    InfraPinnedContainer,
     InfraServer,
     InfraServerAccessGrant,
     InfraServerCredential,
@@ -86,6 +89,16 @@ class ServiceAction(BaseModel):
     action: str  # restart | stop
 
 
+class PinCreate(BaseModel):
+    host: str = Field(min_length=1, max_length=255)
+    container_name: str = Field(min_length=1, max_length=255)
+    container_id: str | None = Field(default=None, max_length=128)
+    image: str | None = Field(default=None, max_length=512)
+    tags: list[str] = Field(default_factory=list)
+    note: str | None = Field(default=None, max_length=2000)
+    server_id: str | None = None
+
+
 def _current_user(
     request_user: AuthUser,
     db: Session,
@@ -116,19 +129,33 @@ def _auth_user_from_infra_token(
     return to_auth_user(admin)
 
 
-def get_auth_user(
+async def get_auth_user(
     request: Request,
     settings: Settings = Depends(get_settings),
     db: Session = Depends(get_db),
+    authorization: str | None = Header(default=None),
+    x_beszel_token: str | None = Header(default=None, alias='X-Beszel-Token'),
 ) -> AuthUser:
     via_token = _auth_user_from_infra_token(request, settings, db)
     if via_token is not None:
         return via_token
-    session = require_session(request, settings, SessionManager(settings))
-    row = db.query(User).filter(User.id == session.user_id).one_or_none()
-    if row is None or not row.is_active:
-        raise HTTPException(status_code=401, detail='User not found or disabled')
-    return to_auth_user(row)
+    # Prefer cookie session when present (Creanova Agents).
+    raw_cookie = request.cookies.get(settings.session_cookie_name)
+    if raw_cookie:
+        session = require_session(request, settings, SessionManager(settings))
+        row = db.query(User).filter(User.id == session.user_id).one_or_none()
+        if row is None or not row.is_active:
+            raise HTTPException(status_code=401, detail='User not found or disabled')
+        return to_auth_user(row)
+    via_beszel = await resolve_auth_user_from_beszel(
+        authorization=authorization,
+        beszel_header=x_beszel_token,
+        settings=settings,
+        db=db,
+    )
+    if via_beszel is not None:
+        return via_beszel
+    raise HTTPException(status_code=401, detail='Not authenticated')
 
 
 def _server_public(server: InfraServer) -> dict[str, Any]:
@@ -253,6 +280,190 @@ async def resolve_servers(
             for c in ranked
         ],
     }
+
+
+def _pin_public(row: InfraPinnedContainer) -> dict[str, Any]:
+    return {
+        'id': str(row.id),
+        'user_id': row.user_id,
+        'host': row.host,
+        'container_name': row.container_name,
+        'container_id': row.container_id,
+        'image': row.image,
+        'tags': list(row.tags or []),
+        'note': row.note,
+        'server_id': str(row.server_id) if row.server_id else None,
+        'updated_at': row.updated_at.isoformat() if row.updated_at else None,
+    }
+
+
+def _pins_for_actor(
+    user: AuthUser,
+    db: Session,
+    *,
+    user_id: str | None = None,
+    user_email: str | None = None,
+) -> list[InfraPinnedContainer]:
+    """Scope pins to the actor; infra-token admin may filter or list all."""
+    q = db.query(InfraPinnedContainer)
+    if user.is_admin and (user_id or user_email):
+        if user_id:
+            q = q.filter(InfraPinnedContainer.user_id == user_id)
+        else:
+            email = (user_email or '').strip().lower()
+            owner = (
+                db.query(User)
+                .filter(User.email.isnot(None), User.is_active.is_(True))
+                .all()
+            )
+            match = next(
+                (u for u in owner if (u.email or '').strip().lower() == email),
+                None,
+            )
+            if match is None:
+                return []
+            q = q.filter(InfraPinnedContainer.user_id == match.id)
+    elif not user.is_admin:
+        q = q.filter(InfraPinnedContainer.user_id == user.id)
+    return q.order_by(InfraPinnedContainer.updated_at.desc()).all()
+
+
+@router.get('/api/infra/pinned-containers')
+async def list_pinned_containers(
+    user_id: str | None = None,
+    user_email: str | None = None,
+    user: AuthUser = Depends(get_auth_user),
+    db: Session = Depends(get_db),
+) -> dict[str, Any]:
+    rows = _pins_for_actor(user, db, user_id=user_id, user_email=user_email)
+    return {'count': len(rows), 'items': [_pin_public(r) for r in rows]}
+
+
+@router.get('/api/infra/pinned-containers/search')
+async def search_pinned_containers(
+    q: str,
+    limit: int = 20,
+    user_id: str | None = None,
+    user_email: str | None = None,
+    user: AuthUser = Depends(get_auth_user),
+    db: Session = Depends(get_db),
+) -> dict[str, Any]:
+    """Search pinned containers (exact-first) for agent focus."""
+    query = (q or '').strip()
+    if not query:
+        raise HTTPException(status_code=400, detail='q is required')
+    rows = _pins_for_actor(user, db, user_id=user_id, user_email=user_email)
+    ranked = rank_pins(query, rows, limit=limit)
+    return {
+        'query': query,
+        'count': len(ranked),
+        'items': [
+            {
+                'id': c.pin_id,
+                'user_id': c.user_id,
+                'host': c.host,
+                'container_name': c.container_name,
+                'container_id': c.container_id,
+                'image': c.image,
+                'tags': list(c.tags),
+                'note': c.note,
+                'server_id': c.server_id,
+                'score': c.score,
+                'match': c.match,
+            }
+            for c in ranked
+        ],
+    }
+
+
+@router.post('/api/infra/pinned-containers')
+async def upsert_pinned_container(
+    body: PinCreate,
+    user: AuthUser = Depends(get_auth_user),
+    db: Session = Depends(get_db),
+) -> dict[str, Any]:
+    host = body.host.strip()
+    name = body.container_name.strip()
+    if not host or not name:
+        raise HTTPException(status_code=400, detail='host and container_name required')
+    if body.server_id:
+        server = (
+            db.query(InfraServer).filter(InfraServer.id == body.server_id).one_or_none()
+        )
+        if server is None:
+            raise HTTPException(status_code=400, detail='server_id not found')
+
+    existing = (
+        db.query(InfraPinnedContainer)
+        .filter(
+            InfraPinnedContainer.user_id == user.id,
+            InfraPinnedContainer.host == host,
+            InfraPinnedContainer.container_name == name,
+        )
+        .one_or_none()
+    )
+    tags = [t.strip() for t in (body.tags or []) if t and t.strip()]
+    if existing is None:
+        row = InfraPinnedContainer(
+            id=str(uuid4()),
+            user_id=user.id,
+            host=host,
+            container_name=name,
+            container_id=(body.container_id or '').strip() or None,
+            image=(body.image or '').strip() or None,
+            tags=tags,
+            note=(body.note or '').strip() or None,
+            server_id=body.server_id,
+        )
+        db.add(row)
+    else:
+        row = existing
+        row.container_id = (body.container_id or '').strip() or row.container_id
+        row.image = (body.image or '').strip() or row.image
+        if body.tags is not None:
+            row.tags = tags
+        if body.note is not None:
+            row.note = (body.note or '').strip() or None
+        if body.server_id is not None:
+            row.server_id = body.server_id
+    db.commit()
+    db.refresh(row)
+    write_audit(
+        db,
+        actor_user_id=user.id,
+        action='pin.upsert',
+        success=True,
+        server_id=body.server_id,
+        error_excerpt=f'{host}/{name}',
+    )
+    return _pin_public(row)
+
+
+@router.delete('/api/infra/pinned-containers/{pin_id}')
+async def delete_pinned_container(
+    pin_id: str,
+    user: AuthUser = Depends(get_auth_user),
+    db: Session = Depends(get_db),
+) -> dict[str, str]:
+    row = (
+        db.query(InfraPinnedContainer)
+        .filter(InfraPinnedContainer.id == pin_id)
+        .one_or_none()
+    )
+    if row is None:
+        raise HTTPException(status_code=404, detail='Pin not found')
+    if row.user_id != user.id and not user.is_admin:
+        raise HTTPException(status_code=403, detail='Forbidden')
+    db.delete(row)
+    db.commit()
+    write_audit(
+        db,
+        actor_user_id=user.id,
+        action='pin.delete',
+        success=True,
+        error_excerpt=pin_id,
+    )
+    return {'status': 'ok'}
 
 
 @router.post('/api/infra/servers/{server_id}/run')

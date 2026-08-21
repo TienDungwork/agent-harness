@@ -2,6 +2,15 @@
 
 All notable changes to this workspace are listed here.
 
+## [beta v0.5.41] - 2026-08-21
+
+### Added
+
+- Beszel ↔ Keycloak OIDC (client `beszel`); bootstrap configures PocketBase OAuth via `_superusers`
+- Per-user pinned containers: Beszel UI Pin buttons → `infra_pinned_containers` on local-gateway
+- Agent search: `GET /api/infra/pinned-containers/search` + MCP `infra_search_pinned_containers`
+- Pin auth via Beszel JWT (`X-Beszel-Token`) mapped to Creanova user by email
+
 ## [beta v0.5.40] - 2026-08-21
 
 ### Added

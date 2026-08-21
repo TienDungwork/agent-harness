@@ -80,17 +80,16 @@ PB_TOKEN="$(printf '%s' "$AUTH_JSON" | jq -r '.token')"
 
 TOKEN_VAL="$(cat "$TOKEN_FILE")"
 
-# ── SMTP (PocketBase settings; requires superuser) ────────────────────────────
-# Regular Beszel user login cannot open /_/#/settings/mail. Bootstrap applies
-# SMTP so alert emails work without hand-editing the admin UI.
-if [ "$SMTP_ENABLED" = "true" ] || [ "$SMTP_ENABLED" = "1" ]; then
-  SU_JSON="$(curl -sf -X POST "$HUB_URL/api/collections/_superusers/auth-with-password" \
-    -H "Content-Type: application/json" \
-    -d "{\"identity\":\"$EMAIL\",\"password\":\"$PASSWORD\"}" || true)"
-  SU_TOKEN="$(printf '%s' "$SU_JSON" | jq -r '.token // empty')"
-  if [ -z "$SU_TOKEN" ] || [ "$SU_TOKEN" = "null" ]; then
-    echo "beszel-bootstrap: superuser auth failed; skipping SMTP configure" >&2
-  else
+# ── Superuser tasks (SMTP + optional Keycloak OIDC) ───────────────────────────
+# Regular Beszel user cannot open /_/#/settings. Same superuser as SMTP.
+SU_JSON="$(curl -sf -X POST "$HUB_URL/api/collections/_superusers/auth-with-password" \
+  -H "Content-Type: application/json" \
+  -d "{\"identity\":\"$EMAIL\",\"password\":\"$PASSWORD\"}" || true)"
+SU_TOKEN="$(printf '%s' "$SU_JSON" | jq -r '.token // empty')"
+if [ -z "$SU_TOKEN" ] || [ "$SU_TOKEN" = "null" ]; then
+  echo "beszel-bootstrap: superuser auth failed; skipping SMTP/OIDC configure" >&2
+else
+  if [ "$SMTP_ENABLED" = "true" ] || [ "$SMTP_ENABLED" = "1" ]; then
     SETTINGS_JSON="$(curl -sf "$HUB_URL/api/settings" -H "Authorization: $SU_TOKEN")"
     PATCHED="$(printf '%s' "$SETTINGS_JSON" | jq \
       --arg host "$SMTP_HOST" \
@@ -116,6 +115,49 @@ if [ "$SMTP_ENABLED" = "true" ] || [ "$SMTP_ENABLED" = "1" ]; then
       echo "beszel-bootstrap: SMTP enabled → $SMTP_HOST:$SMTP_PORT (from $SMTP_SENDER_ADDRESS)"
     else
       echo "beszel-bootstrap: SMTP settings patch failed" >&2
+    fi
+  fi
+
+  # Keycloak OIDC on users collection (shared Creanova accounts).
+  # Keep password auth for bootstrap service user; USER_CREATION enables OIDC signup.
+  OIDC_ENABLED="${BESZEL_OIDC_ENABLED:-false}"
+  if [ "$OIDC_ENABLED" = "true" ] || [ "$OIDC_ENABLED" = "1" ]; then
+    KC_BASE="${KEYCLOAK_PUBLIC_URL:-http://192.168.1.191:18180}"
+    KC_REALM="${KEYCLOAK_REALM:-creanova}"
+    OIDC_CLIENT_ID="${BESZEL_OIDC_CLIENT_ID:-beszel}"
+    OIDC_CLIENT_SECRET="${BESZEL_OIDC_CLIENT_SECRET:-beszel-local-secret}"
+    AUTH_URL="${KC_BASE%/}/realms/${KC_REALM}/protocol/openid-connect/auth"
+    TOKEN_URL="${KC_BASE%/}/realms/${KC_REALM}/protocol/openid-connect/token"
+    USERINFO_URL="${KC_BASE%/}/realms/${KC_REALM}/protocol/openid-connect/userinfo"
+    USERS_JSON="$(curl -sf "$HUB_URL/api/collections/users" -H "Authorization: $SU_TOKEN")"
+    OIDC_PATCH="$(printf '%s' "$USERS_JSON" | jq \
+      --arg cid "$OIDC_CLIENT_ID" \
+      --arg csec "$OIDC_CLIENT_SECRET" \
+      --arg aurl "$AUTH_URL" \
+      --arg turl "$TOKEN_URL" \
+      --arg uurl "$USERINFO_URL" \
+      '.oauth2.enabled = true
+       | .oauth2.providers = (
+           ((.oauth2.providers // []) | map(select(.name != "oidc")))
+           + [{
+               name: "oidc",
+               displayName: "Creanova Keycloak",
+               clientId: $cid,
+               clientSecret: $csec,
+               authURL: $aurl,
+               tokenURL: $turl,
+               userInfoURL: $uurl,
+               pkce: true
+             }]
+         )
+       | .meta.hideControls = false')"
+    if curl -sf -X PATCH "$HUB_URL/api/collections/users" \
+      -H "Authorization: $SU_TOKEN" \
+      -H "Content-Type: application/json" \
+      -d "$OIDC_PATCH" >/dev/null; then
+      echo "beszel-bootstrap: OIDC enabled → $OIDC_CLIENT_ID @ $KC_BASE (realm $KC_REALM)"
+    else
+      echo "beszel-bootstrap: OIDC collection patch failed" >&2
     fi
   fi
 fi

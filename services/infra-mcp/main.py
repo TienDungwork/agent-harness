@@ -85,16 +85,25 @@ TOOLS = [
         },
     },
     {
-        'name': 'infra_service_action',
-        'description': 'Restart or stop a systemd unit (operate permission required)',
+        'name': 'infra_search_pinned_containers',
+        'description': (
+            'Search containers the user pinned on Beszel monitor '
+            '(exact-first by name/host/tag). Use to focus agent work.'
+        ),
         'inputSchema': {
             'type': 'object',
             'properties': {
-                'server_id': {'type': 'string'},
-                'unit': {'type': 'string'},
-                'action': {'type': 'string', 'enum': ['restart', 'stop']},
+                'q': {
+                    'type': 'string',
+                    'description': 'Container name, host, image, or tag',
+                },
+                'limit': {'type': 'integer', 'default': 20},
+                'user_email': {
+                    'type': 'string',
+                    'description': 'Optional; with infra token, scope to this Creanova user',
+                },
             },
-            'required': ['server_id', 'unit', 'action'],
+            'required': ['q'],
         },
     },
 ]
@@ -164,6 +173,18 @@ async def call_tool(body: ToolCall) -> Any:
                 f'{GATEWAY_URL}/api/infra/servers/{sid}/services/{unit}/action',
                 headers=headers,
                 json={'action': body.arguments['action']},
+            )
+        elif body.name == 'infra_search_pinned_containers':
+            params: dict[str, Any] = {
+                'q': body.arguments.get('q', ''),
+                'limit': body.arguments.get('limit', 20),
+            }
+            if body.arguments.get('user_email'):
+                params['user_email'] = body.arguments['user_email']
+            r = await client.get(
+                f'{GATEWAY_URL}/api/infra/pinned-containers/search',
+                headers=headers,
+                params=params,
             )
         else:
             raise HTTPException(status_code=400, detail=f'unknown tool {body.name}')
