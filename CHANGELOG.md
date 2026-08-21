@@ -2,6 +2,12 @@
 
 All notable changes to this workspace are listed here.
 
+## [beta v0.5.38] - 2026-08-21
+
+### Fixed
+
+- LLM profile switch/save: reject Cursor product models (auto/api.cursor.com), normalize bare models to openai/… for LiteLLM custom base URLs
+
 ## [beta v0.5.37] - 2026-08-21
 
 ### Changed
