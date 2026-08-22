@@ -2,6 +2,12 @@
 
 All notable changes to this workspace are listed here.
 
+## [beta v0.5.47] - 2026-08-22
+
+### Fixed
+
+- Beszel pin star horizontal alignment under Name column cube icon
+
 ## [beta v0.5.46] - 2026-08-22
 
 ### Fixed
