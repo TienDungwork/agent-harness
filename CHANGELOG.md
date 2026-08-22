@@ -2,6 +2,12 @@
 
 All notable changes to this workspace are listed here.
 
+## [beta v0.5.44] - 2026-08-22
+
+### Changed
+
+- Beszel container pin UX: slim pushpin only on row hover; pinned stays subtly visible; removed always-on pin column
+
 ## [beta v0.5.43] - 2026-08-21
 
 ### Fixed
