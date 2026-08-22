@@ -2,6 +2,13 @@
 
 All notable changes to this workspace are listed here.
 
+## [beta v0.5.46] - 2026-08-22
+
+### Fixed
+
+- Beszel pin click no-op: nginx `/creanova-api` now proxies to `local-gateway:18110` (was host:18110, unpublished)
+- Star alignment + filled amber when pinned; optimistic toggle + toast on failure
+
 ## [beta v0.5.45] - 2026-08-22
 
 ### Changed
