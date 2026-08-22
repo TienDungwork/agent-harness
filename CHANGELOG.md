@@ -2,6 +2,12 @@
 
 All notable changes to this workspace are listed here.
 
+## [beta v0.5.45] - 2026-08-22
+
+### Changed
+
+- Beszel container pin icon: 5-point star (filled amber when pinned, hover-only when not)
+
 ## [beta v0.5.44] - 2026-08-22
 
 ### Changed
