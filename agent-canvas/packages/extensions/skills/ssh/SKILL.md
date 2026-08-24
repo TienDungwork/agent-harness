@@ -1,6 +1,6 @@
 ---
 name: ssh
-description: Establish and manage SSH connections to remote machines, including key generation, configuration, and file transfers. Use when connecting to remote servers, executing remote commands, or transferring files via SCP.
+description: Resolve hosts from Settings → Host and run remote commands via the Creanova SSH harness (gateway APIs). Use when the user says ssh, remote host, or a last IP octet like 250.
 triggers:
 - ssh
 - remote server
@@ -11,126 +11,37 @@ triggers:
 - ssh keys
 ---
 
-# SSH Skill
+# SSH Skill (Creanova harness)
 
-This skill provides capabilities for establishing and managing SSH connections to remote machines.
-Windows PowerShell equivalents for SSH config creation, key paths, ssh-agent, and permissions are in `references/windows.md`.
+On this self-hosted Agent Canvas, SSH inventory lives in **Settings → Host**. Credentials stay on local-gateway. Do **not** run interactive `ssh user@host`, do **not** ask for a password or private key, and do **not** invent IPs (no TEST-NET / 191.0.2.1).
 
-## Capabilities
+## First action (always)
 
-- Establish SSH connections using password or key-based authentication
-- Generate and manage SSH key pairs
-- Configure SSH for easier connections
-- Execute commands on remote machines
-- Transfer files between local and remote machines
-- Manage SSH configurations and known hosts
+When the user says "ssh vào 250", "ssh 191", "ssh to gpu-box", or similar:
 
-## Authentication Methods
-
-### Password Authentication
+1. Take their token as `q` even if it is only a last IPv4 octet (`250`, `191`).
+2. Call resolve immediately (do not ask for a fuller IP first):
 
 ```bash
-ssh username@hostname
+curl -sS -H "X-Creanova-Infra-Token: $INFRA_AGENT_TOKEN" \
+  "${INFRA_GATEWAY_URL:-http://local-gateway:18110}/api/infra/servers/resolve?q=TOKEN"
 ```
 
-When prompted, you should ask the user for their password or a private key.
+3. Pick `items[0]`. Remember `id` as the sticky `server_id` for this chat.
+4. Reply with one line: name, hostname, username. If they already asked for a command, run it. Otherwise wait.
+5. If `count=0`, `GET /api/infra/servers` and tell them the host is missing from Settings → Host.
 
-### Key-Based Authentication
-
-Generate a new SSH key pair:
-```bash
-ssh-keygen -t ed25519 -f ~/.ssh/key_name -C "comment" -N ""
-```
-
-Copy the public key to the remote server:
-```bash
-ssh-copy-id -i ~/.ssh/key_name.pub username@hostname
-```
-
-Connect using the private key:
-```bash
-ssh -i ~/.ssh/key_name username@hostname
-```
-
-## SSH Configuration
-
-Create or edit the SSH config file for easier connections:
-```bash
-mkdir -p ~/.ssh
-cat > ~/.ssh/config << 'EOF'
-Host alias
-    HostName hostname_or_ip
-    User username
-    IdentityFile ~/.ssh/key_name
-    Port 22
-    ServerAliveInterval 60
-EOF
-chmod 600 ~/.ssh/config
-```
-
-Then connect using the alias:
-```bash
-ssh alias
-```
-
-## Common SSH Options
-
-- `-p PORT`: Connect to a specific port
-- `-X`: Enable X11 forwarding
-- `-L local_port:remote_host:remote_port`: Set up local port forwarding
-- `-R remote_port:local_host:local_port`: Set up remote port forwarding
-- `-N`: Do not execute a remote command (useful for port forwarding)
-- `-f`: Run in background
-- `-v`: Verbose mode (add more v's for increased verbosity)
-
-## File Transfer with SCP
-
-Copy a file to the remote server:
-```bash
-scp /path/to/local/file username@hostname:/path/to/remote/directory/
-```
-
-Copy a file from the remote server:
-```bash
-scp username@hostname:/path/to/remote/file /path/to/local/directory/
-```
-
-Copy a directory recursively:
-```bash
-scp -r /path/to/local/directory username@hostname:/path/to/remote/directory/
-```
-
-## SSH Agent
-
-Start the SSH agent:
-```bash
-eval "$(ssh-agent -s)"
-```
-
-Add a key to the agent:
-```bash
-ssh-add ~/.ssh/key_name
-```
-
-## Troubleshooting
-
-- Check SSH service status on remote: `systemctl status sshd`
-- Verify SSH port is open: `nc -zv hostname 22`
-- Debug connection issues: `ssh -vvv username@hostname`
-- Check permissions: SSH private keys should have 600 permissions (`chmod 600 ~/.ssh/key_name`)
-- Verify known_hosts: If host key changed, remove the old entry with `ssh-keygen -R hostname`
-
-## Secure SSH Key Management
-
-### Local Storage with Proper Permissions
-
-The most basic approach is to ensure proper file permissions:
+## Run commands
 
 ```bash
-# Set correct permissions for private keys
-chmod 600 ~/.ssh/id_ed25519
-# Set correct permissions for public keys
-chmod 644 ~/.ssh/id_ed25519.pub
-# Set correct permissions for SSH directory
-chmod 700 ~/.ssh
+curl -sS -H "X-Creanova-Infra-Token: $INFRA_AGENT_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"command":"uname -a","confirm_destructive":false,"timeout_sec":120}' \
+  "${INFRA_GATEWAY_URL:-http://local-gateway:18110}/api/infra/servers/SERVER_ID/run"
 ```
+
+Destructive commands (`rm`, `dd`, `mkfs`, …) need an explicit yes in chat, then `confirm_destructive: true`.
+
+## Fallback only
+
+Use local `ssh` / `scp` / `~/.ssh/config` only when the user explicitly wants a key on this machine and the host is **not** in Settings → Host. Windows notes: `references/windows.md`.

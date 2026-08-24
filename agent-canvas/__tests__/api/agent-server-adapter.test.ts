@@ -1216,6 +1216,7 @@ describe("agent_settings runtime services suffix", () => {
       .system_message_suffix as string;
     expect(suffix).toContain("<LOCAL_HARNESS>");
     expect(suffix).toContain("Settings → Host");
+    expect(suffix).toContain("last IPv4 octet");
     expect(suffix).toBe(LOCAL_AGENT_SYSTEM_SUFFIX);
   });
 

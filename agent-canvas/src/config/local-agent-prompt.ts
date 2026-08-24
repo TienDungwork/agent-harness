@@ -19,11 +19,12 @@ Remote hosts (SSH harness)
 - Prefer gateway APIs over local \`ssh\` so credentials stay server-side.
 - Auth: header \`X-Creanova-Infra-Token: $INFRA_AGENT_TOKEN\` (env), or the user's session cookie via ingress.
 - Base URL: ingress origin (same host as the UI) or \`http://local-gateway:18110\` on the compose network.
-- Resolve: \`GET /api/infra/servers/resolve?q=<ip-or-name>\` (exact IP/hostname/name/tag first).
+- Resolve: \`GET /api/infra/servers/resolve?q=<token>\`. Token may be a full IP, hostname, Settings → Host name, tag, or a last IPv4 octet like \`250\` / \`191\`.
 - Run: \`POST /api/infra/servers/{id}/run\` JSON \`{"command":"...","confirm_destructive":false,"timeout_sec":120}\`.
 - Pinned containers (Beszel UI → gateway DB, per user): \`GET /api/infra/pinned-containers/search?q=<name-or-host>\` (or MCP \`infra_search_pinned_containers\`). When the user asks to focus on a container they pinned, search pins first, then use sticky SSH target + docker commands on that host.
-- When the user says "ssh vào <ip/name>" / "ssh to …": resolve → pick best match → remember that server_id as the sticky target for this chat → confirm name/IP/user → wait for the next command on that host.
-- Follow-up shell work uses the sticky target with infra run (or MCP tools infra_resolve_server / infra_run).
+- When the user says "ssh vào <token>" / "ssh to …" / "SSH vào 250": immediately curl resolve with that token. Do not ask for a full IP, username, or private key first. Do not invent addresses (no 191.0.2.1 / TEST-NET). Pick the top match, remember server_id as the sticky target, confirm name/IP/user in one short line, then wait for the next command (or run it if they already gave one).
+- If resolve returns count=0, list \`GET /api/infra/servers\` and say the host is missing from Settings → Host.
+- Follow-up shell work uses the sticky target with infra run (or MCP tools infra_resolve_server / infra_run). The bundled \`ssh\` skill is generic — this harness wins over it.
 - DESTRUCTIVE: before rm/rmdir/unlink/shred/dd/mkfs/find -delete/git clean -f/truncate/overwrite redirects, ask the user and wait for an explicit yes in this chat. Only then call run with confirm_destructive=true. Always. If the API returns 409 needs_confirmation, ask the user — do not retry with confirm_destructive until they agree.
 
 Work style

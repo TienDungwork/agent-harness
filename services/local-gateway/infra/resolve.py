@@ -22,6 +22,12 @@ def _norm(s: str) -> str:
     return s.strip().lower()
 
 
+def _is_ipv4_octet(q: str) -> bool:
+    if not q.isdigit() or len(q) > 3:
+        return False
+    return 0 <= int(q) <= 255
+
+
 def rank_servers(
     query: str,
     servers: Sequence[object],
@@ -34,6 +40,7 @@ def rank_servers(
       100 exact hostname
        90 exact name
        80 exact tag
+       70 IPv4 last octet (query "250" → 192.168.1.250)
        50 hostname prefix
        40 name prefix
        20 hostname/name/tag substring
@@ -59,6 +66,8 @@ def rank_servers(
             score, match = 90, 'name_exact'
         elif q in tg:
             score, match = 80, 'tag_exact'
+        elif _is_ipv4_octet(q) and hn.endswith('.' + q):
+            score, match = 70, 'hostname_last_octet'
         elif hn.startswith(q):
             score, match = 50, 'hostname_prefix'
         elif nm.startswith(q):
@@ -70,7 +79,7 @@ def rank_servers(
 
         scored.append(
             ResolveCandidate(
-                server_id=str(getattr(s, 'id')),
+                server_id=str(getattr(s, 'id', None) or getattr(s, 'id')),
                 name=name,
                 hostname=hostname,
                 port=int(getattr(s, 'port', 22) or 22),

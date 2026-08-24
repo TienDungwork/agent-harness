@@ -2,7 +2,13 @@
 
 All notable changes to this workspace are listed here.
 
-## [beta v0.5.47] - 2026-08-22
+## [beta v0.5.48] - 2026-08-24
+
+### Fixed
+
+- Chat "ssh vào 250" / "ssh 191": generic SSH skill no longer asks for IP/key; agent must resolve Settings → Host (last IPv4 octet ranking) then run via gateway
+
+
 
 ### Fixed
 

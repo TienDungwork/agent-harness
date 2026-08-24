@@ -52,6 +52,32 @@ def test_rank_servers_empty_query():
     assert rank_servers('  ', []) == []
 
 
+def test_rank_servers_last_octet_beats_name_substring():
+    """Chat shorthand '250' must pick 192.168.1.250, not a name that merely contains 250."""
+    servers = [
+        SimpleNamespace(
+            id='1',
+            name='lab-gpu',
+            hostname='192.168.1.250',
+            port=22,
+            username='root',
+            tags=[],
+        ),
+        SimpleNamespace(
+            id='2',
+            name='250-backup',
+            hostname='192.168.1.251',
+            port=22,
+            username='ubuntu',
+            tags=[],
+        ),
+    ]
+    ranked = rank_servers('250', servers)
+    assert ranked[0].server_id == '1'
+    assert ranked[0].match == 'hostname_last_octet'
+    assert ranked[0].score == 70
+
+
 def test_destructive_rm_requires_confirm():
     assert looks_destructive('rm -rf /tmp/x')
     assert looks_destructive('echo hi; rm file')
