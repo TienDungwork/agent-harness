@@ -2,6 +2,12 @@
 
 All notable changes to this workspace are listed here.
 
+## [beta v0.5.49] - 2026-08-25
+
+### Added
+
+- Design: Beszel Containers right-click Start/Stop/Restart via local-gateway SSH (admin only)
+
 ## [beta v0.5.48] - 2026-08-24
 
 ### Fixed
