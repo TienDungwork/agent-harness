@@ -2,6 +2,12 @@
 
 All notable changes to this workspace are listed here.
 
+## [beta v0.5.51] - 2026-08-25
+
+### Fixed
+
+- Beszel container right-click menu: show Start/Stop/Restart for role `user` (not only Beszel `admin`); use a real context menu instead of the browser menu
+
 ## [beta v0.5.50] - 2026-08-25
 
 ### Added
