@@ -22,4 +22,12 @@
   - Execution = Beszel UI → local-gateway → SSH → docker
 - **Open questions**: None for product intent (id vs name preference deferred to implement)
 - **Verification target**: Design approved; spec at `docs/superpowers/specs/2026-08-25-beszel-container-lifecycle-actions-design.md`
-- **Handoff**: After user reviews written spec → `02-plan` / writing-plans
+- **Handoff**: Implementation started 2026-08-25 (user: triển khai)
+
+## 03-implement
+
+- **Status**: in progress → complete
+- **Gateway**: `infra/container_lifecycle.py` + `POST /api/infra/containers/{start,stop,restart}` + unit tests
+- **UI**: Beszel `creanova-container-actions.ts` + containers-table context menu / confirm
+- **Proxy**: `beszel-ui-nginx.conf` read timeout 90s
+- **Plan**: `docs/superpowers/plans/2026-08-25-beszel-container-lifecycle-ssh.md`

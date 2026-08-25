@@ -2,6 +2,12 @@
 
 All notable changes to this workspace are listed here.
 
+## [beta v0.5.50] - 2026-08-25
+
+### Added
+
+- Beszel Containers: admin right-click Start/Stop/Restart via local-gateway SSH to InfraServer host
+
 ## [beta v0.5.49] - 2026-08-25
 
 ### Added

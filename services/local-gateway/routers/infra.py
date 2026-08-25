@@ -15,6 +15,10 @@ from infra.audit import write_audit
 from infra.beszel import clear_system_fingerprint as clear_beszel_fingerprint
 from infra.beszel import upsert_system as upsert_beszel_system
 from infra.commands import CommandDenied, render_command
+from infra.container_lifecycle import (
+    ContainerLifecycleError,
+    build_docker_lifecycle_command,
+)
 from infra.crypto import CryptoError, decrypt_text, encrypt_text
 from infra.destructive import destructive_reason, looks_destructive
 from infra.gpu import is_nvidia_smi_missing, parse_nvidia_smi_csv
@@ -97,6 +101,14 @@ class PinCreate(BaseModel):
     tags: list[str] = Field(default_factory=list)
     note: str | None = Field(default=None, max_length=2000)
     server_id: str | None = None
+
+
+class ContainerLifecycleBody(BaseModel):
+    host: str | None = Field(default=None, max_length=255)
+    server_id: str | None = None
+    container_name: str | None = Field(default=None, max_length=255)
+    container_id: str | None = Field(default=None, max_length=128)
+    timeout_sec: float = Field(default=60.0, ge=5.0, le=300.0)
 
 
 def _current_user(
@@ -464,6 +476,138 @@ async def delete_pinned_container(
         error_excerpt=pin_id,
     )
     return {'status': 'ok'}
+
+
+def _resolve_server_for_lifecycle(
+    db: Session,
+    *,
+    server_id: str | None,
+    host: str | None,
+) -> InfraServer:
+    if server_id:
+        server = db.query(InfraServer).filter(InfraServer.id == server_id).one_or_none()
+        if server is None or not server.is_active:
+            raise HTTPException(status_code=404, detail='Server not found')
+        return server
+    hostname = (host or '').strip()
+    if not hostname:
+        raise HTTPException(status_code=400, detail='host or server_id required')
+    server = (
+        db.query(InfraServer)
+        .filter(
+            InfraServer.is_active.is_(True),
+            InfraServer.hostname == hostname,
+        )
+        .one_or_none()
+    )
+    if server is None:
+        raise HTTPException(
+            status_code=404,
+            detail=f'No InfraServer with hostname {hostname}',
+        )
+    return server
+
+
+async def _container_lifecycle(
+    action: str,
+    body: ContainerLifecycleBody,
+    user: AuthUser,
+    db: Session,
+) -> dict[str, Any]:
+    if not user.is_admin:
+        raise HTTPException(status_code=403, detail='Admin required')
+    try:
+        command = build_docker_lifecycle_command(
+            action,
+            container_id=body.container_id,
+            container_name=body.container_name,
+        )
+    except ContainerLifecycleError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    server = _resolve_server_for_lifecycle(db, server_id=body.server_id, host=body.host)
+    try:
+        result = await _run_on_server(
+            db, server, command, timeout=float(body.timeout_sec)
+        )
+    except SSHError as exc:
+        write_audit(
+            db,
+            actor_user_id=user.id,
+            action=f'container.{action}',
+            success=False,
+            server_id=str(server.id),
+            server_name=server.name,
+            command_rendered=command,
+            error_excerpt=str(exc)[:500],
+        )
+        db.commit()
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
+
+    ok = result.exit_code == 0
+    if ok:
+        server.last_seen_at = datetime.now(timezone.utc)
+        server.last_error = None
+    else:
+        server.last_error = (result.stderr or result.stdout or '')[:500]
+    write_audit(
+        db,
+        actor_user_id=user.id,
+        action=f'container.{action}',
+        success=ok,
+        server_id=str(server.id),
+        server_name=server.name,
+        command_rendered=command,
+        exit_code=result.exit_code,
+        duration_ms=result.duration_ms,
+        error_excerpt=None if ok else (result.stderr or result.stdout or '')[:500],
+    )
+    db.commit()
+    if not ok:
+        detail = (result.stderr or result.stdout or 'docker command failed').strip()
+        raise HTTPException(
+            status_code=502,
+            detail=detail[:1000] or 'docker command failed',
+        )
+    return {
+        'ok': True,
+        'action': action,
+        'server_id': str(server.id),
+        'server_name': server.name,
+        'hostname': server.hostname,
+        'command': command,
+        'exit_code': result.exit_code,
+        'stdout': (result.stdout or '')[:2000],
+        'stderr': (result.stderr or '')[:2000],
+        'duration_ms': result.duration_ms,
+    }
+
+
+@router.post('/api/infra/containers/start')
+async def container_start(
+    body: ContainerLifecycleBody,
+    user: AuthUser = Depends(get_auth_user),
+    db: Session = Depends(get_db),
+) -> dict[str, Any]:
+    return await _container_lifecycle('start', body, user, db)
+
+
+@router.post('/api/infra/containers/stop')
+async def container_stop(
+    body: ContainerLifecycleBody,
+    user: AuthUser = Depends(get_auth_user),
+    db: Session = Depends(get_db),
+) -> dict[str, Any]:
+    return await _container_lifecycle('stop', body, user, db)
+
+
+@router.post('/api/infra/containers/restart')
+async def container_restart(
+    body: ContainerLifecycleBody,
+    user: AuthUser = Depends(get_auth_user),
+    db: Session = Depends(get_db),
+) -> dict[str, Any]:
+    return await _container_lifecycle('restart', body, user, db)
 
 
 @router.post('/api/infra/servers/{server_id}/run')
