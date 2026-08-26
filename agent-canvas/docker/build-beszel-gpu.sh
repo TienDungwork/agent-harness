@@ -6,8 +6,8 @@ BESZEL="$(cd "$ROOT/../services/beszel" && pwd)"
 mkdir -p "$BESZEL/build"
 
 echo "==> agent"
-docker run --rm -v "$BESZEL":/app -w /app -e CGO_ENABLED=0 golang:1.26-bookworm \
-  go build -buildvcs=false -ldflags '-w -s' -o /app/build/beszel-agent ./internal/cmd/agent
+docker run --rm -v "$BESZEL":/app -w /app -e GOTOOLCHAIN=auto golang:1.26-bookworm \
+  go build -buildvcs=false -tags glibc -ldflags '-w -s' -o /app/build/beszel-agent ./internal/cmd/agent
 
 echo "==> web UI"
 docker run --rm -v "$BESZEL/internal/site":/site -w /site node:22-bookworm \

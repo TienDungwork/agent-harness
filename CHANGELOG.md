@@ -2,6 +2,12 @@
 
 All notable changes to this workspace are listed here.
 
+## [beta v0.5.52] - 2026-08-26
+
+### Fixed
+
+- Beszel Docker agent: per-container GPU % / VRAM need `pid: host` + Creanova agent image (`creanova/beszel-agent:gpu-containers`); host GPU charts use one-shot `nvidia-smi` (not piped `-l`) and `GPU_COLLECTOR=nvidia-smi`
+
 ## [beta v0.5.51] - 2026-08-25
 
 ### Fixed
