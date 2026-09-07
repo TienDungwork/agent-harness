@@ -2,6 +2,12 @@
 
 All notable changes to this workspace are listed here.
 
+## [beta v0.5.53] - 2026-09-07
+
+### Fixed
+
+- Host settings password field: stop Google Password Manager autofill/suggest (`type="text"` + CSS mask); fix React #310 from `useMemo` after early return; rebuild canvas UI overlay required for Docker
+
 ## [beta v0.5.52] - 2026-08-26
 
 ### Fixed

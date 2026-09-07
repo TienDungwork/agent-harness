@@ -219,6 +219,7 @@ export default function HostSettingsScreen() {
     setSavedDraft(d);
     setAllChangesSaved(false);
     setSearchParams({}, { replace: true });
+    setShowPassword(false);
   }, [servers, searchParams, setSearchParams]);
 
   const hasPendingChanges = React.useMemo(() => {
@@ -245,6 +246,26 @@ export default function HostSettingsScreen() {
     );
   }, [draft, savedDraft]);
 
+  /** Host metadata only — credentials are saved on Connect, not auto-save. */
+  const hasMetadataPendingChanges = React.useMemo(() => {
+    if (!savedDraft) {
+      return !!(
+        draft.address.trim() ||
+        draft.label.trim() ||
+        draft.username.trim()
+      );
+    }
+    return (
+      draft.address !== savedDraft.address ||
+      draft.label !== savedDraft.label ||
+      draft.parentGroup !== savedDraft.parentGroup ||
+      draft.tags !== savedDraft.tags ||
+      draft.port !== savedDraft.port ||
+      draft.username !== savedDraft.username ||
+      draft.authType !== savedDraft.authType
+    );
+  }, [draft, savedDraft]);
+
   const canEdit = Boolean(me?.is_admin);
 
   function selectHost(s: InfraServer, opts?: { openDetails?: boolean }) {
@@ -254,6 +275,7 @@ export default function HostSettingsScreen() {
     setSavedDraft(d);
     setAllChangesSaved(false);
     setShowAdvancedAuth(s.auth_type === "key");
+    setShowPassword(false);
     setStatusMsg(null);
     if (opts?.openDetails) setDetailsOpen(true);
   }
@@ -268,6 +290,7 @@ export default function HostSettingsScreen() {
     setSavedDraft(null);
     setAllChangesSaved(false);
     setShowAdvancedAuth(false);
+    setShowPassword(false);
     setStatusMsg(null);
     setDetailsOpen(true);
     setActiveWorkspace(0);
@@ -335,7 +358,9 @@ export default function HostSettingsScreen() {
     null,
   );
 
-  const saveHost = React.useCallback(async (): Promise<InfraServer | null> => {
+  const saveHost = React.useCallback(async (
+    opts?: { includeCredentials?: boolean },
+  ): Promise<InfraServer | null> => {
     if (!me?.is_admin) {
       setStatusMsg("Only admin can save hosts");
       return null;
@@ -366,8 +391,12 @@ export default function HostSettingsScreen() {
       showAdvancedAuthRef.current && snapshot.privateKey.trim()
         ? "key"
         : snapshot.authType;
-    const credential =
-      authType === "key" ? snapshot.privateKey.trim() : snapshot.password;
+    const includeCredentials = opts?.includeCredentials ?? false;
+    const credential = includeCredentials
+      ? authType === "key"
+        ? snapshot.privateKey.trim()
+        : snapshot.password
+      : "";
 
     const work = (async (): Promise<InfraServer | null> => {
       setSaving(true);
@@ -405,10 +434,14 @@ export default function HostSettingsScreen() {
         const updatedDraft = draftFromServer(saved);
         setDraft((d) => {
           const next = { ...d, id: saved.id };
-          if (d.password === snapshot.password && credential) {
+          if (includeCredentials && d.password === snapshot.password && credential) {
             next.password = "";
           }
-          if (d.privateKey === snapshot.privateKey && credential) {
+          if (
+            includeCredentials &&
+            d.privateKey === snapshot.privateKey &&
+            credential
+          ) {
             next.privateKey = "";
           }
           draftRef.current = next;
@@ -436,7 +469,7 @@ export default function HostSettingsScreen() {
   }, [me?.is_admin, reload]);
 
   React.useEffect(() => {
-    if (!canEdit || !hasPendingChanges) return;
+    if (!canEdit || !hasMetadataPendingChanges) return;
     if (!draft.address.trim() || !draft.username.trim()) return;
     const timer = window.setTimeout(() => {
       void saveHost();
@@ -450,11 +483,9 @@ export default function HostSettingsScreen() {
     draft.tags,
     draft.port,
     draft.username,
-    draft.password,
-    draft.privateKey,
     draft.authType,
     draft.id,
-    hasPendingChanges,
+    hasMetadataPendingChanges,
     saveHost,
   ]);
 
@@ -463,10 +494,11 @@ export default function HostSettingsScreen() {
     if (draft.id) {
       target = servers.find((s) => s.id === draft.id) || null;
       if (me?.is_admin && hasPendingChanges) {
-        target = (await saveHost()) || target;
+        target =
+          (await saveHost({ includeCredentials: true })) || target;
       }
     } else {
-      target = await saveHost();
+      target = await saveHost({ includeCredentials: true });
     }
     if (!target && draft.id) {
       target = servers.find((s) => s.id === draft.id) || null;
@@ -564,6 +596,19 @@ export default function HostSettingsScreen() {
     return () => document.removeEventListener("keydown", onKeyDown);
   }, []);
 
+  // Must stay above early returns — otherwise meLoading true→false trips React #310.
+  const pickerHosts = React.useMemo(() => {
+    const q = hostPickerQuery.trim().toLowerCase();
+    if (!q) return servers;
+    return servers.filter(
+      (s) =>
+        s.name.toLowerCase().includes(q) ||
+        s.hostname.toLowerCase().includes(q) ||
+        s.username.toLowerCase().includes(q) ||
+        (s.tags || []).some((t) => t.toLowerCase().includes(q)),
+    );
+  }, [servers, hostPickerQuery]);
+
   if (!localAuth) {
     return (
       <p className="text-sm text-tertiary-light">
@@ -591,18 +636,6 @@ export default function HostSettingsScreen() {
       (s.tags || []).some((t) => t.toLowerCase().includes(q))
     );
   });
-
-  const pickerHosts = React.useMemo(() => {
-    const q = hostPickerQuery.trim().toLowerCase();
-    if (!q) return servers;
-    return servers.filter(
-      (s) =>
-        s.name.toLowerCase().includes(q) ||
-        s.hostname.toLowerCase().includes(q) ||
-        s.username.toLowerCase().includes(q) ||
-        (s.tags || []).some((t) => t.toLowerCase().includes(q)),
-    );
-  }, [servers, hostPickerQuery]);
 
   function pickHost(s: InfraServer) {
     setHostPickerOpen(false);
@@ -1165,6 +1198,7 @@ export default function HostSettingsScreen() {
                             </label>
                             <input
                               id="host-username"
+                              name="host-ssh-username"
                               className={fieldClass}
                               value={draft.username}
                               onChange={(e) =>
@@ -1174,7 +1208,11 @@ export default function HostSettingsScreen() {
                                 }))
                               }
                               disabled={!canEdit && !!draft.id}
-                              autoComplete="username"
+                              autoComplete="off"
+                              data-1p-ignore
+                              data-lpignore="true"
+                              data-bwignore="true"
+                              data-form-type="other"
                             />
                           </div>
                           <div>
@@ -1190,15 +1228,16 @@ export default function HostSettingsScreen() {
                               ) : null}
                             </label>
                             <div className="relative">
+                              {/* type=text + CSS mask avoids Chrome Password Manager. */}
                               <input
                                 id="host-password"
-                                name="host-password"
-                                type={showPassword ? "text" : "password"}
+                                name="host-ssh-password"
+                                type="text"
                                 className={cn(
                                   fieldClass,
-                                  // Keep dots/caret visible even after browser autofill
-                                  // leaves a stuck -webkit-text-fill-color.
                                   "pr-10 text-white caret-white [-webkit-text-fill-color:white]",
+                                  !showPassword &&
+                                    "[&:not(:placeholder-shown)]:[text-security:disc] [&:not(:placeholder-shown)]:[-webkit-text-security:disc]",
                                 )}
                                 value={draft.password}
                                 onChange={(e) =>
@@ -1214,7 +1253,15 @@ export default function HostSettingsScreen() {
                                 placeholder={
                                   canEdit ? "SSH password" : "Admin only"
                                 }
-                                autoComplete="new-password"
+                                autoComplete="off"
+                                autoCorrect="off"
+                                autoCapitalize="off"
+                                inputMode="text"
+                                data-1p-ignore
+                                data-form-type="other"
+                                data-lpignore="true"
+                                data-bwignore="true"
+                                data-dashlane-ignore="true"
                                 spellCheck={false}
                               />
                               <button
