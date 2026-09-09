@@ -46,6 +46,12 @@ class Settings(BaseSettings):
     # Empty disables token auth (cookie session only).
     infra_agent_token: str = ''
 
+    # ClickHouse VMS warehouse (read-only analytics). Empty password disables.
+    ch_url: str = ''
+    ch_user: str = 'vms_ro'
+    ch_password: str = ''
+    ch_database: str = 'vms'
+
     # Beszel integration (shared volume written by beszel-bootstrap container)
     beszel_shared_path: str = '/beszel_shared'
     beszel_agent_port: int = 45876

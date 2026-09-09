@@ -106,6 +106,79 @@ TOOLS = [
             'required': ['q'],
         },
     },
+    {
+        'name': 'vms_summary',
+        'description': (
+            'VMS event counts by module/event_type for the last N days. '
+            'Use for how many alerts recently. Do not write SQL.'
+        ),
+        'inputSchema': {
+            'type': 'object',
+            'properties': {
+                'days': {'type': 'integer', 'default': 7},
+                'module': {
+                    'type': 'string',
+                    'description': 'FACE | PLATE | ZONE | ANOMALY | FIRE | FOOTFALL | PPE | THERMAL | HUB',
+                },
+            },
+        },
+    },
+    {
+        'name': 'vms_top_cameras',
+        'description': (
+            'Top cameras by event count. Use when the user asks which camera '
+            'had the most climbing / fire / plates / etc.'
+        ),
+        'inputSchema': {
+            'type': 'object',
+            'properties': {
+                'days': {'type': 'integer', 'default': 30},
+                'module': {'type': 'string'},
+                'event_type': {
+                    'type': 'string',
+                    'description': 'e.g. INTRUSION_DETECTION, HIGH, IN, OUT',
+                },
+                'limit': {'type': 'integer', 'default': 20},
+            },
+        },
+    },
+    {
+        'name': 'vms_search_plate',
+        'description': 'Find license-plate sightings. Pass the plate text only.',
+        'inputSchema': {
+            'type': 'object',
+            'properties': {
+                'q': {'type': 'string'},
+                'days': {'type': 'integer', 'default': 180},
+                'limit': {'type': 'integer', 'default': 50},
+            },
+            'required': ['q'],
+        },
+    },
+    {
+        'name': 'vms_search_person',
+        'description': 'Find face/zone events matching a person name.',
+        'inputSchema': {
+            'type': 'object',
+            'properties': {
+                'q': {'type': 'string'},
+                'days': {'type': 'integer', 'default': 90},
+                'limit': {'type': 'integer', 'default': 50},
+            },
+            'required': ['q'],
+        },
+    },
+    {
+        'name': 'vms_daily',
+        'description': 'Daily trend counts (pre-aggregated).',
+        'inputSchema': {
+            'type': 'object',
+            'properties': {
+                'days': {'type': 'integer', 'default': 30},
+                'module': {'type': 'string'},
+            },
+        },
+    },
 ]
 
 
@@ -183,6 +256,58 @@ async def call_tool(body: ToolCall) -> Any:
                 params['user_email'] = body.arguments['user_email']
             r = await client.get(
                 f'{GATEWAY_URL}/api/infra/pinned-containers/search',
+                headers=headers,
+                params=params,
+            )
+        elif body.name == 'vms_summary':
+            params = {'days': body.arguments.get('days', 7)}
+            if body.arguments.get('module'):
+                params['module'] = body.arguments['module']
+            r = await client.get(
+                f'{GATEWAY_URL}/api/infra/analytics/summary',
+                headers=headers,
+                params=params,
+            )
+        elif body.name == 'vms_top_cameras':
+            params = {
+                'days': body.arguments.get('days', 30),
+                'limit': body.arguments.get('limit', 20),
+            }
+            if body.arguments.get('module'):
+                params['module'] = body.arguments['module']
+            if body.arguments.get('event_type'):
+                params['event_type'] = body.arguments['event_type']
+            r = await client.get(
+                f'{GATEWAY_URL}/api/infra/analytics/top-cameras',
+                headers=headers,
+                params=params,
+            )
+        elif body.name == 'vms_search_plate':
+            r = await client.get(
+                f'{GATEWAY_URL}/api/infra/analytics/search-plate',
+                headers=headers,
+                params={
+                    'q': body.arguments.get('q', ''),
+                    'days': body.arguments.get('days', 180),
+                    'limit': body.arguments.get('limit', 50),
+                },
+            )
+        elif body.name == 'vms_search_person':
+            r = await client.get(
+                f'{GATEWAY_URL}/api/infra/analytics/search-person',
+                headers=headers,
+                params={
+                    'q': body.arguments.get('q', ''),
+                    'days': body.arguments.get('days', 90),
+                    'limit': body.arguments.get('limit', 50),
+                },
+            )
+        elif body.name == 'vms_daily':
+            params = {'days': body.arguments.get('days', 30)}
+            if body.arguments.get('module'):
+                params['module'] = body.arguments['module']
+            r = await client.get(
+                f'{GATEWAY_URL}/api/infra/analytics/daily',
                 headers=headers,
                 params=params,
             )

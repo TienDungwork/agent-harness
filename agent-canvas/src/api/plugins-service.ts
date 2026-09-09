@@ -1,7 +1,4 @@
-import {
-  FileClient,
-  PluginsClient,
-} from "@Creanova/typescript-client/clients";
+import { FileClient, PluginsClient } from "@Creanova/typescript-client/clients";
 import { getActiveBackend } from "./backend-registry/active-store";
 import { getAgentServerClientOptions } from "./agent-server-client-options";
 

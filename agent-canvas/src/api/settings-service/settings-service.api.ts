@@ -14,7 +14,7 @@ import {
   saveCloudSettings,
 } from "../cloud/settings-service.api";
 import { getAgentServerClientOptions } from "../agent-server-client-options";
-import { fromApiAgentKind, toApiAgentKind } from "../agent-kind";
+import { toApiAgentKind } from "../agent-kind";
 
 /**
  * Fields the agent-server stores under `misc_settings.app_preferences` (see
@@ -181,6 +181,34 @@ const clearCache = () => {
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   !!value && typeof value === "object" && !Array.isArray(value);
+
+/** Agent-server redacts secrets to this placeholder when X-Expose-Secrets is omitted. */
+const REDACTED_SECRET = "**********";
+
+/**
+ * Encrypted conversation-start settings must not carry the UI redaction
+ * placeholder. The local-gateway used to blob-cache the redacted GET and
+ * serve it to ``X-Expose-Secrets: encrypted`` GETs, which the SDK turns
+ * into ``api_key: null`` → LLMAuthenticationError.
+ *
+ * ``null``/empty is allowed (some local providers have no key). The
+ * redaction sentinel is never a real key.
+ */
+export function isRedactedConversationApiKey(value: unknown): boolean {
+  if (typeof value !== "string") return false;
+  const trimmed = value.trim();
+  if (!trimmed) return false;
+  if (trimmed === REDACTED_SECRET) return true;
+  return /^\*+$/.test(trimmed);
+}
+
+function llmApiKeyFromAgentSettings(
+  agentSettings: Record<string, SettingsValue> | undefined,
+): unknown {
+  const llm = agentSettings?.llm;
+  if (!isRecord(llm)) return undefined;
+  return llm.api_key;
+}
 
 const basicAuthHeader = (username: string, password: string): string => {
   const token = btoa(`${username}:${password}`);
@@ -450,8 +478,15 @@ class SettingsService {
     conversationSettings: Record<string, SettingsValue>;
     secretsEncrypted: boolean;
   }> {
-    // Check cache first
-    if (isCacheValid() && settingsCache.encrypted) {
+    // Check cache first — but never reuse a redacted document that was
+    // mistakenly stored as "encrypted" (gateway blob / mixed cache).
+    if (
+      isCacheValid() &&
+      settingsCache.encrypted &&
+      !isRedactedConversationApiKey(
+        llmApiKeyFromAgentSettings(settingsCache.encrypted.agent_settings),
+      )
+    ) {
       return {
         agentSettings: settingsCache.encrypted.agent_settings,
         conversationSettings: settingsCache.encrypted.conversation_settings,
@@ -462,6 +497,15 @@ class SettingsService {
     // Fetch encrypted settings - this MUST succeed for conversations to work.
     // Do not fall back to redacted settings as that would cause auth failures.
     const response = await this.fetchSettingsFromApi("encrypted");
+    if (
+      isRedactedConversationApiKey(
+        llmApiKeyFromAgentSettings(response.agent_settings),
+      )
+    ) {
+      throw new Error(
+        "Encrypted LLM API key missing from settings; cannot start a conversation.",
+      );
+    }
     settingsCache.encrypted = response;
     if (!settingsCache.timestamp) {
       settingsCache.timestamp = Date.now();

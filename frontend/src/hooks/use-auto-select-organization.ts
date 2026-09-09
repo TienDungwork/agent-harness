@@ -2,6 +2,10 @@ import React from "react";
 import { useSelectedOrganizationId } from "#/context/use-selected-organization";
 import { useOrganizations } from "#/hooks/query/use-organizations";
 import { setSelectedOrg } from "#/utils/local-storage";
+import {
+  isLocalGatewayAdmin,
+  LOCAL_GATEWAY_ORG_ID,
+} from "#/utils/local-gateway-admin";
 
 /**
  * Hook that automatically selects an organization when:
@@ -15,6 +19,7 @@ import { setSelectedOrg } from "#/utils/local-storage";
  * This hook should be called from a component that always renders (e.g., root layout)
  * to ensure organization selection happens even when the OrgSelector component is hidden.
  */
+
 export function useAutoSelectOrganization() {
   const { organizationId, setOrganizationId } = useSelectedOrganizationId();
   const { data } = useOrganizations();
@@ -22,6 +27,14 @@ export function useAutoSelectOrganization() {
   const currentOrgId = data?.currentOrgId;
 
   React.useEffect(() => {
+    if (isLocalGatewayAdmin() && !organizationId) {
+      setOrganizationId(LOCAL_GATEWAY_ORG_ID, { skipRevalidation: true });
+      setSelectedOrg(LOCAL_GATEWAY_ORG_ID);
+    }
+  }, [organizationId, setOrganizationId]);
+
+  React.useEffect(() => {
+    if (isLocalGatewayAdmin()) return;
     if (!organizationId && organizations && organizations.length > 0) {
       // Prefer backend's current_org_id (last selected org), fall back to
       // first org. Ignore a current_org_id that isn't in the visible list —

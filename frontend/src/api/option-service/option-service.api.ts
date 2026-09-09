@@ -1,5 +1,9 @@
 import { Creanova } from "../open-hands-axios";
 import { ModelsResponse, WebClientConfig } from "./option.types";
+import {
+  isLocalGatewayAdmin,
+  LOCAL_GATEWAY_WEB_CLIENT_CONFIG,
+} from "#/utils/local-gateway-admin";
 
 /**
  * Service for handling API options endpoints
@@ -32,6 +36,12 @@ class OptionService {
    * @returns Web client configuration response
    */
   static async getConfig(): Promise<WebClientConfig> {
+    if (isLocalGatewayAdmin()) {
+      return {
+        ...LOCAL_GATEWAY_WEB_CLIENT_CONFIG,
+        updated_at: new Date().toISOString(),
+      };
+    }
     const { data } = await Creanova.get<WebClientConfig>(
       "/api/v1/web-client/config",
     );

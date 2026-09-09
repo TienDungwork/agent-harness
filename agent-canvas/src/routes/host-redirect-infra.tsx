@@ -1,4 +1,4 @@
-import { Navigate, useParams, useSearchParams } from "react-router";
+import { Navigate, useSearchParams } from "react-router";
 
 /** Legacy /admin/infra → Settings → Host */
 export default function HostRedirectInfra() {

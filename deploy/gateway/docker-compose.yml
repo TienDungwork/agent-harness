@@ -1,0 +1,41 @@
+# Creanova path gateway — one host port → /agents /admin /monitoring
+#
+# Atin191 / network.md: Docker bridge MUST use 10.240.0.0/16 (never 192.168.x).
+# Network: creanova_gateway_net → 10.240.125.0/24
+# Also joins external agent-canvas_net to reach agent-canvas + beszel-ui.
+#
+# Upstream (must already be running):
+#   agent-canvas     :18010  (UI base /agents after rebuild; legacy /canvas ok)
+#   Creanova FE      :12000  (dev:local:gateway — VITE_LOCAL_GATEWAY_ADMIN, base /admin/)
+#   creanova-beszel-ui :18090
+#
+# Usage:
+#   docker compose -f deploy/gateway/docker-compose.yml up -d
+#   open http://<LAN-IP>:18000/
+
+services:
+  gateway:
+    image: nginx:1.27-alpine
+    container_name: creanova-gateway
+    restart: unless-stopped
+    ports:
+      - "0.0.0.0:${GATEWAY_HOST_PORT:-18000}:18000"
+    volumes:
+      - ./nginx.conf:/etc/nginx/nginx.conf:ro
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    networks:
+      - gateway_net
+      - agent-canvas_net
+
+networks:
+  gateway_net:
+    name: creanova_gateway_net
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 10.240.125.0/24
+          gateway: 10.240.125.1
+  agent-canvas_net:
+    external: true
+    name: agent-canvas_net

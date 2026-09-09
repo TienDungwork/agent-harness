@@ -1,10 +1,7 @@
 import { http, delay, HttpResponse } from "msw";
 import type { DirectConversationInfo } from "#/api/agent-server-adapter";
 import type { AppConversation } from "#/api/conversation-service/agent-server-conversation-service.types";
-import {
-  ExecutionStatus,
-  type CreanovaEvent,
-} from "#/types/agent-server/core";
+import { ExecutionStatus, type CreanovaEvent } from "#/types/agent-server/core";
 import { GetMicroagentsResponse } from "#/api/open-hands.types";
 import {
   TABLE_DEMO_CONVERSATION_ID,
@@ -322,10 +319,7 @@ export const CONVERSATION_HANDLERS = [
       const staticEvents = CONVERSATION_EVENTS[conversationId];
       if (staticEvents) {
         return HttpResponse.json(
-          searchPaginationEvents(
-            staticEvents as CreanovaEvent[],
-            searchParams,
-          ),
+          searchPaginationEvents(staticEvents as CreanovaEvent[], searchParams),
         );
       }
 

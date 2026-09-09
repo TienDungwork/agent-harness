@@ -167,11 +167,10 @@ export function buildAgentProfileFields(
       acp_args: null,
     };
   }
-  const fields: Extract<AgentProfileFieldsDraft, { agent_kind: "Creanova" }> =
-    {
-      agent_kind: "Creanova",
-      enable_sub_agents: subAgentsEnabled,
-    };
+  const fields: Extract<AgentProfileFieldsDraft, { agent_kind: "Creanova" }> = {
+    agent_kind: "Creanova",
+    enable_sub_agents: subAgentsEnabled,
+  };
   if (toolConcurrencyField) {
     // Reuse the schema-driven coercion/validation; throws on bad input.
     const coerced = coerceFieldValue(toolConcurrencyField, toolConcurrency);

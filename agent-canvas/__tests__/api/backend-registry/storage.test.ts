@@ -262,6 +262,29 @@ describe("backend-registry storage", () => {
     });
   });
 
+  it("rewrites default-local onto the current origin when host is the same LAN machine on another ingress port", () => {
+    mockWindowLocation("http://192.168.1.198:18010/agents/");
+    vi.stubEnv("VITE_SESSION_API_KEY", "fresh-session-key");
+    window.localStorage.setItem(
+      BACKENDS_STORAGE_KEY,
+      JSON.stringify([
+        {
+          id: "default-local",
+          name: "Local",
+          host: "http://192.168.1.198:18000",
+          apiKey: "stored-session-key",
+          kind: "local",
+        },
+      ]),
+    );
+
+    expect(readStoredBackends()[0]).toMatchObject({
+      id: "default-local",
+      host: "http://192.168.1.198:18010",
+      apiKey: "fresh-session-key",
+    });
+  });
+
   it("preserves a custom backend API key instead of syncing from env defaults", () => {
     vi.stubEnv("VITE_SESSION_API_KEY", "fresh-session-key");
     const storedBackend: Backend = {

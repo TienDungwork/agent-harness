@@ -1,7 +1,9 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { http, HttpResponse } from "msw";
 
-import SettingsService from "#/api/settings-service/settings-service.api";
+import SettingsService, {
+  isRedactedConversationApiKey,
+} from "#/api/settings-service/settings-service.api";
 import {
   __resetActiveStoreForTests,
   setActiveSelection,
@@ -104,6 +106,30 @@ describe("SettingsService", () => {
     // The mock returns an "encrypted" placeholder for the key
     const llm = agentSettings.llm as Record<string, unknown> | undefined;
     expect(llm?.api_key).toMatch(/^gAAAAA_mock_encrypted_/);
+  });
+
+  it("rejects a redacted api_key as encrypted conversation settings", async () => {
+    expect(isRedactedConversationApiKey("**********")).toBe(true);
+    expect(isRedactedConversationApiKey("gAAAAA_mock_encrypted_abc")).toBe(
+      false,
+    );
+    expect(isRedactedConversationApiKey(null)).toBe(false);
+
+    server.use(
+      http.get("/api/settings", () =>
+        HttpResponse.json({
+          agent_settings: {
+            llm: { model: "openai/qwen3-4b", api_key: "**********" },
+          },
+          conversation_settings: {},
+          llm_api_key_is_set: true,
+        }),
+      ),
+    );
+
+    await expect(
+      SettingsService.getSettingsForConversation(),
+    ).rejects.toThrow(/Encrypted LLM API key missing/);
   });
 
   it("uses cache for repeated getSettings calls", async () => {

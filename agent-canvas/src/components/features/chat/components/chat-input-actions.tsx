@@ -25,6 +25,7 @@ import { useOptionalConversationId } from "#/hooks/use-conversation-id";
 import { usePauseConversation } from "#/hooks/mutation/use-pause-conversation";
 import { useResumeConversation } from "#/hooks/mutation/use-resume-conversation";
 import { useActiveBackend } from "#/contexts/active-backend-context";
+import { WELL_KNOWN_DEFAULT_AGENT_PROFILE_NAME } from "#/api/agent-profiles-service/agent-profiles-service.api";
 import { useAgentProfiles } from "#/hooks/query/use-agent-profiles";
 import { useChatInputModelState } from "#/hooks/use-chat-input-model-state";
 import { useConversationStore } from "#/stores/conversation-store";
@@ -70,16 +71,20 @@ export function ChatInputActions({
   const { backend } = useActiveBackend();
   const isCloud = backend.kind === "cloud";
   const modelState = useChatInputModelState();
-  // The home page defaults to the AgentProfile picker (#3727) on both local and
-  // cloud (cloud gained the /api/agent-profiles surface in Creanova #15060). A
-  // backend without that surface returns none — fall back so the composer still
-  // shows a model affordance instead of nothing (#1571). Only fetched on home.
+  // Home: named AgentProfiles keep the agent-profile picker (#3727). The seeded
+  // `default` profile is not a model choice — fall back to LLM profiles (local)
+  // or the model picker (cloud). A backend without /api/agent-profiles returns
+  // none — same fallback so the composer still shows a model affordance (#1571).
+  // Only fetched on home.
   const homeAgentProfiles = useAgentProfiles({
     enabled: !conversationId,
   });
   const agentProfilesUnavailableOnHome =
     homeAgentProfiles.isFetched &&
     (homeAgentProfiles.data?.profiles?.length ?? 0) === 0;
+  const hasNamedAgentProfiles = (homeAgentProfiles.data?.profiles ?? []).some(
+    (profile) => profile.name !== WELL_KNOWN_DEFAULT_AGENT_PROFILE_NAME,
+  );
   // Code/Plan mode switching is a cloud Creanova feature — it doesn't apply
   // to ACP conversations (which have no "plan" mode), so hide it when ACP.
   const showChangeAgentButton = isCloud && !modelState.isAcpContext;
@@ -253,6 +258,7 @@ export function ChatInputActions({
     isCloud,
     isAcp: modelState.isAcpContext,
     profilesAvailable: !agentProfilesUnavailableOnHome,
+    hasNamedAgentProfiles,
   });
 
   // Shared styling for the settings link inside the overflow submenu content.

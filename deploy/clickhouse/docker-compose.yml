@@ -1,0 +1,84 @@
+# ClickHouse VMS warehouse + vms-sync (Postgres pull).
+# Atin191 networking rule: pin bridges to 10.240.0.0/16.
+# Network: 10.240.126.0/24  (+ external agent-canvas_net for MCP)
+# HTTP: 127.0.0.1:18123 -> 8123
+# Native: 127.0.0.1:19000 -> 9000
+#
+# Boot:
+#   cp deploy/clickhouse/.env.example deploy/clickhouse/.env   # set passwords
+#   # apply deploy/clickhouse/sql/pg_vms_sync_ro.sql on 192.168.1.242 as superuser
+#   docker compose -f deploy/clickhouse/docker-compose.yml --env-file deploy/clickhouse/.env up -d
+
+services:
+  clickhouse:
+    image: clickhouse/clickhouse-server:26.8.2.7@sha256:fa394da808cc53f76d0344429421d6c422a6ee85fe7450135c0e3cff4df9bcbb
+    container_name: creanova-clickhouse
+    hostname: creanova-clickhouse
+    restart: unless-stopped
+    ulimits:
+      nofile:
+        soft: 262144
+        hard: 262144
+    environment:
+      CLICKHOUSE_DB: vms
+      CLICKHOUSE_PASSWORD: ${CLICKHOUSE_PASSWORD:?Set CLICKHOUSE_PASSWORD in deploy/clickhouse/.env}
+      CLICKHOUSE_DEFAULT_ACCESS_MANAGEMENT: '1'
+      CH_SYNC_PASSWORD: ${CH_SYNC_PASSWORD:?Set CH_SYNC_PASSWORD}
+      CH_AGENT_PASSWORD: ${CH_AGENT_PASSWORD:?Set CH_AGENT_PASSWORD}
+      CH_VMS_PASSWORD: ${CH_VMS_PASSWORD:?Set CH_VMS_PASSWORD}
+    ports:
+      - '127.0.0.1:18123:8123'
+      - '127.0.0.1:19000:9000'
+    volumes:
+      - creanova_ch_data:/var/lib/clickhouse
+      - ./config.d/docker_related_config.xml:/etc/clickhouse-server/config.d/docker_related_config.xml:ro
+      - ./config.d/creanova.xml:/etc/clickhouse-server/config.d/creanova.xml:ro
+      - ./init:/docker-entrypoint-initdb.d:ro
+    networks:
+      - clickhouse_net
+      - agent-canvas_net
+    healthcheck:
+      test: ['CMD', 'wget', '--spider', '-q', 'http://127.0.0.1:8123/ping']
+      interval: 5s
+      timeout: 5s
+      retries: 24
+      start_period: 20s
+
+  vms-sync:
+    build:
+      context: ../../services/vms-sync
+      dockerfile: Dockerfile
+    container_name: creanova-vms-sync
+    restart: unless-stopped
+    depends_on:
+      clickhouse:
+        condition: service_healthy
+    environment:
+      PG_HOST: ${PG_HOST:-192.168.1.242}
+      PG_PORT: ${PG_PORT:-18644}
+      PG_USER: ${PG_USER:-vms_sync_ro}
+      PG_PASSWORD: ${PG_PASSWORD:?Set PG_PASSWORD}
+      CH_URL: http://clickhouse:8123
+      CH_USER: vms_sync
+      CH_PASSWORD: ${CH_SYNC_PASSWORD:?Set CH_SYNC_PASSWORD}
+      CH_DATABASE: vms
+      POLL_SECONDS: ${POLL_SECONDS:-60}
+      BATCH_SIZE: ${BATCH_SIZE:-20000}
+      LAG_SECONDS: ${LAG_SECONDS:-30}
+    networks:
+      - clickhouse_net
+
+volumes:
+  creanova_ch_data:
+
+networks:
+  clickhouse_net:
+    name: creanova_clickhouse_net
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 10.240.126.0/24
+          gateway: 10.240.126.1
+  agent-canvas_net:
+    external: true
+    name: agent-canvas_net

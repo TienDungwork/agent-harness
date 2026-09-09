@@ -30,10 +30,10 @@ interface ChatInputLlmProfileMenuContentProps {
 }
 
 /**
- * The in-conversation Creanova LLM-profile switcher list. Selecting a profile
- * live-swaps the running conversation's LLM via `/switch_profile` (the ACP
- * analog is {@link ChatInputModelMenuContent}). Shared by the inline pill and
- * the chat-input overflow submenu.
+ * The Creanova LLM-profile switcher list. On home, selecting a profile
+ * activates it globally; inside a conversation it live-swaps via
+ * `/switch_profile` (the ACP analog is {@link ChatInputModelMenuContent}).
+ * Shared by the inline pill and the chat-input overflow submenu.
  */
 export function ChatInputLlmProfileMenuContent({
   onClose,

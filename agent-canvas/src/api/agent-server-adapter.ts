@@ -12,6 +12,10 @@ import { getAgentServerClientOptions } from "./agent-server-client-options";
 import { isAgentServerToolAvailable } from "./agent-server-compatibility";
 import { getAgentServerWorkingDir } from "./agent-server-config";
 import { LOCAL_AGENT_SYSTEM_SUFFIX } from "#/config/local-agent-prompt";
+import {
+  assembleCanvasStaticSystemPrompt,
+  isCanvasPromptSectionEnabled,
+} from "#/config/static-system-prompt";
 import { getEffectiveLocalBackend } from "./backend-registry/active-store";
 import { buildAuthHeaders } from "./backend-registry/auth";
 import {
@@ -36,7 +40,11 @@ import {
   type ClientToolSpec,
 } from "./canvas-ui-client-tool";
 import { API_DEFAULT_AGENT_KIND, toApiAgentKind } from "./agent-kind";
-import { normalizeLlmModelForLiteLLM } from "#/utils/llm-model-wire";
+import {
+  applyStrictOpenAiCompatibleLlmGuards,
+  isPrivateOrLocalLlmEndpoint,
+  normalizeLlmModelForLiteLLM,
+} from "#/utils/llm-model-wire";
 
 export interface DirectConversationInfo {
   id: string;
@@ -643,27 +651,43 @@ function buildBundledSkills(): BundledSkill[] {
   });
 }
 
-function buildAgentContext(agentSettings: SettingsRecord): SettingsRecord {
+function buildAgentContext(
+  agentSettings: SettingsRecord,
+  llm?: Record<string, unknown>,
+): SettingsRecord {
   const runtimeServicesSuffix = buildRuntimeServicesSystemSuffix();
   const existingContext = toRecord(agentSettings.agent_context);
+  const llmRecord = llm ?? toRecord(agentSettings.llm);
+  const baseUrl =
+    typeof llmRecord.base_url === "string" ? llmRecord.base_url : null;
+  // LAN 4B gateways 400 with context_length_exceeded when Canvas injects
+  // the full public skills catalog (~380KB) into the first completion.
+  const skipBundledSkills = isPrivateOrLocalLlmEndpoint(baseUrl);
+  const promptOpts = { isLan: skipBundledSkills };
 
-  // Merge bundled public skills with any skills already present in the
-  // agent context (e.g. user-defined skills set via the settings API).
   const existingSkills = Array.isArray(existingContext.skills)
     ? (existingContext.skills as SettingsRecord[])
     : [];
-  const mergedSkills = [...existingSkills, ...buildBundledSkills()];
+  const mergedSkills = skipBundledSkills
+    ? []
+    : [...existingSkills, ...buildBundledSkills()];
   const existingSuffix =
     typeof existingContext.system_message_suffix === "string"
       ? existingContext.system_message_suffix
       : undefined;
-  const localSuffix = existingSuffix?.includes("<LOCAL_HARNESS>")
-    ? undefined
-    : LOCAL_AGENT_SYSTEM_SUFFIX;
+  const includeHarness = isCanvasPromptSectionEnabled("harness", promptOpts);
+  const localSuffix =
+    includeHarness && !existingSuffix?.includes("<LOCAL_HARNESS>")
+      ? LOCAL_AGENT_SYSTEM_SUFFIX
+      : undefined;
+  const includeRuntimeServices = isCanvasPromptSectionEnabled(
+    "runtime_services",
+    promptOpts,
+  );
   const systemMessageSuffix = mergeSystemMessageSuffix(
     localSuffix,
     existingSuffix,
-    runtimeServicesSuffix,
+    includeRuntimeServices ? runtimeServicesSuffix : undefined,
   );
 
   return {
@@ -679,8 +703,8 @@ function buildAgentContext(agentSettings: SettingsRecord): SettingsRecord {
     // VITE_LOAD_PUBLIC_SKILLS=false to avoid clone delays no longer need it.
     skills: mergedSkills,
     load_public_skills: false,
-    load_user_skills: true,
-    load_project_skills: true,
+    load_user_skills: !skipBundledSkills,
+    load_project_skills: !skipBundledSkills,
     ...(systemMessageSuffix
       ? { system_message_suffix: systemMessageSuffix }
       : {}),
@@ -789,10 +813,6 @@ function buildConfiguredCreanovaAgentSettings(
         )
       : DEFAULT_SETTINGS.llm_model;
 
-  // Stream assistant tokens (parity with ACP agents). The agent-server only
-  // emits StreamingDeltaEvents for SDK LLM agents when an LLM has stream=True.
-  llm.stream = true;
-
   const apiKey = normalizeSecretString(llm.api_key);
   if (apiKey) {
     llm.api_key = apiKey;
@@ -806,6 +826,12 @@ function buildConfiguredCreanovaAgentSettings(
   } else {
     delete llm.base_url;
   }
+
+  // Stream assistant tokens (parity with ACP agents) on hosted OpenAI-family
+  // APIs. Custom OpenAI-compatible gateways (LAN / Cloudflare) reject
+  // LiteLLM's stream_options.include_usage with 400 validation_error.
+  llm.stream = true;
+  applyStrictOpenAiCompatibleLlmGuards(llm);
 
   if (isSubscriptionLlmConfig(llm)) {
     llm.auth_type = LLM_AUTH_TYPE_SUBSCRIPTION;
@@ -831,6 +857,19 @@ function buildConfiguredCreanovaAgentSettings(
   // scrub it so it never leaks onto the Creanova payload.
   delete agentSettings.acp_env;
 
+  const tools = getAgentTools(agentSettings);
+  const existingSystemPrompt =
+    typeof agentSettings.system_prompt === "string"
+      ? agentSettings.system_prompt.trim()
+      : "";
+  const llmBaseUrl = typeof llm.base_url === "string" ? llm.base_url : null;
+  const systemPrompt =
+    existingSystemPrompt ||
+    assembleCanvasStaticSystemPrompt({
+      enableBrowser: tools.some((tool) => tool.name === BROWSER_TOOL_SET_NAME),
+      isLan: isPrivateOrLocalLlmEndpoint(llmBaseUrl),
+    });
+
   return {
     ...agentSettings,
     agent_kind:
@@ -840,8 +879,9 @@ function buildConfiguredCreanovaAgentSettings(
           : undefined,
       ) ?? API_DEFAULT_AGENT_KIND,
     llm,
-    agent_context: buildAgentContext(agentSettings),
-    tools: getAgentTools(agentSettings),
+    agent_context: buildAgentContext(agentSettings, llm),
+    tools,
+    system_prompt: systemPrompt,
   };
 }
 

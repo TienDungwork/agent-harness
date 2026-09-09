@@ -296,9 +296,7 @@ export default function App() {
     queryKey: QUERY_KEYS.MAIN_APP_COOKIE_AUTH,
     queryFn: authenticateWithMainAppCookie,
     enabled:
-      !onLocalLoginRoute &&
-      shouldCheckMainAppAuth &&
-      !showFirstRunOnboarding,
+      !onLocalLoginRoute && shouldCheckMainAppAuth && !showFirstRunOnboarding,
     retry: false,
     staleTime: 1000 * 60 * 5,
     meta: { disableToast: true },

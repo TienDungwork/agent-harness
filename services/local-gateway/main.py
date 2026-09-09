@@ -6,6 +6,7 @@ from config import get_settings
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from proxy import router as proxy_router
+from routers.analytics import router as analytics_router
 from routers.auth import router as auth_router
 from routers.conversations import router as conversations_router
 from routers.credits import router as credits_router
@@ -45,6 +46,7 @@ def create_app() -> FastAPI:
     app.include_router(credits_router)
     app.include_router(conversations_router)
     app.include_router(infra_router)
+    app.include_router(analytics_router)
     app.include_router(ssh_ws_router)
     # Proxy last so specific routers win.
     app.include_router(proxy_router)

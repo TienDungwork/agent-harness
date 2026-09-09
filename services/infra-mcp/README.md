@@ -15,3 +15,4 @@ Harness tools:
 
 - `infra_resolve_server` — `{ q, limit? }` → ranked hosts
 - `infra_run` — `{ server_id, command, confirm_destructive?, timeout_sec? }`
+- `vms_summary` / `vms_top_cameras` / `vms_search_plate` / `vms_search_person` / `vms_daily` — VMS warehouse (no SQL; ClickHouse stays on the gateway)

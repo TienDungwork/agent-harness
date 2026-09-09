@@ -45,10 +45,16 @@ export default function InfraServersScreen() {
   if (!me?.is_admin) return <Navigate to="/" replace />;
 
   return (
-    <div className="mx-auto flex w-full max-w-4xl flex-col gap-4 p-6" data-testid="infra-servers">
-      <h1 className="text-xl font-semibold text-white">Infrastructure servers</h1>
+    <div
+      className="mx-auto flex w-full max-w-4xl flex-col gap-4 p-6"
+      data-testid="infra-servers"
+    >
+      <h1 className="text-xl font-semibold text-white">
+        Infrastructure servers
+      </h1>
       <p className="text-sm text-neutral-400">
-        SSH inventory for GPU / service tools. Credentials are encrypted and never shown again.
+        SSH inventory for GPU / service tools. Credentials are encrypted and
+        never shown again.
       </p>
       {error ? <p className="text-sm text-red-400">{error}</p> : null}
 
@@ -110,9 +116,15 @@ export default function InfraServersScreen() {
 
       <ul className="divide-y divide-neutral-800 rounded border border-neutral-800">
         {servers.map((s) => (
-          <li key={s.id} className="flex items-center justify-between gap-2 px-3 py-2 text-sm">
+          <li
+            key={s.id}
+            className="flex items-center justify-between gap-2 px-3 py-2 text-sm"
+          >
             <div>
-              <Link className="text-white underline" to={`/admin/infra/${s.id}`}>
+              <Link
+                className="text-white underline"
+                to={`/admin/infra/${s.id}`}
+              >
                 {s.name}
               </Link>
               <div className="text-xs text-neutral-400">
@@ -128,24 +140,24 @@ export default function InfraServersScreen() {
                 SSH
               </Link>
               <BrandButton
-              type="button"
-              variant="secondary"
-              onClick={async () => {
-                try {
-                  const r = await testInfraServer(s.id);
-                  setError(
-                    r.ok
-                      ? `Test OK (${r.duration_ms ?? "?"}ms)`
-                      : `Test failed: ${r.stdout || "no output"}`,
-                  );
-                  await reload();
-                } catch (err) {
-                  setError(err instanceof Error ? err.message : String(err));
-                }
-              }}
-            >
-              Test
-            </BrandButton>
+                type="button"
+                variant="secondary"
+                onClick={async () => {
+                  try {
+                    const r = await testInfraServer(s.id);
+                    setError(
+                      r.ok
+                        ? `Test OK (${r.duration_ms ?? "?"}ms)`
+                        : `Test failed: ${r.stdout || "no output"}`,
+                    );
+                    await reload();
+                  } catch (err) {
+                    setError(err instanceof Error ? err.message : String(err));
+                  }
+                }}
+              >
+                Test
+              </BrandButton>
             </div>
           </li>
         ))}

@@ -1,5 +1,5 @@
 import React from "react";
-import { PrefetchPageLinks } from "react-router";
+import { PrefetchPageLinks, redirect } from "react-router";
 import { HomeHeader } from "#/components/features/home/home-header/home-header";
 import { RepoConnector } from "#/components/features/home/repo-connector";
 import { TaskSuggestions } from "#/components/features/home/tasks/task-suggestions";
@@ -9,6 +9,14 @@ import { RecentConversations } from "#/components/features/home/recent-conversat
 import { HomepageCTA } from "#/components/features/home/homepage-cta";
 import { isCTADismissed } from "#/utils/local-storage";
 import { useAppMode } from "#/hooks/use-app-mode";
+import { isLocalGatewayAdmin } from "#/utils/local-gateway-admin";
+
+export const clientLoader = async () => {
+  if (isLocalGatewayAdmin()) {
+    return redirect("/settings/usage-monitoring");
+  }
+  return null;
+};
 
 <PrefetchPageLinks page="/conversations/:conversationId" />;
 

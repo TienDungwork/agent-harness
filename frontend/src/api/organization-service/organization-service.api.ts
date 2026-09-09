@@ -10,6 +10,19 @@ import {
 } from "#/types/org";
 import { Settings, MarketplaceRegistration } from "#/types/settings";
 import { Creanova } from "../open-hands-axios";
+import {
+  isLocalGatewayAdmin,
+  LOCAL_GATEWAY_ORG_ID,
+} from "#/utils/local-gateway-admin";
+import {
+  localAuthUserToMember,
+  localGatewayConversationStats,
+  localGatewayFetchMe,
+  localGatewaySearchConversations,
+  localGatewayStopConversation,
+  localGatewayUsageStats,
+  localGatewayUserUsage,
+} from "../local-gateway-admin.api";
 
 type OrganizationSettingsResponse = Pick<
   Settings,
@@ -36,6 +49,10 @@ export type OrganizationAppSettingsUpdate = {
 
 export const organizationService = {
   getMe: async ({ orgId }: { orgId: string }) => {
+    if (isLocalGatewayAdmin()) {
+      const me = await localGatewayFetchMe();
+      return localAuthUserToMember(me);
+    }
     const { data } = await Creanova.get<OrganizationMember>(
       `/api/organizations/${orgId}/me`,
     );
@@ -44,6 +61,32 @@ export const organizationService = {
   },
 
   getOrganizations: async () => {
+    if (isLocalGatewayAdmin()) {
+      const localOrg: Organization = {
+        id: LOCAL_GATEWAY_ORG_ID,
+        name: "Local",
+        contact_name: "",
+        contact_email: "",
+        conversation_expiration: 0,
+        remote_runtime_resource_factor: 1,
+        billing_margin: 0,
+        enable_proactive_conversation_starters: false,
+        sandbox_base_container_image: "",
+        sandbox_runtime_container_image: "",
+        org_version: 1,
+        search_api_key: null,
+        sandbox_api_key: null,
+        max_budget_per_task: 0,
+        enable_solvability_analysis: false,
+        v1_enabled: true,
+        credits: null,
+        is_personal: false,
+      };
+      return {
+        items: [localOrg],
+        currentOrgId: LOCAL_GATEWAY_ORG_ID,
+      };
+    }
     const { data } = await Creanova.get<{
       items: Organization[];
       current_org_id: string | null;
@@ -285,6 +328,9 @@ export const organizationService = {
 
   // Organization Conversation APIs
   getConversationStats: async ({ orgId }: { orgId: string }) => {
+    if (isLocalGatewayAdmin()) {
+      return localGatewayConversationStats();
+    }
     const { data } = await Creanova.get<OrgConversationStats>(
       `/api/organizations/${orgId}/conversations/stats`,
     );
@@ -300,6 +346,9 @@ export const organizationService = {
     days?: number;
     timeWindow?: string;
   }) => {
+    if (isLocalGatewayAdmin()) {
+      return localGatewayUsageStats();
+    }
     let resolvedDays: number | undefined;
     if (typeof days === "number") {
       resolvedDays = days;
@@ -329,6 +378,9 @@ export const organizationService = {
     limit?: number;
     offset?: number;
   }) => {
+    if (isLocalGatewayAdmin()) {
+      return localGatewayUserUsage();
+    }
     const params: Record<string, number> = {};
     if (typeof limit === "number") {
       params.limit = limit;
@@ -441,6 +493,9 @@ export const organizationService = {
     timeWindow?: string;
     includeSubConversations?: boolean;
   }) => {
+    if (isLocalGatewayAdmin()) {
+      return localGatewaySearchConversations(perPage);
+    }
     const params = new URLSearchParams();
     params.set("page", String(page));
     params.set("per_page", String(perPage));
@@ -479,6 +534,14 @@ export const organizationService = {
     orgId: string;
     conversationId: string;
   }) => {
+    if (isLocalGatewayAdmin()) {
+      await localGatewayStopConversation(conversationId);
+      return {
+        success: true,
+        message: "paused",
+        conversation_id: conversationId,
+      };
+    }
     const { data } = await Creanova.post<{
       success: boolean;
       message: string;

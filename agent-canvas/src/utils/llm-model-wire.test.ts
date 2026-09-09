@@ -1,8 +1,11 @@
 import { describe, expect, it } from "vitest";
 import {
+  applyStrictOpenAiCompatibleLlmGuards,
   assertLlmProfileCompatibleWithLiteLLM,
   getUnsupportedLlmProfileReason,
   hasLlmProviderPrefix,
+  isPrivateOrLocalLlmEndpoint,
+  llmEndpointSupportsOpenAiStreamOptions,
   llmModelsMatch,
   normalizeLlmModelForLiteLLM,
 } from "./llm-model-wire";
@@ -79,5 +82,39 @@ describe("llm-model-wire", () => {
       ),
     ).toBe("https://pmid-catering-formed-shop.trycloudflare.com/v1");
     expect(normalizeOpenAiCompatibleBaseUrl(null)).toBeNull();
+  });
+
+  it("treats LAN OpenAI-compatible gateways as incompatible with stream_options", () => {
+    expect(
+      llmEndpointSupportsOpenAiStreamOptions("http://192.168.1.196:18083/v1"),
+    ).toBe(false);
+    expect(
+      llmEndpointSupportsOpenAiStreamOptions("https://api.openai.com/v1"),
+    ).toBe(true);
+    expect(llmEndpointSupportsOpenAiStreamOptions(null)).toBe(true);
+
+    const llm: Record<string, unknown> = {
+      base_url: "http://192.168.1.196:18083/v1",
+      stream: true,
+      reasoning_effort: "high",
+    };
+    applyStrictOpenAiCompatibleLlmGuards(llm);
+    expect(llm.stream).toBe(false);
+    expect(llm.reasoning_effort).toBeUndefined();
+  });
+
+  it("detects private/local LLM endpoints", () => {
+    expect(
+      isPrivateOrLocalLlmEndpoint("http://192.168.1.196:18083/v1"),
+    ).toBe(true);
+    expect(isPrivateOrLocalLlmEndpoint("http://10.240.120.2:8000/v1")).toBe(
+      true,
+    );
+    expect(isPrivateOrLocalLlmEndpoint("https://nested.example.com")).toBe(
+      false,
+    );
+    expect(isPrivateOrLocalLlmEndpoint("https://api.openai.com/v1")).toBe(
+      false,
+    );
   });
 });

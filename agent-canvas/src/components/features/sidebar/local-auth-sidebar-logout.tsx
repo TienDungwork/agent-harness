@@ -1,9 +1,6 @@
 import { Link, useNavigate } from "react-router";
 import { isLocalAuthEnabled } from "#/api/local-auth/client";
-import {
-  useLocalAuthUser,
-  useLocalLogout,
-} from "#/api/local-auth/hooks";
+import { useLocalAuthUser, useLocalLogout } from "#/api/local-auth/hooks";
 import { BrandButton } from "#/components/features/settings/brand-button";
 
 export function LocalAuthSidebarLogout() {

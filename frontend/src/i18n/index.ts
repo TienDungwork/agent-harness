@@ -3,6 +3,14 @@ import Backend from "i18next-http-backend";
 import LanguageDetector from "i18next-browser-languagedetector";
 import { initReactI18next } from "react-i18next";
 
+/** Join Vite `BASE_URL` so locale JSON resolves under a path gateway (`/admin/`). */
+export function i18nBackendLoadPath(
+  baseUrl: string = import.meta.env.BASE_URL || "/",
+): string {
+  const prefix = baseUrl.endsWith("/") ? baseUrl : `${baseUrl}/`;
+  return `${prefix}locales/{{lng}}/{{ns}}.json`;
+}
+
 export const AvailableLanguages = [
   { label: "English", value: "en" },
   { label: "日本語", value: "ja" },
@@ -37,6 +45,10 @@ i18n
     // Do NOT set nonExplicitSupportedLngs: true as it causes 404 errors
     // for region-specific codes not in supportedLngs (per i18next developer)
     nonExplicitSupportedLngs: false,
+
+    backend: {
+      loadPath: i18nBackendLoadPath(),
+    },
 
     interpolation: {
       // React already escapes text content before rendering, so i18next's

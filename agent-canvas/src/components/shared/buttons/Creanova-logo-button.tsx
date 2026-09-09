@@ -34,8 +34,7 @@ export function CreanovaLogoButton({
   const ariaLabel = t(I18nKey.BRANDING$Creanova_LOGO);
 
   const width =
-    logoWidth ??
-    (variant === "full" ? DEFAULT_FULL_WIDTH : DEFAULT_MARK_WIDTH);
+    logoWidth ?? (variant === "full" ? DEFAULT_FULL_WIDTH : DEFAULT_MARK_WIDTH);
   const height =
     logoHeight ??
     (variant === "full" ? DEFAULT_FULL_HEIGHT : DEFAULT_MARK_HEIGHT);

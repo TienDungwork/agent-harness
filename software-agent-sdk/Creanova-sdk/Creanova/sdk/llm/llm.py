@@ -2075,8 +2075,16 @@ class LLM(BaseModel, RetryMixin, NonNativeToolCallingMixin):
         # When streaming, request usage in the final chunk so that detailed
         # token breakdowns (prompt_tokens_details with cached_tokens, etc.) are
         # not silently discarded by litellm's streaming handler.
-        if enable_streaming:
+        # Skip on custom base_url: strict OpenAI-compatible gateways (LAN
+        # vLLM/Pydantic proxies) reject stream_options with 400 validation_error.
+        if enable_streaming and not self.base_url:
             kwargs.setdefault("stream_options", {"include_usage": True})
+        elif enable_streaming:
+            extra_drop = list(kwargs.get("additional_drop_params") or [])
+            if "stream_options" not in extra_drop:
+                extra_drop.append("stream_options")
+            kwargs["additional_drop_params"] = extra_drop
+            kwargs.pop("stream_options", None)
         api_key_value, subscription_headers = (
             auth_values if auth_values is not None else self._get_litellm_auth_values()
         )

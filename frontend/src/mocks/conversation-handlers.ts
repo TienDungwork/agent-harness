@@ -4,6 +4,7 @@ import {
   GetMicroagentsResponse,
   ResultSet,
 } from "#/api/open-hands.types";
+import { V1AppConversation } from "#/api/conversation-service/v1-conversation-service.types";
 
 const conversations: Conversation[] = [
   {
@@ -55,7 +56,38 @@ const CONVERSATIONS = new Map<string, Conversation>(
   conversations.map((c) => [c.conversation_id, c]),
 );
 
+function toV1AppConversation(c: Conversation): V1AppConversation {
+  return {
+    id: c.conversation_id,
+    created_by_user_id: "1",
+    sandbox_id: c.sandbox_id ?? `sandbox-${c.conversation_id}`,
+    selected_repository: c.selected_repository,
+    selected_branch: c.selected_branch,
+    git_provider: c.git_provider,
+    title: c.title,
+    trigger: c.trigger ?? null,
+    pr_number: c.pr_number ?? [],
+    llm_model: c.llm_model ?? null,
+    agent_kind: c.agent_kind,
+    tags: c.tags,
+    metrics: null,
+    created_at: c.created_at,
+    updated_at: c.last_updated_at,
+    sandbox_status: c.status === "RUNNING" ? "RUNNING" : "MISSING",
+    execution_status: null,
+    conversation_url: c.url,
+    session_api_key: c.session_api_key,
+    public: c.public,
+    sub_conversation_ids: c.sub_conversation_ids ?? [],
+  };
+}
+
 export const CONVERSATION_HANDLERS = [
+  http.get("/api/v1/app-conversations/search", async () => {
+    const items = Array.from(CONVERSATIONS.values()).map(toV1AppConversation);
+    return HttpResponse.json({ items, next_page_id: null });
+  }),
+
   http.get("/api/conversations", async () => {
     const values = Array.from(CONVERSATIONS.values());
     const results: ResultSet<Conversation> = {

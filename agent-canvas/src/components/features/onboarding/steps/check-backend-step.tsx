@@ -154,6 +154,7 @@ export function CheckBackendStep({
     : backend;
   const healthByBackendId = useBackendsHealth(
     noBackendSelected ? [] : [backend],
+    { probeDisabledOnce: true },
   );
   const isConnected = treatAsNoBackend
     ? null

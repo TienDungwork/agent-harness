@@ -2,6 +2,12 @@
 
 All notable changes to this workspace are listed here.
 
+## [beta v0.8.1] - 2026-09-09
+
+### Changed
+
+- Land remaining local overlay: admin `/admin/` via local-gateway, VMS ClickHouse warehouse + analytics APIs, LAN LLM wire, Beszel/SSH, and related tests
+
 ## [beta v0.8.0] - 2026-09-09
 
 ### Changed
@@ -9,6 +15,85 @@ All notable changes to this workspace are listed here.
 - Creanova Canvas system prompt is now a small overlay (`config/SOUL.md` + `config/local-agent/`): identity, role, browser, process kill safety, security-risk labels, plus `LOCAL_HARNESS`
 - Workflow/safety laws moved to Cursor `.cursor/rules/` (`file-system-guidelines`, `pull-requests`, `security`, `problem-solving-workflow`, and related)
 - `EXTERNAL_SERVICES` is off in the Canvas prompt switchboard (`manifest.json`)
+
+## [beta v0.7.1] - 2026-09-09
+
+### Added
+
+- VMS warehouse GĐ1 complete: skip indexes + `prj_top_cameras`; mappings for footfall/ppe/`vms_db.ai_event` (after GRANT); thermal mapper ready
+- `deploy/clickhouse/scripts/benchmark.sh` + `BENCHMARK.md` (US1/US2 avg ~0.03s; CH ~20× Postgres on intrusion top-cameras)
+
+### Changed
+
+- Analytics search results use `Asia/Ho_Chi_Minh`; extra modules FOOTFALL/PPE/THERMAL/HUB
+- Sync skips sources without SELECT grant; parity script treats CH-ahead (PG truncated) as `CH_AHEAD` not fail
+
+## [beta v0.7.0] - 2026-09-08
+
+### Added
+
+- Local `/admin/` shares the Canvas local-gateway backend: login, usage (conversations), users credits, and LLM `/api/settings` — no MSW and no fake Cloud orgs
+- Frontend script `npm run dev:local:gateway` (`VITE_LOCAL_GATEWAY_ADMIN=true`, base `/admin/`)
+
+### Changed
+
+- Path gateway: cookie/Referer `admin` `/api` now proxies to `agent-canvas:8000` (same as `/agents/`); Beszel `/monitoring` is unchanged
+
+## [beta v0.6.5] - 2026-09-08
+
+### Changed
+
+- ClickHouse warehouse: pin `clickhouse-server:26.8.2.7` digest; mount upstream `docker_related_config.xml` (listen) plus `creanova.xml` (UTC / RAM cap)
+
+## [beta v0.6.4] - 2026-09-08
+
+### Changed
+
+- VMS analytics: agent uses curated gateway tools (`/api/infra/analytics/*`, MCP `vms_*`) instead of writing ClickHouse SQL / `mcp-clickhouse`
+
+## [beta v0.6.3] - 2026-09-08
+
+### Fixed
+
+- Admin mock: MSW handlers for git organizations, git-claims, org LLM profiles, org settings, and usage-dashboard stats so `/admin/` no longer 404s those APIs
+- Admin mock: register MSW service worker with scope `/` (`Service-Worker-Allowed`) so `/api` is intercepted without XHR fallback cookie warnings
+- Admin mock: omit PostHog client key so the UI does not call the real PostHog CDN
+
+## [beta v0.6.2] - 2026-09-08
+
+### Fixed
+
+- Admin mock (`/admin/`): MSW now serves `/api/onboarding_status`, `/api/v1/app-conversations/search`, and seeded `/api/v1/settings` so the UI no longer 500s against a missing `:3000` backend
+- Admin mock: i18n locale JSON and favicon resolve under `VITE_BASE_PATH` (`/admin/`); skip Vite `/api` proxy when `VITE_MOCK_API=true`
+- Admin mock: register MSW service worker at `${BASE_URL}mockServiceWorker.js` so it does not 404 at `/mockServiceWorker.js`
+
+## [beta v0.6.1] - 2026-09-08
+
+### Fixed
+
+- Path gateway: proxy `/server_info`, `/health`, `/alive` to agent-canvas so Canvas default backend `http://<IP>:18000` is reachable (was 404 → Disconnected)
+
+## [beta v0.6.0] - 2026-09-08
+
+### Added
+
+- ClickHouse VMS warehouse (`deploy/clickhouse/`): `clickhouse/clickhouse-server:26.8.2.7` on `creanova_clickhouse_net` `10.240.126.0/24`, loopback HTTP `:18123`, db `vms.ai_events` (TTL 3 years, no image/base64 blobs)
+- `services/vms-sync`: poll Postgres `192.168.1.242:18644` (`its` / `anomaly` / `smart_face` / `virtual_fence` / `firesmoke`) into ClickHouse with id watermark + 30s lag
+- Agent read path: `agent_ro` quota + `LOCAL_HARNESS` / `skills/vms-analytics.md` for MCP `mcp-clickhouse`
+
+## [beta v0.5.55] - 2026-09-08
+
+### Fixed
+
+- Creanova FE gateway mount: set React Router `basename` from `VITE_BASE_PATH` so `/admin/` is a real app root (not a 404 SPA miss)
+
+## [beta v0.5.54] - 2026-09-07
+
+### Added
+
+- Path gateway (`deploy/gateway/`): one port `:18000` → `/agents/` (Agent Canvas), `/admin/` (Creanova usage FE), `/monitoring/` (Beszel); Docker net `creanova_gateway_net` = `10.240.125.0/24` (network.md)
+- Agent Canvas default UI base path `/agents` (`VITE_BASE_PATH` / `AGENT_CANVAS_BASE_PATH`); legacy `/canvas/` still proxied
+- Creanova FE optional `VITE_BASE_PATH` + `npm run dev:mock:saas:gateway` for `/admin/` behind the gateway
 
 ## [beta v0.5.53] - 2026-09-07
 

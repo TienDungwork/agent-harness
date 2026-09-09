@@ -261,3 +261,7 @@ runtime_*.tar
 test-results
 .sessions
 .eval_sessions
+
+# Upstream ClickHouse engine source (https://github.com/ClickHouse/ClickHouse)
+# Separate git checkout — do not vendor into this repo.
+/ClickHouse/

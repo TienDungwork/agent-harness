@@ -1,5 +1,10 @@
 /// <reference types="vite/client" />
 
+declare module "*.md?raw" {
+  const content: string;
+  export default content;
+}
+
 /**
  * Absolute filesystem path to the bundled extensions skills directory,
  * injected by Vite at build time via `define` in vite.config.ts.

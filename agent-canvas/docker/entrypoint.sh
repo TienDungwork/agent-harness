@@ -16,7 +16,7 @@
 #   PORT                 – Unified entry point port (default: 8000)
 #   AGENT_SERVER_PORT    – Internal agent-server port (default: 18000)
 #   AUTOMATION_PORT      – Internal automation port (default: 18001)
-#   AGENT_CANVAS_BASE_PATH – Static frontend mount path (default: /canvas)
+#   AGENT_CANVAS_BASE_PATH – Static frontend mount path (default: /agents)
 #   PUBLIC_MODE_PORT     – If set, starts a second static server on this port
 #                          with --auth-required (no session key injected)
 #   OH_SECRET_KEY        – Secret key for settings encryption (auto-generated
@@ -56,7 +56,7 @@ fi
 PORT="${PORT:-${CONFIG_PROXY_PORT:-8000}}"
 AGENT_SERVER_PORT="${AGENT_SERVER_PORT:-${CONFIG_AGENT_SERVER_PORT:-18000}}"
 AUTOMATION_PORT="${AUTOMATION_PORT:-${CONFIG_AUTOMATION_PORT:-18001}}"
-AGENT_CANVAS_BASE_PATH="${AGENT_CANVAS_BASE_PATH:-${CONFIG_CANVAS_BASE_PATH:-/canvas}}"
+AGENT_CANVAS_BASE_PATH="${AGENT_CANVAS_BASE_PATH:-${CONFIG_CANVAS_BASE_PATH:-/agents}}"
 
 # Persistence paths — keep settings, conversations, bash history under a
 # single well-known directory that the VOLUME directive exposes.
@@ -155,6 +155,9 @@ export AUTOMATION_AGENT_SERVER_URL="${AUTOMATION_AGENT_SERVER_URL:-http://127.0.
 # Keep the legacy canvas_ui_tool module importable when the agent-server restores
 # conversations whose persisted metadata still references its module qualname.
 export OH_EXTRA_PYTHON_PATH="${OH_EXTRA_PYTHON_PATH:-/opt/agent-canvas/tools}"
+# Make the stream_options guard importable by the PyInstaller agent-server.
+export OH_EXTRA_PYTHON_PATH="/opt/agent-canvas:${OH_EXTRA_PYTHON_PATH}"
+export CREANOVA_APPLY_STREAM_OPTIONS_PATCH=1
 
 # Track child PIDs so we can clean up on exit.
 PIDS=()
@@ -172,15 +175,26 @@ trap cleanup EXIT SIGINT SIGTERM
 # ── 1. Start Agent Server ────────────────────────────────────────────────────
 log "Starting agent-server on port $AGENT_SERVER_PORT..."
 
+# Optional site-packages edit (system Python). The Hub binary is PyInstaller,
+# so the real guard is --import-modules patch_litellm_stream_options below.
+if [ -f /opt/agent-canvas/patch_litellm_stream_options.py ]; then
+  python3 /opt/agent-canvas/patch_litellm_stream_options.py \
+    || log "WARNING: stream_options file patch failed (continuing)"
+fi
+
 if command -v Creanova-agent-server >/dev/null 2>&1; then
-  Creanova-agent-server --port "$AGENT_SERVER_PORT" &
+  Creanova-agent-server --port "$AGENT_SERVER_PORT" \
+    --import-modules patch_litellm_stream_options &
 elif command -v openhands-agent-server >/dev/null 2>&1; then
-  openhands-agent-server --port "$AGENT_SERVER_PORT" &
+  openhands-agent-server --port "$AGENT_SERVER_PORT" \
+    --import-modules patch_litellm_stream_options &
 elif [ -x /agent-server/.venv/bin/python ]; then
   if /agent-server/.venv/bin/python -c "import Creanova.agent_server" 2>/dev/null; then
-    /agent-server/.venv/bin/python -m Creanova.agent_server --port "$AGENT_SERVER_PORT" &
+    /agent-server/.venv/bin/python -m Creanova.agent_server --port "$AGENT_SERVER_PORT" \
+      --import-modules patch_litellm_stream_options &
   else
-    /agent-server/.venv/bin/python -m openhands.agent_server --port "$AGENT_SERVER_PORT" &
+    /agent-server/.venv/bin/python -m openhands.agent_server --port "$AGENT_SERVER_PORT" \
+      --import-modules patch_litellm_stream_options &
   fi
 else
   log_error "Cannot find agent-server binary or source venv."

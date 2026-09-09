@@ -130,8 +130,7 @@ export function LlmSettingsScreen({
 }) {
   const { t } = useTranslation("Creanova");
   const { backend } = useActiveBackend();
-  const isCloudBackend =
-    !isNoBackend(backend) && backend.kind === "cloud";
+  const isCloudBackend = !isNoBackend(backend) && backend.kind === "cloud";
 
   const { data: settings } = useSettings(scope);
   const { data: schema } = useAgentSettingsSchema(

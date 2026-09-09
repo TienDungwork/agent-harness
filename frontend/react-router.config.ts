@@ -28,8 +28,12 @@ const unpackClientDirectory = async () => {
   await fs.promises.rmdir(clientDir);
 };
 
+const rawBase = process.env.VITE_BASE_PATH || "/";
+const basename = rawBase === "/" ? "/" : rawBase.endsWith("/") ? rawBase : `${rawBase}/`;
+
 export default {
   appDirectory: "src",
+  basename,
   buildEnd: unpackClientDirectory,
   ssr: false,
 } satisfies Config;

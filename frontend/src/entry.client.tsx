@@ -22,6 +22,12 @@ async function prepareApp() {
 
     await worker.start({
       onUnhandledRequest: "bypass",
+      serviceWorker: {
+        // SW file lives under Vite BASE_URL (`/admin/`); `/api` is origin-root,
+        // so register scope `/` (needs Service-Worker-Allowed from Vite).
+        url: `${import.meta.env.BASE_URL}mockServiceWorker.js`,
+        options: { scope: "/" },
+      },
     });
   }
 }

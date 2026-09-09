@@ -49,6 +49,45 @@ function isLoopbackUrl(value: string): boolean {
   }
 }
 
+function hostnameOf(value: string): string | null {
+  try {
+    return new URL(value).hostname.toLowerCase();
+  } catch {
+    return null;
+  }
+}
+
+/** Loopback or RFC 1918 / link-local — the bundled Canvas ingress, not a remote cloud host. */
+function isPrivateOrLoopbackUrl(value: string): boolean {
+  const hostname = hostnameOf(value);
+  if (!hostname) return false;
+  if (isLoopbackUrl(value)) return true;
+  if (/^10\./.test(hostname)) return true;
+  if (/^192\.168\./.test(hostname)) return true;
+  if (/^172\.(1[6-9]|2\d|3[01])\./.test(hostname)) return true;
+  if (/^fe[89ab][0-9a-f]:/i.test(hostname)) return true;
+  if (/^f[cd][0-9a-f]{2}:/i.test(hostname)) return true;
+  return false;
+}
+
+function shouldRewriteDefaultLocalHost(
+  backend: Backend,
+  defaultBackend: Backend,
+): boolean {
+  if (isLoopbackUrl(backend.host) || isLoopbackUrl(defaultBackend.host)) {
+    return false;
+  }
+  const storedHost = hostnameOf(backend.host);
+  const launcherHost = hostnameOf(defaultBackend.host);
+  return (
+    storedHost !== null &&
+    storedHost === launcherHost &&
+    isPrivateOrLoopbackUrl(backend.host) &&
+    isPrivateOrLoopbackUrl(defaultBackend.host) &&
+    backend.host !== defaultBackend.host
+  );
+}
+
 function shouldSyncLauncherDefaultLocalBackend(
   backend: Backend,
   defaultBackend: Backend,
@@ -57,10 +96,12 @@ function shouldSyncLauncherDefaultLocalBackend(
     return false;
   }
 
-  return (
-    backend.host === defaultBackend.host ||
-    (isLoopbackUrl(backend.host) && isLoopbackUrl(defaultBackend.host))
-  );
+  if (backend.host === defaultBackend.host) return true;
+  if (isLoopbackUrl(backend.host) && isLoopbackUrl(defaultBackend.host)) {
+    return true;
+  }
+
+  return shouldRewriteDefaultLocalHost(backend, defaultBackend);
 }
 
 function syncLauncherDefaultLocalBackend(backends: Backend[]): Backend[] {
@@ -73,11 +114,21 @@ function syncLauncherDefaultLocalBackend(backends: Backend[]): Backend[] {
       return backend;
     }
 
-    if (backend.apiKey === defaultBackend.apiKey) return backend;
+    const nextHost = shouldRewriteDefaultLocalHost(backend, defaultBackend)
+      ? defaultBackend.host
+      : backend.host;
+
+    if (
+      backend.apiKey === defaultBackend.apiKey &&
+      backend.host === nextHost
+    ) {
+      return backend;
+    }
 
     didSync = true;
     return {
       ...backend,
+      host: nextHost,
       apiKey: defaultBackend.apiKey,
     };
   });
@@ -85,6 +136,14 @@ function syncLauncherDefaultLocalBackend(backends: Backend[]): Backend[] {
   if (!didSync) return backends;
 
   writeStoredBackends(syncedBackends);
+  const hostRewritten = syncedBackends.some(
+    (backend, index) => backend.host !== backends[index]?.host,
+  );
+  if (hostRewritten) {
+    void import("./health-store").then((mod) => {
+      mod.resetBackendHealth(SEEDED_DEFAULT_BACKEND_ID);
+    });
+  }
   return syncedBackends;
 }
 

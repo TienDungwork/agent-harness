@@ -91,6 +91,18 @@ def _gateway_blocks_forward(path: str) -> bool:
     )
 
 
+def _is_expose_secrets_header(value: str | None) -> bool:
+    """True when the client asked for secrets, not the UI-redacted document.
+
+    Agent-server accepts ``encrypted`` / ``plaintext`` / ``true``. The redacted
+    GET (no header) is safe to blob-cache; the expose GET is not — it must
+    round-trip Fernet LLM keys for conversation start.
+    """
+    if not value:
+        return False
+    return value.lower().strip() in {'encrypted', 'plaintext', 'true'}
+
+
 def _blob_kind_for_path(path: str) -> str | None:
     if path == '/api/settings':
         return 'settings'
@@ -366,6 +378,14 @@ async def proxy_api(
             '/api/settings/secrets',
         )
         if collection_only and request.method == 'GET':
+            # Never serve/cache the redacted settings blob for expose-secrets
+            # GETs. Conversation start sends X-Expose-Secrets: encrypted; a
+            # cached UI document has api_key "**********" which the SDK
+            # turns into None → LLMAuthenticationError.
+            if blob_kind == 'settings' and _is_expose_secrets_header(
+                request.headers.get('X-Expose-Secrets')
+            ):
+                return await _forward(request, settings)
             blob = _get_blob(db, user.id, blob_kind)
             if blob is not None and (
                 blob_kind != 'settings' or _is_usable_settings_blob(blob)

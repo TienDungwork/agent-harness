@@ -31,3 +31,8 @@ export const handlers = [
 ];
 
 export { MOCK_DEFAULT_USER_SETTINGS, resetTestHandlersMockSettings };
+
+/** Seed defaults used by `dev:mock` / `dev:mock:saas` (tests call reset themselves). */
+export function prepareMockBrowserDefaults() {
+  resetTestHandlersMockSettings();
+}

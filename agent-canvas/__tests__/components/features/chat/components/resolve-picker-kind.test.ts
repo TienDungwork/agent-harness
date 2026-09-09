@@ -14,17 +14,36 @@ const base: ResolvePickerKindInput = {
 
 describe("resolvePickerKind", () => {
   describe("home (no active conversation)", () => {
-    it("shows the agent-profile picker when profiles are available", () => {
+    it("shows the LLM-profile picker when only the seeded default AgentProfile exists", () => {
       expect(resolvePickerKind({ ...base, hasConversation: false })).toBe(
-        "agent-profile",
+        "llm-profile",
       );
-      // isCloud / isAcp don't matter once profiles exist.
+      expect(
+        resolvePickerKind({
+          ...base,
+          hasConversation: false,
+          isCloud: false,
+          hasNamedAgentProfiles: false,
+        }),
+      ).toBe("llm-profile");
+    });
+
+    it("shows the agent-profile picker when a named AgentProfile exists", () => {
+      expect(
+        resolvePickerKind({
+          ...base,
+          hasConversation: false,
+          hasNamedAgentProfiles: true,
+        }),
+      ).toBe("agent-profile");
+      // isCloud / isAcp don't matter once named profiles exist.
       expect(
         resolvePickerKind({
           ...base,
           hasConversation: false,
           isCloud: true,
           isAcp: true,
+          hasNamedAgentProfiles: true,
         }),
       ).toBe("agent-profile");
     });
@@ -40,7 +59,7 @@ describe("resolvePickerKind", () => {
       ).toBe("llm-profile");
     });
 
-    it("falls back to the model picker on cloud when no profiles exist", () => {
+    it("falls back to the model picker on cloud when no named AgentProfiles exist", () => {
       // Cloud has no home LLM-profile activate path.
       expect(
         resolvePickerKind({
@@ -48,6 +67,14 @@ describe("resolvePickerKind", () => {
           hasConversation: false,
           isCloud: true,
           profilesAvailable: false,
+        }),
+      ).toBe("model");
+      expect(
+        resolvePickerKind({
+          ...base,
+          hasConversation: false,
+          isCloud: true,
+          hasNamedAgentProfiles: false,
         }),
       ).toBe("model");
     });

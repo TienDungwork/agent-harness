@@ -3,10 +3,7 @@ import { Navigate, useNavigate } from "react-router";
 import { BrandButton } from "#/components/features/settings/brand-button";
 import { LoadingSpinner } from "#/components/shared/loading-spinner";
 import { isLocalAuthEnabled } from "#/api/local-auth/client";
-import {
-  useLocalAuthUser,
-  useLocalLogin,
-} from "#/api/local-auth/hooks";
+import { useLocalAuthUser, useLocalLogin } from "#/api/local-auth/hooks";
 import { useIsAuthed } from "#/hooks/query/use-is-authed";
 
 export default function LocalLoginScreen() {

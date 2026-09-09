@@ -70,6 +70,84 @@ export function normalizeOpenAiCompatibleBaseUrl(
   }
 }
 
+/**
+ * Hosted OpenAI-family APIs accept LiteLLM's ``stream_options.include_usage``.
+ * Strict OpenAI-compatible gateways (LAN IPs, *.local, Cloudflare tunnels)
+ * reject it with 400 ``param=stream_options``.
+ */
+/** RFC1918 / loopback / *.local LLM hosts (LAN vLLM, local gateways). */
+export function isPrivateOrLocalLlmEndpoint(
+  baseUrl?: string | null,
+): boolean {
+  if (!baseUrl?.trim()) return false;
+  let host: string;
+  try {
+    host = new URL(baseUrl).hostname.toLowerCase();
+  } catch {
+    return true;
+  }
+  if (
+    host === "localhost" ||
+    host === "127.0.0.1" ||
+    host === "::1" ||
+    host.endsWith(".local") ||
+    host === "host.docker.internal"
+  ) {
+    return true;
+  }
+  if (/^10\./.test(host) || /^192\.168\./.test(host)) return true;
+  const m = /^172\.(\d+)\./.exec(host);
+  if (m) {
+    const second = Number(m[1]);
+    if (second >= 16 && second <= 31) return true;
+  }
+  return false;
+}
+
+export function llmEndpointSupportsOpenAiStreamOptions(
+  baseUrl?: string | null,
+): boolean {
+  if (!baseUrl?.trim()) return true;
+  let host: string;
+  try {
+    host = new URL(baseUrl).hostname.toLowerCase();
+  } catch {
+    return false;
+  }
+  if (
+    host === "api.openai.com" ||
+    host.endsWith(".openai.com") ||
+    host.endsWith(".openai.azure.com") ||
+    host === "api.anthropic.com" ||
+    host.endsWith(".anthropic.com") ||
+    host.endsWith(".googleapis.com") ||
+    host === "openrouter.ai" ||
+    host.endsWith(".openrouter.ai")
+  ) {
+    return true;
+  }
+  return false;
+}
+
+const STRICT_ENDPOINT_DROP_KEYS = [
+  "reasoning_effort",
+  "extended_thinking_budget",
+  "enable_encrypted_reasoning",
+  "prompt_cache_retention",
+] as const;
+
+/** Disable streaming extras that LAN OpenAI-compatible gateways reject. */
+export function applyStrictOpenAiCompatibleLlmGuards(
+  llm: Record<string, unknown>,
+): void {
+  const baseUrl = typeof llm.base_url === "string" ? llm.base_url : null;
+  if (llmEndpointSupportsOpenAiStreamOptions(baseUrl)) return;
+  llm.stream = false;
+  for (const key of STRICT_ENDPOINT_DROP_KEYS) {
+    delete llm[key];
+  }
+}
+
 export function getUnsupportedLlmProfileReason(
   model: string,
   baseUrl?: string | null,

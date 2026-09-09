@@ -3,6 +3,8 @@
  * Enabled when VITE_LOCAL_AUTH_ENABLED is "true" or "1".
  */
 
+import { resolveLocalGatewayBaseUrl } from "#/api/local-gateway-base-url";
+
 export type LocalAuthUser = {
   id: string;
   username: string;
@@ -25,12 +27,7 @@ export function isLocalAuthEnabled(): boolean {
 }
 
 function authBase(): string {
-  // Same-origin via ingress; optional override for split-host setups.
-  const base =
-    import.meta.env.VITE_LOCAL_AUTH_BASE_URL ||
-    import.meta.env.VITE_BACKEND_BASE_URL ||
-    "";
-  return base.replace(/\/+$/, "");
+  return resolveLocalGatewayBaseUrl();
 }
 
 async function parseError(res: Response): Promise<string> {

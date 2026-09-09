@@ -22,6 +22,11 @@ const useActiveConversationMock = vi.fn<
   }
 >(() => ({ data: undefined }));
 
+const useAgentProfilesMock = vi.fn(() => ({
+  data: { profiles: [{ name: "default" }] },
+  isFetched: true,
+}));
+
 vi.mock("#/components/features/controls/agent-status", () => ({
   AgentStatus: () => <div data-testid="agent-status-stub" />,
 }));
@@ -58,6 +63,10 @@ vi.mock("#/hooks/query/use-active-conversation", () => ({
   useActiveConversation: () => useActiveConversationMock(),
 }));
 
+vi.mock("#/hooks/query/use-agent-profiles", () => ({
+  useAgentProfiles: () => useAgentProfilesMock(),
+}));
+
 vi.mock("#/hooks/mutation/conversation-mutation-utils", () => ({
   pauseConversation: vi.fn(),
   resumeConversation: vi.fn(),
@@ -83,22 +92,46 @@ describe("ChatInputActions", () => {
     __resetActiveStoreForTests();
     useActiveConversationMock.mockReset();
     useActiveConversationMock.mockReturnValue({ data: undefined });
+    useAgentProfilesMock.mockReset();
+    useAgentProfilesMock.mockReturnValue({
+      data: { profiles: [{ name: "default" }] },
+      isFetched: true,
+    });
   });
 
-  it("renders the AgentProfile picker on the home page (local)", () => {
+  it("renders the LLM-profile picker on the home page when only default exists (local)", () => {
     useActiveConversationMock.mockReturnValue({ data: undefined });
 
     renderWithProviders(<ChatInputActions disabled={false} />, {
       navigation: { conversationId: null },
     });
 
-    // Home keeps the start-new/activate AgentProfile picker (#3727).
-    expect(screen.getByTestId("agent-profile-picker-stub")).toBeInTheDocument();
+    // Seeded `default` is not a model choice — home shows LLM profiles.
+    expect(screen.getByTestId("llm-profile-picker-stub")).toBeInTheDocument();
     expect(
-      screen.queryByTestId("llm-profile-picker-stub"),
+      screen.queryByTestId("agent-profile-picker-stub"),
     ).not.toBeInTheDocument();
     expect(
       screen.queryByTestId("chat-input-llm-model"),
+    ).not.toBeInTheDocument();
+  });
+
+  it("renders the AgentProfile picker on the home page when a named profile exists (local)", () => {
+    useAgentProfilesMock.mockReturnValue({
+      data: {
+        profiles: [{ name: "default" }, { name: "codex" }],
+      },
+      isFetched: true,
+    });
+    useActiveConversationMock.mockReturnValue({ data: undefined });
+
+    renderWithProviders(<ChatInputActions disabled={false} />, {
+      navigation: { conversationId: null },
+    });
+
+    expect(screen.getByTestId("agent-profile-picker-stub")).toBeInTheDocument();
+    expect(
+      screen.queryByTestId("llm-profile-picker-stub"),
     ).not.toBeInTheDocument();
   });
 

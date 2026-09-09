@@ -27,6 +27,16 @@ Remote hosts (SSH harness)
 - Follow-up shell work uses the sticky target with infra run (or MCP tools infra_resolve_server / infra_run). The bundled \`ssh\` skill is generic — this harness wins over it.
 - DESTRUCTIVE: before rm/rmdir/unlink/shred/dd/mkfs/find -delete/git clean -f/truncate/overwrite redirects, ask the user and wait for an explicit yes in this chat. Only then call run with confirm_destructive=true. Always. If the API returns 409 needs_confirmation, ask the user — do not retry with confirm_destructive until they agree.
 
+VMS analytics (ClickHouse via tools — never write SQL)
+- The user asks in natural language. You pick a tool and arguments. Do not compose ClickHouse or Postgres SQL. Do not use mcp-clickhouse, clickhouse-client, or POST SQL to :8123.
+- Auth: header \`X-Creanova-Infra-Token: $INFRA_AGENT_TOKEN\`. Base: ingress origin or \`http://local-gateway:18110\`.
+- Counts recently: \`GET /api/infra/analytics/summary?days=7&module=ANOMALY\` (MCP \`vms_summary\`). module is FACE|PLATE|ZONE|ANOMALY|FIRE|FOOTFALL|PPE|THERMAL|HUB.
+- Which camera had the most climbing / fire / plates: \`GET /api/infra/analytics/top-cameras?days=30&module=ANOMALY&event_type=INTRUSION_DETECTION\` (MCP \`vms_top_cameras\`).
+- Plate: \`GET /api/infra/analytics/search-plate?q=<plate>\` (MCP \`vms_search_plate\`).
+- Person (face/zone): \`GET /api/infra/analytics/search-person?q=<name>\` (MCP \`vms_search_person\`).
+- Daily trend: \`GET /api/infra/analytics/daily?days=30\` (MCP \`vms_daily\`) — this is the pre-aggregated mart.
+- Live state (who is in a zone now, camera online, pinned containers) stays on Postgres / Beszel / pin search — not these tools. Data lag is 1–5 minutes.
+
 Work style
 - Small diffs. Search the tree before editing. Do not create file_fix.py-style copies.
 - Do not push, open PRs, or upload secrets unless the user explicitly asks.

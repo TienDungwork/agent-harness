@@ -33,6 +33,7 @@ import { LoadingSpinner } from "#/components/shared/loading-spinner";
 import { useAppTitle } from "#/hooks/use-app-title";
 import { useAutoAcceptInvitation } from "#/hooks/use-auto-accept-invitation";
 import { usePostHogIdentify } from "#/hooks/use-posthog-identify";
+import { isLocalGatewayAdmin } from "#/utils/local-gateway-admin";
 
 export function ErrorBoundary() {
   const error = useRouteError();
@@ -185,6 +186,8 @@ export default function MainApp() {
     setLoginMethodExists(checkLoginMethodExists());
   }, [isAuthed, checkLoginMethodExists]);
 
+  const localAdmin = isLocalGatewayAdmin();
+
   // Show loading spinner while config or auth is loading
   const isLoading = config.isLoading || isAuthLoading;
 
@@ -194,8 +197,7 @@ export default function MainApp() {
     !isAuthed &&
     !isAuthError &&
     !isOnIntermediatePage &&
-    config.data?.app_mode === "saas" &&
-    !loginMethodExists;
+    ((config.data?.app_mode === "saas" && !loginMethodExists) || localAdmin);
 
   React.useEffect(() => {
     if (shouldRedirectToLogin) {
@@ -227,6 +229,7 @@ export default function MainApp() {
     !isFetchingAuth &&
     !isOnIntermediatePage &&
     config.data?.app_mode === "saas" &&
+    !localAdmin &&
     loginMethodExists;
 
   return (

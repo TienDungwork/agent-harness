@@ -105,11 +105,11 @@ describe("buildStartConversationRequest", () => {
 
     expect(payload.agent).toBeUndefined();
     expect(payload.agent_settings.llm).toMatchObject({
-      model: "nested-model",
+      model: "openai/nested-model",
       api_key: "nested-key",
       base_url: "https://nested.example.com",
-      // Streaming is enabled so the Creanova agent emits StreamingDeltaEvents.
-      stream: true,
+      // Custom OpenAI-compatible hosts reject LiteLLM stream_options.
+      stream: false,
     });
     expect(payload.agent_settings.condenser).toEqual({
       enabled: true,
@@ -122,6 +122,11 @@ describe("buildStartConversationRequest", () => {
       { name: "browser_tool_set", params: {} },
       { name: "task_tool_set", params: {} },
     ]);
+    expect(payload.agent_settings.system_prompt).toContain("<SOUL>");
+    expect(payload.agent_settings.system_prompt).toContain("<ROLE>");
+    expect(payload.agent_settings.system_prompt).toContain(
+      "You are Creanova, a local AI software engineer",
+    );
     expect(payload.agent_settings.agent_context).toMatchObject({
       load_public_skills: false,
       load_user_skills: true,
@@ -167,6 +172,43 @@ describe("buildStartConversationRequest", () => {
     expect(payload.initial_message.content[0]?.text).toBe("hello");
   });
 
+  it("omits bundled skills for LAN OpenAI-compatible gateways", () => {
+    const payload = buildStartConversationRequest({
+      settings: {
+        ...DEFAULT_SETTINGS,
+        agent_settings: {
+          ...DEFAULT_SETTINGS.agent_settings,
+          llm: {
+            model: "openai/qwen3-4b",
+            api_key: "lan-key",
+            base_url: "http://192.168.1.196:18083/v1",
+          },
+        },
+      },
+      query: "Xin chào",
+    }) as {
+      agent_settings: {
+        system_prompt: string;
+        agent_context: {
+          skills: unknown[];
+          load_user_skills: boolean;
+          load_project_skills: boolean;
+        };
+      };
+    };
+
+    expect(payload.agent_settings.agent_context.skills).toEqual([]);
+    expect(payload.agent_settings.agent_context.load_user_skills).toBe(false);
+    expect(payload.agent_settings.agent_context.load_project_skills).toBe(
+      false,
+    );
+    expect(payload.agent_settings.system_prompt).toContain("<SOUL>");
+    expect(payload.agent_settings.system_prompt).toContain("<ROLE>");
+    expect(payload.agent_settings.system_prompt).not.toContain(
+      "<PROCESS_MANAGEMENT>",
+    );
+  });
+
   it("uses subscription auth metadata without API credentials", () => {
     const payload = buildStartConversationRequest({
       settings: {
@@ -185,11 +227,36 @@ describe("buildStartConversationRequest", () => {
     }) as { agent_settings: { llm: Record<string, unknown> } };
 
     expect(payload.agent_settings.llm).toEqual({
-      model: "gpt-5.2-codex",
+      model: "openai/gpt-5.2-codex",
       stream: true,
       auth_type: LLM_AUTH_TYPE_SUBSCRIPTION,
       subscription_vendor: OPENAI_SUBSCRIPTION_VENDOR,
     });
+  });
+
+  it("disables stream and drops thinking params for a LAN OpenAI-compatible gateway", () => {
+    const payload = buildStartConversationRequest({
+      settings: {
+        ...DEFAULT_SETTINGS,
+        agent_settings: {
+          ...DEFAULT_SETTINGS.agent_settings,
+          llm: {
+            model: "openai/qwen3-4b",
+            api_key: "enc-key",
+            base_url: "http://192.168.1.196:18083/v1",
+            reasoning_effort: "high",
+            extended_thinking_budget: 200000,
+          },
+        },
+      },
+    }) as { agent_settings: { llm: Record<string, unknown> } };
+
+    expect(payload.agent_settings.llm.stream).toBe(false);
+    expect(payload.agent_settings.llm.reasoning_effort).toBeUndefined();
+    expect(payload.agent_settings.llm.extended_thinking_budget).toBeUndefined();
+    expect(payload.agent_settings.llm.base_url).toBe(
+      "http://192.168.1.196:18083/v1",
+    );
   });
 
   it("passes the stored model through unchanged for subscription auth", () => {
@@ -1189,6 +1256,22 @@ describe("buildRuntimeServicesSystemSuffix", () => {
     expect(suffix).toContain("dev:env");
     expect(suffix).not.toContain("docker:window");
     expect(suffix).not.toContain("99999");
+  });
+});
+
+describe("agent_settings canvas static system_prompt", () => {
+  it("keeps an explicit system_prompt instead of the assembled markdown", () => {
+    const payload = buildStartConversationRequest({
+      settings: {
+        ...DEFAULT_SETTINGS,
+        agent_settings: {
+          ...DEFAULT_SETTINGS.agent_settings,
+          system_prompt: "Custom only.",
+        },
+      },
+      query: "hello",
+    }) as { agent_settings: { system_prompt: string } };
+    expect(payload.agent_settings.system_prompt).toBe("Custom only.");
   });
 });
 

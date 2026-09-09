@@ -14,6 +14,7 @@ import { AgentKind, Provider } from "#/types/settings";
 import type { ConversationRuntimeContext } from "#/api/conversation-file-upload.api";
 import { buildHttpBaseUrl } from "#/utils/websocket-url";
 import {
+  applyStrictOpenAiCompatibleLlmGuards,
   assertLlmProfileCompatibleWithLiteLLM,
   normalizeLlmModelForLiteLLM,
 } from "#/utils/llm-model-wire";
@@ -828,7 +829,7 @@ class AgentServerConversationService {
     assertLlmProfileCompatibleWithLiteLLM(rawModel, baseUrl);
     const model = normalizeLlmModelForLiteLLM(rawModel, baseUrl);
     await assertSubscriptionAuthReady({ llm: profile.config });
-    await conversationClient.switchLLM(conversationId, {
+    const switchConfig = {
       ...profile.config,
       model,
       // Keep streaming on after a switch (parity with conversation start);
@@ -836,7 +837,12 @@ class AgentServerConversationService {
       stream: true,
       // Avoid stale first-write-wins entries in the backend LLM registry.
       usage_id: `profile:${profileName}:${uuidv4()}`,
-    } as LLMConfig);
+    } as Record<string, unknown>;
+    applyStrictOpenAiCompatibleLlmGuards(switchConfig);
+    await conversationClient.switchLLM(
+      conversationId,
+      switchConfig as LLMConfig,
+    );
   }
 
   /**

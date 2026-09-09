@@ -29,6 +29,7 @@ import { useOrgTypeAndAccess } from "#/hooks/use-org-type-and-access";
 import { useConfig } from "#/hooks/query/use-config";
 import { useMe } from "#/hooks/query/use-me";
 import { OrgWideSettingsBadge } from "#/components/features/settings/org-wide-settings-badge";
+import { isLocalGatewayAdmin } from "#/utils/local-gateway-admin";
 
 const SAAS_ONLY_PATHS = [
   "/settings/user",
@@ -64,14 +65,21 @@ export const clientLoader = async ({ request }: Route.ClientLoaderArgs) => {
   });
 
   const isSaas = config?.app_mode === "saas";
+  const localAdmin = isLocalGatewayAdmin();
   const featureFlags = config?.feature_flags;
 
   if (pathname === "/settings/admin-dashboard") {
-    return redirect(isSaas ? "/settings/usage-monitoring" : "/settings");
+    return redirect(
+      isSaas || localAdmin ? "/settings/usage-monitoring" : "/settings",
+    );
   }
 
   // Step 2: Check SAAS_ONLY_PATHS for OSS mode (no user data required)
-  if (!isSaas && SAAS_ONLY_PATHS.includes(pathname)) {
+  if (
+    !isSaas &&
+    SAAS_ONLY_PATHS.includes(pathname) &&
+    !(localAdmin && pathname === "/settings/usage-monitoring")
+  ) {
     return redirect("/settings");
   }
 
@@ -177,7 +185,7 @@ export const clientLoader = async ({ request }: Route.ClientLoaderArgs) => {
       }
     }
 
-    if (isAdminOnlyPath) {
+    if (isAdminOnlyPath && !localAdmin) {
       const role = user?.role ?? "member";
       if (!user || (role !== "admin" && role !== "owner") || isPersonalOrg) {
         return redirect("/settings");

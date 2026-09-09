@@ -5,6 +5,7 @@ These folders were placed here for convenience (upstream keeps them as separate 
 - `agent-canvas/` — current Agent Canvas UI ([Creanova/agent-canvas](https://github.com/Creanova/agent-canvas))
 - `software-agent-sdk/` — agent + agent server ([Creanova/software-agent-sdk](https://github.com/Creanova/software-agent-sdk))
 - `frontend/` — UI still in this monorepo (being migrated toward agent-canvas)
+- `ClickHouse/` — upstream engine source ([ClickHouse/ClickHouse](https://github.com/ClickHouse/ClickHouse.git)), tag `v26.8.2.7-lts`. Only the pieces listed in `deploy/clickhouse/UPSTREAM.md` are used for the VMS plan (image + `config.d` / initdb / MergeTree SQL). Do not compile `src/`. gitignored.
 
 ## Run Agent Canvas (recommended: Docker)
 
@@ -21,7 +22,11 @@ docker network rm agent-canvas_default 2>/dev/null || true
 docker compose up -d
 ```
 
-Open: http://localhost:18010/canvas/
+Open: http://localhost:18010/agents/
+
+Path gateway (all apps, one port): see `deploy/gateway/` → http://localhost:18000/
+
+ClickHouse VMS warehouse: see `deploy/clickhouse/` — HTTP `http://127.0.0.1:18123` (loopback). Agent reads via `local-gateway` `/api/infra/analytics/*` (no SQL). ClickHouse hostname `creanova-clickhouse:8123` on `agent-canvas_net`.
 
 Stop: `docker compose down`
 

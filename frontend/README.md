@@ -87,6 +87,7 @@ The frontend application uses the following environment variables:
 | `VITE_BACKEND_HOST`         | The backend host with port for API connections                         | `127.0.0.1:3000` |
 | `VITE_MOCK_API`             | Enable/disable API mocking with MSW                                    | `false`          |
 | `VITE_MOCK_SAAS`            | Simulate SaaS mode in development                                      | `false`          |
+| `VITE_LOCAL_GATEWAY_ADMIN`  | Path-gateway `/admin`: real local-auth + Canvas APIs (`true` or `1`)   | `false`          |
 | `VITE_USE_TLS`              | Use HTTPS/WSS for backend connections                                  | `false`          |
 | `VITE_FRONTEND_PORT`        | Port to run the frontend application                                   | `3001`           |
 | `VITE_INSECURE_SKIP_VERIFY` | Skip TLS certificate verification                                      | `false`          |

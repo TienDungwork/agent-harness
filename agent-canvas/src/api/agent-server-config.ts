@@ -180,7 +180,29 @@ export function getLockedCloudAuthMode(): LockedCloudAuthMode {
 
 export function getAgentServerBaseUrl(): string | null {
   const configuredUrl = getConfiguredBaseUrl();
-  if (configuredUrl) return configuredUrl;
+  if (configuredUrl) {
+    if (typeof window !== "undefined") {
+      try {
+        const target = new URL(configuredUrl);
+        const page = new URL(window.location.origin);
+        const loopback = new Set(["localhost", "127.0.0.1", "::1"]);
+        const browserHost = page.hostname;
+        if (
+          browserHost &&
+          loopback.has(target.hostname.toLowerCase()) &&
+          !loopback.has(browserHost.toLowerCase())
+        ) {
+          return page.origin;
+        }
+        if (target.host !== page.host) {
+          return page.origin;
+        }
+      } catch {
+        return window.location.origin;
+      }
+    }
+    return configuredUrl;
+  }
 
   if (typeof window !== "undefined") {
     return window.location.origin;

@@ -10,6 +10,7 @@ from __future__ import annotations
 from proxy import (
     _blob_kind_for_path,
     _gateway_blocks_forward,
+    _is_expose_secrets_header,
     _is_usable_settings_blob,
 )
 
@@ -33,6 +34,22 @@ def test_workspace_session_forwards_to_agent_server():
     assert _gateway_blocks_forward('/api/credits/balance') is True
     assert _gateway_blocks_forward('/api/admin/users') is True
     assert _gateway_blocks_forward('/api/infra/servers') is True
+
+
+def test_encrypted_settings_get_is_not_blob_cached():
+    """GET /api/settings with X-Expose-Secrets must not reuse the redacted blob.
+
+    Conversation start sends ``X-Expose-Secrets: encrypted`` so Fernet LLM keys
+    round-trip. The UI GET (no header) caches ``api_key: **********``. Serving
+    that blob to the encrypted GET starts chats with no key (LLMAuthenticationError).
+    """
+    assert _is_expose_secrets_header(None) is False
+    assert _is_expose_secrets_header('') is False
+    assert _is_expose_secrets_header('encrypted') is True
+    assert _is_expose_secrets_header('ENCRYPTED') is True
+    assert _is_expose_secrets_header('plaintext') is True
+    assert _is_expose_secrets_header('true') is True
+    assert _is_expose_secrets_header('false') is False
 
 
 def test_settings_patch_diff_is_not_a_usable_blob():

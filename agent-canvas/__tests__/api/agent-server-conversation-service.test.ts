@@ -856,6 +856,33 @@ describe("AgentServerConversationService", () => {
       expect(mockSwitchProfile).not.toHaveBeenCalled();
     });
 
+    it("disables stream when switching to a LAN OpenAI-compatible profile", async () => {
+      mockGetProfile.mockResolvedValue({
+        name: "q",
+        config: {
+          model: "openai/qwen3-4b",
+          api_key: "encrypted-key",
+          base_url: "http://192.168.1.196:18083/v1",
+          reasoning_effort: "high",
+        },
+        api_key_set: true,
+      });
+      mockSwitchLLM.mockResolvedValue(undefined);
+
+      await AgentServerConversationService.switchProfile("conv-1", "q");
+
+      expect(mockSwitchLLM).toHaveBeenCalledWith(
+        "conv-1",
+        expect.objectContaining({
+          model: "openai/qwen3-4b",
+          stream: false,
+          usage_id: expect.stringMatching(/^profile:q:/),
+        }),
+      );
+      const sent = mockSwitchLLM.mock.calls[0][1] as Record<string, unknown>;
+      expect(sent.reasoning_effort).toBeUndefined();
+    });
+
     it("surfaces encrypted profile export failures instead of using the stale profile switch path", async () => {
       const error = new Error("No cipher");
       mockGetProfile.mockRejectedValueOnce(error);

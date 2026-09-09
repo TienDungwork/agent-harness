@@ -15,8 +15,20 @@ export const AUTH_HANDLERS = [
     return HttpResponse.json(user);
   }),
 
+  http.get("/api/v1/users/git-organizations", () =>
+    HttpResponse.json({
+      provider: "github",
+      organizations: ["mock-git-org"],
+    }),
+  ),
+
   http.post("/api/authenticate", async () =>
     HttpResponse.json({ message: "Authenticated" }),
+  ),
+
+  // SaaS onboarding guard — mock users are already onboarded.
+  http.get("/api/onboarding_status", () =>
+    HttpResponse.json({ should_complete_onboarding: false }),
   ),
 
   http.post("/api/logout", () => HttpResponse.json(null, { status: 200 })),

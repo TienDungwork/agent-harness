@@ -1,0 +1,28 @@
+[build-system]
+build-backend = "setuptools.build_meta"
+requires = [ "setuptools>=61" ]
+
+[project]
+name = "creanova-vms-sync"
+version = "0.1.0"
+description = "Pull VMS AI events from Postgres into ClickHouse"
+requires-python = ">=3.12"
+classifiers = [
+  "Programming Language :: Python :: 3 :: Only",
+  "Programming Language :: Python :: 3.12",
+  "Programming Language :: Python :: 3.13",
+]
+dependencies = [
+  "clickhouse-connect>=0.8",
+  "psycopg[binary]>=3.2",
+  "pydantic>=2",
+  "pydantic-settings>=2",
+]
+
+optional-dependencies.test = [ "pytest>=8" ]
+
+[tool.setuptools]
+py-modules = [ "config", "main", "sources" ]
+
+[tool.pytest.ini_options]
+testpaths = [ "tests" ]

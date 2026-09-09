@@ -76,9 +76,9 @@ AUTH_JSON="$(curl -sf -X POST "$HUB_URL/api/collections/users/auth-with-password
   -H "Content-Type: application/json" \
   -d "{\"identity\":\"$EMAIL\",\"password\":\"$PASSWORD\"}")"
 PB_TOKEN="$(printf '%s' "$AUTH_JSON" | jq -r '.token')"
+USER_ID="$(printf '%s' "$AUTH_JSON" | jq -r '.record.id')"
 [ -n "$PB_TOKEN" ] && [ "$PB_TOKEN" != "null" ] || { echo "beszel-bootstrap: auth failed" >&2; exit 1; }
-
-TOKEN_VAL="$(cat "$TOKEN_FILE")"
+[ -n "$USER_ID" ] && [ "$USER_ID" != "null" ] || { echo "beszel-bootstrap: user id missing" >&2; exit 1; }
 
 # ── Superuser tasks (SMTP + optional Keycloak OIDC) ───────────────────────────
 # Regular Beszel user cannot open /_/#/settings. Same superuser as SMTP.
@@ -192,17 +192,18 @@ echo "$SERVERS" | while IFS='|' read -r _SRV_ID SRV_NAME SRV_HOST; do
     | head -1)"
 
   if [ -z "$EXISTING_ID" ]; then
+    # systems.users is required; universal agent token lives in shared volume (not on the record).
     curl -sf -X POST "$HUB_URL/api/collections/systems/records" \
       -H "Authorization: $PB_TOKEN" \
       -H "Content-Type: application/json" \
-      -d "{\"name\":\"$DISPLAY_NAME\",\"host\":\"$SRV_HOST\",\"port\":$AGENT_PORT,\"token\":\"$TOKEN_VAL\",\"status\":\"pending\"}" \
+      -d "{\"name\":\"$DISPLAY_NAME\",\"host\":\"$SRV_HOST\",\"port\":\"$AGENT_PORT\",\"users\":[\"$USER_ID\"],\"status\":\"pending\"}" \
       >/dev/null
     echo "beszel-bootstrap: created system '$DISPLAY_NAME' ($SRV_HOST:$AGENT_PORT)"
   else
     curl -sf -X PATCH "$HUB_URL/api/collections/systems/records/$EXISTING_ID" \
       -H "Authorization: $PB_TOKEN" \
       -H "Content-Type: application/json" \
-      -d "{\"name\":\"$DISPLAY_NAME\",\"host\":\"$SRV_HOST\",\"port\":$AGENT_PORT}" \
+      -d "{\"name\":\"$DISPLAY_NAME\",\"host\":\"$SRV_HOST\",\"port\":\"$AGENT_PORT\"}" \
       >/dev/null
     echo "beszel-bootstrap: synced system '$DISPLAY_NAME' ($SRV_HOST:$AGENT_PORT)"
   fi

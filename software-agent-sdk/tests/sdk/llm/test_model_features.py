@@ -335,6 +335,8 @@ def test_force_string_serializer_full_model_names():
     """
     assert get_features("DeepSeek-V3.2-Exp").force_string_serializer is True
     assert get_features("GLM-4.5").force_string_serializer is True
+    assert get_features("openai/qwen3-4b").force_string_serializer is True
+    assert get_features("openai/qwen3").force_string_serializer is True
     # Provider-agnostic Kimi should not force string serializer
     assert get_features("Kimi K2-Instruct-0905").force_string_serializer is False
     # Groq-prefixed Kimi should force string serializer

@@ -19,6 +19,36 @@ interface ErrorMessageBannerProps {
 
 const DEFAULT_MAX_COLLAPSED_CHARS = 220;
 
+async function copyTextToClipboard(text: string): Promise<void> {
+  try {
+    await navigator.clipboard.writeText(text);
+    return;
+  } catch {
+    // Clipboard API is missing or blocked (HTTP, iframe, permissions).
+  }
+
+  const textarea = document.createElement("textarea");
+  textarea.value = text;
+  textarea.setAttribute("readonly", "");
+  textarea.style.position = "fixed";
+  textarea.style.top = "0";
+  textarea.style.left = "-9999px";
+  document.body.appendChild(textarea);
+  textarea.select();
+  textarea.setSelectionRange(0, textarea.value.length);
+
+  try {
+    const copied =
+      typeof document.execCommand === "function" &&
+      document.execCommand("copy");
+    if (!copied) {
+      throw new Error("execCommand copy failed");
+    }
+  } finally {
+    textarea.remove();
+  }
+}
+
 export function ErrorMessageBanner({
   message,
   code,
@@ -42,7 +72,7 @@ export function ErrorMessageBanner({
 
   const handleCopy = async () => {
     try {
-      await navigator.clipboard.writeText(displayTextForLength);
+      await copyTextToClipboard(displayTextForLength);
       setIsCopied(true);
     } catch {
       displayErrorToast(t(I18nKey.CHAT_INTERFACE$CHAT_MESSAGE_COPY_FAILED));
@@ -92,7 +122,7 @@ export function ErrorMessageBanner({
   return (
     <div
       className={cn(
-        "flex w-full gap-2 rounded-lg border border-[var(--oh-border)] bg-[var(--oh-surface-raised)] p-2 text-[var(--oh-foreground)]",
+        "relative z-30 flex w-full gap-2 rounded-lg border border-[var(--oh-border)] bg-[var(--oh-surface-raised)] p-2 text-[var(--oh-foreground)]",
         isMultiLine ? "items-start" : "items-center",
       )}
       data-testid="error-message-banner"

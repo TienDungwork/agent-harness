@@ -536,7 +536,8 @@ export const SETTINGS_HANDLERS = [
 
     const config: WebClientConfig = {
       app_mode: mockSaas ? "saas" : "oss",
-      posthog_client_key: "fake-posthog-client-key",
+      // Skip PostHog CDN in mock mode — a fake key 404s us-assets.i.posthog.com.
+      posthog_client_key: null,
       feature_flags: {
         enable_billing: mockSaas,
         hide_llm_settings: false,

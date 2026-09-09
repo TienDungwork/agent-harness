@@ -2,12 +2,10 @@
  * Infra servers API (local gateway).
  */
 
+import { resolveLocalGatewayBaseUrl } from "#/api/local-gateway-base-url";
+
 function infraBase(): string {
-  const base =
-    import.meta.env.VITE_LOCAL_AUTH_BASE_URL ||
-    import.meta.env.VITE_BACKEND_BASE_URL ||
-    "";
-  return base.replace(/\/+$/, "");
+  return resolveLocalGatewayBaseUrl();
 }
 
 async function parseError(res: Response): Promise<string> {

@@ -77,8 +77,7 @@ export function resolveResponderDeploymentOption(
         target,
         testId: "responder-deployment-option-Creanova-cloud",
         titleKey: I18nKey.RESPONDER_DEPLOYMENT$Creanova_CLOUD_TITLE,
-        descriptionKey:
-          I18nKey.RESPONDER_DEPLOYMENT$Creanova_CLOUD_DESCRIPTION,
+        descriptionKey: I18nKey.RESPONDER_DEPLOYMENT$Creanova_CLOUD_DESCRIPTION,
         primaryActionKey: I18nKey.RESPONDER_DEPLOYMENT$Creanova_CLOUD_ACTION,
         primaryActionTestId: "responder-deployment-open-Creanova-cloud",
         action: { kind: "open-url", url: Creanova_CLOUD_INTEGRATIONS_URL },

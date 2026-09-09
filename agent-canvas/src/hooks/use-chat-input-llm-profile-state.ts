@@ -18,18 +18,18 @@ export interface ChatInputLlmProfileState {
   isLoading: boolean;
   isSwitching: boolean;
   /**
-   * Live-switch the running conversation's LLM profile via `/switch_profile`.
-   * This surface is only mounted inside a conversation, so a switch always
-   * targets that conversation (no home-page activate path here).
+   * Switch LLM profile. Inside a conversation this hits `/switch_profile`;
+   * on the home page it activates the profile globally so the next chat
+   * starts with it.
    */
   selectProfile: (profileName: string) => void;
 }
 
 /**
- * Backs the in-conversation Creanova LLM-profile switcher (the ACP analog is
- * {@link useChatInputModelState}). Resolves which profile the conversation is
- * running and live-swaps it, mirroring the former SwitchProfileButton's
- * resolution priority so a switch is reflected instantly.
+ * Backs the Creanova LLM-profile switcher on home and in-conversation (the ACP
+ * analog is {@link useChatInputModelState}). Resolves the active profile and
+ * switches it, mirroring the former SwitchProfileButton's resolution priority
+ * so a switch is reflected instantly.
  */
 export function useChatInputLlmProfileState(): ChatInputLlmProfileState {
   const { conversationId } = useOptionalConversationId();
@@ -77,7 +77,7 @@ export function useChatInputLlmProfileState(): ChatInputLlmProfileState {
   const selectProfile = useCallback(
     (profileName: string) => {
       if (profileName === currentProfileName) return;
-      switchAndLog(conversationId, profileName);
+      switchAndLog(conversationId ?? null, profileName);
     },
     [conversationId, currentProfileName, switchAndLog],
   );

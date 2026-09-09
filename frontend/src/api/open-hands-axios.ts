@@ -1,7 +1,10 @@
 import axios, { AxiosError, AxiosResponse } from "axios";
 
+import { isLocalGatewayAdmin } from "#/utils/local-gateway-admin";
+
 export const Creanova = axios.create({
   baseURL: `${window.location.protocol}//${import.meta.env.VITE_BACKEND_BASE_URL || window?.location.host}`,
+  withCredentials: isLocalGatewayAdmin(),
 });
 
 // Helper function to check if a response contains an email verification error

@@ -7,6 +7,8 @@
 #   ../services/local-gateway → auth + SSH inventory
 #   henrygd/beszel + agent     → host/container monitoring (http://localhost:18090)
 #
+# Full machine setup (đổi server): see setup.md
+#
 # First time only (full install + build inside Docker — slow):
 #   docker compose --profile overlay-build run --rm canvas-ui-build
 # Then:
@@ -15,11 +17,12 @@
 # Fast UI iteration while Docker is already up (preferred):
 #   # fix root-owned build/locales if a prior Docker build wrote them:
 #   #   sudo chown -R "$USER:$USER" build public/locales
-#   VITE_BASE_PATH=/canvas VITE_LOCAL_AUTH_ENABLED=true npm run build:app
+#   VITE_BASE_PATH=/agents VITE_LOCAL_AUTH_ENABLED=true npm run build:app
 #   docker compose restart agent-canvas
-#   # hard-refresh http://localhost:18010/canvas/
+#   # hard-refresh http://localhost:18010/agents/
+#   # path gateway: http://localhost:18000/agents/
 #
-# UI: http://localhost:18010/canvas/
+# UI: http://localhost:18010/agents/
 # Local login (after overlay): admin / admin123
 #
 # Networking (Atin191 rule): Docker bridge MUST use 10.240.0.0/16 pools.
@@ -34,9 +37,12 @@ services:
       - canvas_ui_npm:/src/node_modules
     environment:
       HUSKY: "0"
-      VITE_BASE_PATH: /canvas
+      VITE_BASE_PATH: /agents
       VITE_LOCAL_AUTH_ENABLED: "true"
       VITE_DO_NOT_TRACK: "1"
+      # Do not bake LAN IP into the overlay build — ingress proxies /api on the same origin.
+      VITE_BACKEND_BASE_URL: ""
+      VITE_BACKEND_HOST: ""
     # Skip npm ci when the named volume already has deps (saves ~minutes).
     command: sh -c "if [ ! -x node_modules/.bin/vite ]; then npm ci; fi && npm run build:app"
 
@@ -52,11 +58,15 @@ services:
       AGENT_SERVER_URL: http://agent-canvas:18000
       DATABASE_URL: sqlite:////data/agent-canvas/local-gateway.db
       SESSION_SECRET: ${OH_SECRET_KEY:-change-me-creanova-local-session-secret}
-      CORS_ORIGINS: ${CORS_ORIGINS:-http://127.0.0.1:18010,http://localhost:18010,http://192.168.1.191:18010,http://192.168.82.52:18010,http://127.0.0.1:3001,http://localhost:3001,http://192.168.1.191:3001,http://127.0.0.1:18090,http://localhost:18090,http://192.168.1.191:18090}
+      CORS_ORIGINS: ${CORS_ORIGINS:-http://127.0.0.1:18010,http://localhost:18010,http://192.168.1.191:18010,http://192.168.1.198:18010,http://192.168.82.52:18010,http://127.0.0.1:18000,http://localhost:18000,http://192.168.1.191:18000,http://192.168.1.198:18000,http://192.168.82.52:18000,http://127.0.0.1:3001,http://localhost:3001,http://192.168.1.191:3001,http://192.168.1.198:3001,http://127.0.0.1:18090,http://localhost:18090,http://192.168.1.191:18090,http://192.168.1.198:18090}
       BESZEL_HUB_URL: http://beszel:8090
       BESZEL_USER_EMAIL: ${BESZEL_USER_EMAIL:-admin@creanova.local}
       BESZEL_USER_PASSWORD: ${BESZEL_USER_PASSWORD:-admin123}
       BESZEL_HUB_PUBLIC_URL: ${BESZEL_HUB_PUBLIC_URL:-http://192.168.1.191:18090}
+      CH_URL: ${CH_URL:-http://creanova-clickhouse:8123}
+      CH_USER: ${CH_USER:-vms_ro}
+      CH_PASSWORD: ${CH_PASSWORD:-}
+      CH_DATABASE: ${CH_DATABASE:-vms}
     volumes:
       - ../services/local-gateway:/app
       - canvas_state:/data
@@ -101,11 +111,14 @@ services:
       - OH_SECRET_KEY=${OH_SECRET_KEY:-}
       - OH_LOCAL_AUTH=${OH_LOCAL_AUTH:-1}
       - LOCAL_GATEWAY_URL=http://local-gateway:18110
+      # Path gateway uses /agents (see deploy/gateway). Override to /canvas for legacy.
+      - AGENT_CANVAS_BASE_PATH=${AGENT_CANVAS_BASE_PATH:-/agents}
     volumes:
       - ${PROJECTS_PATH:-${HOME}/projects}:/projects
       - /var/run/docker.sock:/var/run/docker.sock
       # Runtime image stays untouched; local code is bind-mounted over it.
       - ./docker/entrypoint.sh:/opt/agent-canvas/entrypoint.sh:ro
+      - ./docker/patch_litellm_stream_options.py:/opt/agent-canvas/patch_litellm_stream_options.py:ro
       - ./scripts/static-server.mjs:/opt/agent-canvas/static-server.mjs:ro
       - ./scripts/proxy-utils.mjs:/opt/agent-canvas/proxy-utils.mjs:ro
       - ./build:/opt/agent-canvas/frontend-overlay:ro
@@ -228,6 +241,7 @@ services:
   # Map disk controllers only — not partitions. Docs: https://beszel.dev/guide/smart-data
   beszel-agent:
     image: creanova/beszel-agent:gpu-containers
+    pull_policy: never
     container_name: creanova-beszel-agent
     restart: unless-stopped
     network_mode: host

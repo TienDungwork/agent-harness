@@ -1,5 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import { organizationService } from "#/api/organization-service/organization-service.api";
+import { isLocalGatewayAdmin } from "#/utils/local-gateway-admin";
 import { useIsAuthed } from "./use-is-authed";
 import { useConfig } from "./use-config";
 
@@ -16,7 +17,7 @@ export const useOrganizations = () => {
     queryKey: ["organizations"],
     queryFn: organizationService.getOrganizations,
     staleTime: 1000 * 60 * 5, // 5 minutes
-    enabled: !!userIsAuthenticated && !isOssMode,
+    enabled: !!userIsAuthenticated && (!isOssMode || isLocalGatewayAdmin()),
     select: (data) => {
       // In org-only installs, hide personal workspaces — but only when the
       // user belongs to at least one team org, so a user whose only

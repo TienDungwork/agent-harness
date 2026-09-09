@@ -51,7 +51,6 @@ export default function InfraSshWorkspace() {
     if (!s) return;
     openServer(s);
     setSearchParams({}, { replace: true });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [servers, searchParams]);
 
   function openServer(s: InfraServer) {

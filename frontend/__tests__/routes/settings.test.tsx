@@ -499,7 +499,7 @@ describe("Settings Screen", () => {
             hide_users_page: false,
             hide_billing_page: false,
             hide_integrations_page: false,
-        enable_onboarding: false,
+            enable_onboarding: false,
           },
         }),
       );
@@ -555,7 +555,7 @@ describe("Settings Screen", () => {
             hide_users_page: false,
             hide_billing_page: false,
             hide_integrations_page: false,
-        enable_onboarding: false,
+            enable_onboarding: false,
           },
         }),
       );
@@ -677,7 +677,7 @@ describe("Settings Screen", () => {
           hide_users_page: true,
           hide_billing_page: false,
           hide_integrations_page: false,
-        enable_onboarding: false,
+          enable_onboarding: false,
         },
       };
 
@@ -722,7 +722,7 @@ describe("Settings Screen", () => {
           hide_users_page: false,
           hide_billing_page: true,
           hide_integrations_page: false,
-        enable_onboarding: false,
+          enable_onboarding: false,
         },
       };
 
@@ -976,7 +976,7 @@ describe("getFirstAvailablePath", () => {
     hide_users_page: false,
     hide_billing_page: false,
     hide_integrations_page: false,
-        enable_onboarding: false,
+    enable_onboarding: false,
   };
 
   describe("SaaS mode", () => {
@@ -1284,5 +1284,59 @@ describe("clientLoader redirect behavior", () => {
     expect(result?.status).toBe(302);
     // In OSS mode, first available is /settings (LLM)
     expect(result?.headers.get("Location")).toBe("/settings");
+  });
+
+  it("should redirect usage-monitoring in OSS mode unless local gateway admin", async () => {
+    const config = {
+      app_mode: "oss",
+      feature_flags: {
+        enable_billing: false,
+        hide_llm_settings: false,
+        enable_jira: false,
+        enable_jira_dc: false,
+        enable_linear: false,
+        hide_users_page: false,
+        hide_billing_page: false,
+        hide_integrations_page: false,
+        enable_onboarding: false,
+      },
+    };
+    mockQueryClient.setQueryData(["web-client-config"], config);
+
+    const result = await clientLoader(
+      createMockRequest("/settings/usage-monitoring") as any,
+    );
+
+    expect(result).toBeDefined();
+    expect(result?.status).toBe(302);
+    expect(result?.headers.get("Location")).toBe("/settings");
+  });
+
+  it("should allow usage-monitoring in OSS mode when local gateway admin is on", async () => {
+    vi.stubEnv("VITE_LOCAL_GATEWAY_ADMIN", "true");
+    const config = {
+      app_mode: "oss",
+      feature_flags: {
+        enable_billing: false,
+        hide_llm_settings: false,
+        enable_jira: false,
+        enable_jira_dc: false,
+        enable_linear: false,
+        hide_users_page: false,
+        hide_billing_page: true,
+        hide_integrations_page: true,
+        enable_onboarding: false,
+      },
+    };
+    mockQueryClient.setQueryData(["web-client-config"], config);
+
+    try {
+      const result = await clientLoader(
+        createMockRequest("/settings/usage-monitoring") as any,
+      );
+      expect(result).toBeNull();
+    } finally {
+      vi.unstubAllEnvs();
+    }
   });
 });

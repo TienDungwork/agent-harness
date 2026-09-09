@@ -4,6 +4,7 @@ import AuthService from "#/api/auth-service/auth-service.api";
 import { clearLoginData } from "#/utils/local-storage";
 import { SETTINGS_QUERY_KEYS } from "../query/query-keys";
 import { useConfig } from "../query/use-config";
+import { isLocalGatewayAdmin } from "#/utils/local-gateway-admin";
 
 export const useLogout = () => {
   const posthog = usePostHog();
@@ -26,6 +27,13 @@ export const useLogout = () => {
       posthog.reset();
 
       // Refresh the page after all logout logic is completed
+      if (isLocalGatewayAdmin()) {
+        const base = import.meta.env.BASE_URL.endsWith("/")
+          ? import.meta.env.BASE_URL
+          : `${import.meta.env.BASE_URL}/`;
+        window.location.assign(`${base}login`);
+        return;
+      }
       window.location.reload();
     },
   });

@@ -9,10 +9,7 @@ type Options = {
   fontSize?: number;
 };
 
-export function useSshTerminal(
-  serverId: string | null,
-  options: Options = {},
-) {
+export function useSshTerminal(serverId: string | null, options: Options = {}) {
   const fontSize = options.fontSize ?? 13;
   const fontSizeRef = React.useRef(fontSize);
   fontSizeRef.current = fontSize;

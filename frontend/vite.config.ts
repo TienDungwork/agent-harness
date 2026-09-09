@@ -13,7 +13,8 @@ export default defineConfig(({ mode }) => {
     VITE_USE_TLS = "false",
     VITE_FRONTEND_PORT = "3001",
     VITE_INSECURE_SKIP_VERIFY = "false",
-  } = loadEnv(mode, process.cwd());
+    VITE_BASE_PATH = "/",
+  } = loadEnv(mode, process.cwd(), "");
 
   const USE_TLS = VITE_USE_TLS === "true";
   const INSECURE_SKIP_VERIFY = VITE_INSECURE_SKIP_VERIFY === "true";
@@ -23,13 +24,29 @@ export default defineConfig(({ mode }) => {
   const API_URL = `${PROTOCOL}://${VITE_BACKEND_HOST}/`;
   const WS_URL = `${WS_PROTOCOL}://${VITE_BACKEND_HOST}/`;
   const FE_PORT = Number.parseInt(VITE_FRONTEND_PORT, 10);
+  const MOCK_API = process.env.VITE_MOCK_API === "true";
+  // Path gateway (/admin/) — also accept process.env for compose/CLI overrides.
+  const rawBase = process.env.VITE_BASE_PATH || VITE_BASE_PATH || "/";
+  const base = rawBase.endsWith("/") ? rawBase : `${rawBase}/`;
 
   return {
+    base,
     plugins: [
       !process.env.VITEST && reactRouter(),
       viteTsconfigPaths(),
       svgr(),
       tailwindcss(),
+      {
+        name: "msw-service-worker-allowed",
+        configureServer(server) {
+          server.middlewares.use((req, res, next) => {
+            if (req.url?.includes("mockServiceWorker.js")) {
+              res.setHeader("Service-Worker-Allowed", "/");
+            }
+            next();
+          });
+        },
+      },
     ],
     optimizeDeps: {
       include: [
@@ -76,26 +93,30 @@ export default defineConfig(({ mode }) => {
       port: FE_PORT,
       host: true,
       allowedHosts: true,
-      proxy: {
-        "/api": {
-          target: API_URL,
-          changeOrigin: true,
-          secure: !INSECURE_SKIP_VERIFY,
-        },
-        "/ws": {
-          target: WS_URL,
-          ws: true,
-          changeOrigin: true,
-          secure: !INSECURE_SKIP_VERIFY,
-        },
-        "/socket.io": {
-          target: WS_URL,
-          ws: true,
-          changeOrigin: true,
-          secure: !INSECURE_SKIP_VERIFY,
-          // rewriteWsOrigin: true,
-        },
-      },
+      // Mock mode: MSW handles /api in the browser. Proxying leftovers to a
+      // missing backend (:3000) turns bypassed requests into HTTP 500.
+      proxy: MOCK_API
+        ? undefined
+        : {
+            "/api": {
+              target: API_URL,
+              changeOrigin: true,
+              secure: !INSECURE_SKIP_VERIFY,
+            },
+            "/ws": {
+              target: WS_URL,
+              ws: true,
+              changeOrigin: true,
+              secure: !INSECURE_SKIP_VERIFY,
+            },
+            "/socket.io": {
+              target: WS_URL,
+              ws: true,
+              changeOrigin: true,
+              secure: !INSECURE_SKIP_VERIFY,
+              // rewriteWsOrigin: true,
+            },
+          },
       watch: {
         ignored: ["**/node_modules/**", "**/.git/**"],
       },

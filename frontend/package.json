@@ -51,6 +51,8 @@
     "dev": "npm run make-i18n && cross-env VITE_MOCK_API=false react-router dev",
     "dev:mock": "npm run make-i18n && cross-env VITE_MOCK_API=true VITE_MOCK_SAAS=false react-router dev",
     "dev:mock:saas": "npm run make-i18n && cross-env VITE_MOCK_API=true VITE_MOCK_SAAS=true react-router dev",
+    "dev:mock:saas:gateway": "npm run make-i18n && cross-env VITE_MOCK_API=true VITE_MOCK_SAAS=true VITE_BASE_PATH=/admin/ react-router dev",
+    "dev:local:gateway": "npm run make-i18n && cross-env VITE_LOCAL_GATEWAY_ADMIN=true VITE_BASE_PATH=/admin/ react-router dev",
     "build": "npm run make-i18n && react-router build",
     "start": "npx sirv-cli build/ --single",
     "test": "vitest run",

@@ -30,6 +30,8 @@ export interface ResolvePickerKindInput {
   isCloud: boolean;
   isAcp: boolean;
   profilesAvailable: boolean;
+  /** True when a named (non-`default`) AgentProfile exists. */
+  hasNamedAgentProfiles?: boolean;
 }
 export function resolvePickerKind({
   hasConversation,
@@ -37,8 +39,16 @@ export function resolvePickerKind({
   isCloud,
   isAcp,
   profilesAvailable,
+  hasNamedAgentProfiles = false,
 }: ResolvePickerKindInput): PickerKind {
-  if (!hasConversation || !hasStartedConversation) {
+  // Home: the seeded `default` AgentProfile is not a model picker. Show LLM
+  // profiles so the user can choose a model before the first send.
+  // Named AgentProfiles keep the agent-profile picker (#3727).
+  if (!hasConversation) {
+    if (profilesAvailable && hasNamedAgentProfiles) return "agent-profile";
+    return isCloud ? "model" : "llm-profile";
+  }
+  if (!hasStartedConversation) {
     if (profilesAvailable) return "agent-profile";
     return isCloud ? "model" : "llm-profile";
   }

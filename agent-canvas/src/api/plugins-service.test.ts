@@ -1,8 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import {
-  FileClient,
-  PluginsClient,
-} from "@Creanova/typescript-client/clients";
+import { FileClient, PluginsClient } from "@Creanova/typescript-client/clients";
 import {
   setActiveSelection,
   setRegisteredBackends,

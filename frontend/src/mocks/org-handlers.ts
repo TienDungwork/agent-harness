@@ -5,6 +5,7 @@ import {
   OrganizationUserRole,
   UpdateOrganizationMemberParams,
 } from "#/types/org";
+import { MOCK_DEFAULT_USER_SETTINGS } from "./settings-handlers";
 
 const MOCK_MEMBER_AGENT_SETTINGS = {
   llm: {
@@ -586,4 +587,122 @@ export const ORG_HANDLERS = [
   http.get("/api/organizations/:orgId/members/invite", () =>
     HttpResponse.json({ items: [], email_delivery_configured: true }),
   ),
+
+  http.get("/api/organizations/:orgId/git-claims", () => HttpResponse.json([])),
+
+  http.get("/api/organizations/:orgId/profiles", () =>
+    HttpResponse.json({
+      profiles: [
+        {
+          name: "default",
+          model: MOCK_DEFAULT_USER_SETTINGS.llm_model ?? null,
+          base_url: null,
+          api_key_set: false,
+        },
+      ],
+      active_profile: "default",
+    }),
+  ),
+
+  http.get("/api/organizations/:orgId/settings", () =>
+    HttpResponse.json({
+      agent_settings: MOCK_DEFAULT_USER_SETTINGS.agent_settings,
+      conversation_settings: MOCK_DEFAULT_USER_SETTINGS.conversation_settings,
+      search_api_key: MOCK_DEFAULT_USER_SETTINGS.search_api_key ?? "",
+      llm_api_key_set: MOCK_DEFAULT_USER_SETTINGS.llm_api_key_set,
+    }),
+  ),
+
+  http.patch("/api/organizations/:orgId/settings", async ({ request }) => {
+    const body = (await request.json()) as Record<string, unknown>;
+    return HttpResponse.json({
+      agent_settings:
+        body.agent_settings ?? MOCK_DEFAULT_USER_SETTINGS.agent_settings,
+      conversation_settings:
+        body.conversation_settings ??
+        MOCK_DEFAULT_USER_SETTINGS.conversation_settings,
+      search_api_key:
+        body.search_api_key ?? MOCK_DEFAULT_USER_SETTINGS.search_api_key ?? "",
+      llm_api_key_set: MOCK_DEFAULT_USER_SETTINGS.llm_api_key_set,
+    });
+  }),
+
+  http.get("/api/organizations/:orgId/conversations/stats", () =>
+    HttpResponse.json({
+      active_conversations: 1,
+      running_runtimes: 1,
+      completed_24h: 0,
+      completed_7d: 1,
+      completed_30d: 2,
+      total_cost: 0,
+      total_prompt_tokens: 0,
+      total_completion_tokens: 0,
+      total_tokens: 0,
+    }),
+  ),
+
+  http.get("/api/organizations/:orgId/conversations/usage-stats", () =>
+    HttpResponse.json({
+      active_users: 1,
+      agent_runs: 2,
+      total_tokens: 0,
+      estimated_spend: 0,
+      daily_usage: [],
+      team_usage: [],
+      model_usage: [],
+      agent_usage: [],
+    }),
+  ),
+
+  http.get("/api/organizations/:orgId/conversations/user-usage", () =>
+    HttpResponse.json({ items: [], has_more: false }),
+  ),
+
+  http.get("/api/organizations/:orgId/conversations", ({ request }) => {
+    const url = new URL(request.url);
+    const page = parseInt(url.searchParams.get("page") || "1", 10);
+    const perPage = parseInt(url.searchParams.get("per_page") || "20", 10);
+    return HttpResponse.json({
+      items: [],
+      total_items: 0,
+      page,
+      per_page: perPage,
+      total_pages: 0,
+    });
+  }),
+
+  http.get("/api/organizations/:orgId/budgets", ({ request }) => {
+    const url = new URL(request.url);
+    const page = parseInt(url.searchParams.get("users_page") || "1", 10);
+    const perPage = parseInt(
+      url.searchParams.get("users_per_page") || "50",
+      10,
+    );
+    const now = new Date();
+    return HttpResponse.json({
+      enabled: false,
+      monthly_limit: null,
+      reset_day: 1,
+      slack_channel: null,
+      slack_team_id: null,
+      default_user_monthly_limit: null,
+      cycle_start_at: new Date(
+        now.getFullYear(),
+        now.getMonth(),
+        1,
+      ).toISOString(),
+      cycle_end_at: new Date(
+        now.getFullYear(),
+        now.getMonth() + 1,
+        1,
+      ).toISOString(),
+      current_spend: 0,
+      current_spend_percentage: 0,
+      thresholds: [],
+      users: [],
+      users_total: 0,
+      users_page: page,
+      users_per_page: perPage,
+    });
+  }),
 ];

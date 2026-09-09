@@ -16,6 +16,7 @@ import { usePermission } from "./organizations/use-permissions";
 import { useOrgTypeAndAccess } from "./use-org-type-and-access";
 import { useSettings } from "./query/use-settings";
 import { I18nKey } from "#/i18n/declaration";
+import { isLocalGatewayAdmin } from "#/utils/local-gateway-admin";
 
 // Rendered navigation item types
 export type SettingsNavRenderedItem =
@@ -66,6 +67,15 @@ export function useSettingsNavItems(): SettingsNavRenderedItem[] {
 
   let items = isSaasMode ? [...SAAS_NAV_ITEMS] : [...OSS_NAV_ITEMS];
 
+  if (isLocalGatewayAdmin()) {
+    const usage = SAAS_NAV_ITEMS.find(
+      (item) => item.to === "/settings/usage-monitoring",
+    );
+    if (usage && !items.some((item) => item.to === usage.to)) {
+      items = [usage, ...items];
+    }
+  }
+
   // First apply feature flag-based hiding
   items = items.filter((item) => !isSettingsPageHidden(item.to, featureFlags));
 
@@ -94,7 +104,10 @@ export function useSettingsNavItems(): SettingsNavRenderedItem[] {
   }
 
   // Hide admin-only settings pages for non-admins/owners or personal orgs
-  if (!isAdminOrOwner || !organizationId || isPersonalOrg) {
+  if (
+    !isLocalGatewayAdmin() &&
+    (!isAdminOrOwner || !organizationId || isPersonalOrg)
+  ) {
     items = items.filter((item) => !ADMIN_ONLY_SETTINGS_PATHS.has(item.to));
   }
 
