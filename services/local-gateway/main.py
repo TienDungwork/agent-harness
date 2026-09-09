@@ -26,7 +26,7 @@ async def lifespan(_app: FastAPI):
         assert SessionLocal is not None
         db = SessionLocal()
         try:
-            seed_local_users(db)
+            seed_local_users(db, admin_password=settings.local_admin_password or None)
         finally:
             db.close()
     yield

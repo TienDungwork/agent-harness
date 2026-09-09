@@ -28,3 +28,22 @@ def test_local_login_seed(tmp_path):
             pass
     finally:
         db.close()
+
+
+def test_seed_overrides_admin_password(tmp_path):
+    models.init_db(f'sqlite:///{tmp_path}/local.db')
+    db = models.SessionLocal()
+    try:
+        seed_local_users(db)
+        seed_local_users(db, admin_password='CustomPass1!')
+        admin = authenticate_local(db, username='admin', password='CustomPass1!')
+        assert admin.is_admin is True
+        try:
+            authenticate_local(db, username='admin', password='admin123')
+            raise AssertionError('expected PermissionError')
+        except PermissionError:
+            pass
+        demo = authenticate_local(db, username='demo', password='demo123')
+        assert demo.username == 'demo'
+    finally:
+        db.close()

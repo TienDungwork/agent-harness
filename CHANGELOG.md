@@ -2,6 +2,30 @@
 
 All notable changes to this workspace are listed here.
 
+## [beta v0.9.1] - 2026-09-09
+
+### Fixed
+
+- Beszel `/monitoring/` login accepts username `admin` (no email-format check)
+
+## [beta v0.9.0] - 2026-09-09
+
+### Added
+
+- Path gateway admin UI runs in Docker (`creanova-admin`); `cd agent-canvas && docker compose up -d` starts `/agents`, `/admin`, and `/monitoring` on `:18000` without host Vite `:12000`
+
+## [beta v0.8.3] - 2026-09-09
+
+### Changed
+
+- Shared local login: Agents and Admin honor `LOCAL_ADMIN_PASSWORD`; Beszel `/monitoring/` accepts username `admin` as well as email
+
+## [beta v0.8.2] - 2026-09-09
+
+### Changed
+
+- Beszel `/monitoring/` login is password-only by default; hide "Continue with Creanova Keycloak" unless `BESZEL_OIDC_ENABLED=true` and Keycloak is running
+
 ## [beta v0.8.1] - 2026-09-09
 
 ### Changed

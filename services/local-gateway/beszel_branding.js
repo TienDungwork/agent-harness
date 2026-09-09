@@ -113,6 +113,90 @@
     logoHome.parentElement.insertBefore(a, logoHome.nextSibling);
   }
 
+  function patchLoginIdentity() {
+    const input = document.querySelector("form input[name='email']");
+    if (!(input instanceof HTMLInputElement)) return;
+
+    input.type = "text";
+    input.autocomplete = "username";
+    input.removeAttribute("pattern");
+    if (input.placeholder === "name@example.com") {
+      input.placeholder = "admin";
+    }
+    const label = input.form && input.form.querySelector("label[for='email']");
+    if (label && /email/i.test(label.textContent || "")) {
+      label.textContent = "Username";
+    }
+    const honeypot = document.querySelector("form input[name='website']");
+    if (honeypot instanceof HTMLInputElement) {
+      const wrap = honeypot.closest("div") || honeypot;
+      if (wrap instanceof HTMLElement) {
+        wrap.style.cssText =
+          "position:absolute;left:-9999px;height:0;overflow:hidden";
+      }
+    }
+
+    const form = input.form;
+    if (!form || form.dataset.creanovaLogin === "1") return;
+    if (form.querySelector("input[name='passwordConfirm']")) return;
+    form.dataset.creanovaLogin = "1";
+    form.addEventListener(
+      "submit",
+      (e) => {
+        const ident = (
+          form.querySelector("input[name='email']") || {}
+        ).value;
+        const password = (
+          form.querySelector("input[name='password']") || {}
+        ).value;
+        const website = (
+          form.querySelector("input[name='website']") || {}
+        ).value;
+        if (website) return;
+        if (!ident || !password) return;
+        e.preventDefault();
+        e.stopImmediatePropagation();
+        loginWithIdentity(String(ident).trim(), String(password));
+      },
+      true,
+    );
+  }
+
+  async function loginWithIdentity(identity, password) {
+    const url = new URL(
+      "api/collections/users/auth-with-password",
+      window.location.href,
+    );
+    let errEl = document.querySelector(".creanova-login-error");
+    if (errEl) errEl.remove();
+    try {
+      const res = await fetch(url, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ identity, password }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || !data.token) {
+        const input = document.querySelector("form input[name='email']");
+        const p = document.createElement("p");
+        p.className = "creanova-login-error";
+        p.style.cssText = "padding-inline:0.25rem;font-size:0.75rem;color:#dc2626";
+        p.textContent = "Please check your credentials and try again";
+        if (input && input.parentElement) {
+          input.parentElement.appendChild(p);
+        }
+        return;
+      }
+      localStorage.setItem(
+        "pocketbase_auth",
+        JSON.stringify({ token: data.token, record: data.record }),
+      );
+      location.reload();
+    } catch (err) {
+      console.error(err);
+    }
+  }
+
   function hideDocumentation() {
     // Command palette / menus: hide Beszel docs entry (Creanova rebrand).
     const nodes = document.querySelectorAll(
@@ -138,6 +222,7 @@
     brandLogo();
     mountAllSystems();
     hideDocumentation();
+    patchLoginIdentity();
   }
 
   function scheduleTick() {

@@ -13,6 +13,8 @@ class Settings(BaseSettings):
 
     # Auth: "local" = SQLite users (no Docker). "keycloak" = Keycloak compose.
     auth_backend: str = 'local'
+    # When set, seed updates the `admin` user password on every gateway start.
+    local_admin_password: str = ''
 
     # Keycloak (only when auth_backend=keycloak)
     keycloak_url: str = 'http://127.0.0.1:18180'

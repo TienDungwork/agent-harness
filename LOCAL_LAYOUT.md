@@ -24,7 +24,7 @@ docker compose up -d
 
 Open: http://localhost:18010/agents/
 
-Path gateway (all apps, one port): see `deploy/gateway/` → http://localhost:18000/
+Path gateway (agents + admin + monitoring, one port): `cd agent-canvas && docker compose up -d --build` → http://localhost:18000/
 
 ClickHouse VMS warehouse: see `deploy/clickhouse/` — HTTP `http://127.0.0.1:18123` (loopback). Agent reads via `local-gateway` `/api/infra/analytics/*` (no SQL). ClickHouse hostname `creanova-clickhouse:8123` on `agent-canvas_net`.
 

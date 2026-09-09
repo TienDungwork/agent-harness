@@ -171,10 +171,11 @@ def list_user_conversation_ids(db: Session, user_id: str) -> set[str]:
     return {row[0] for row in rows}
 
 
-def seed_local_users(db: Session) -> None:
+def seed_local_users(db: Session, *, admin_password: str | None = None) -> None:
     """Bootstrap admin/demo when AUTH_BACKEND=local (no Docker/Keycloak)."""
+    override = (admin_password or '').strip()
     seeds = [
-        ('admin', 'admin123', 'admin@creanova.local', True),
+        ('admin', override or 'admin123', 'admin@creanova.local', True),
         ('demo', 'demo123', 'demo@creanova.local', False),
     ]
     for username, password, email, is_admin in seeds:
@@ -188,6 +189,10 @@ def seed_local_users(db: Session) -> None:
                 is_admin=is_admin,
                 initial_credits=100.0,
             )
+        elif username == 'admin' and override:
+            existing.password_hash = hash_password(override)
+            existing.is_admin = True
+            db.commit()
         elif not existing.password_hash:
             existing.password_hash = hash_password(password)
             existing.is_admin = is_admin or existing.is_admin

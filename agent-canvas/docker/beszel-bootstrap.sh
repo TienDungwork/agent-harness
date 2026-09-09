@@ -118,9 +118,10 @@ else
     fi
   fi
 
-  # Keycloak OIDC on users collection (shared Creanova accounts).
-  # Keep password auth for bootstrap service user; USER_CREATION enables OIDC signup.
+  # Keycloak OIDC on users collection. Default off (local password users).
+  # When disabled, strip a previously enabled provider so the login button disappears.
   OIDC_ENABLED="${BESZEL_OIDC_ENABLED:-false}"
+  USERS_JSON="$(curl -sf "$HUB_URL/api/collections/users" -H "Authorization: $SU_TOKEN")"
   if [ "$OIDC_ENABLED" = "true" ] || [ "$OIDC_ENABLED" = "1" ]; then
     KC_BASE="${KEYCLOAK_PUBLIC_URL:-http://192.168.1.191:18180}"
     KC_REALM="${KEYCLOAK_REALM:-creanova}"
@@ -129,7 +130,6 @@ else
     AUTH_URL="${KC_BASE%/}/realms/${KC_REALM}/protocol/openid-connect/auth"
     TOKEN_URL="${KC_BASE%/}/realms/${KC_REALM}/protocol/openid-connect/token"
     USERINFO_URL="${KC_BASE%/}/realms/${KC_REALM}/protocol/openid-connect/userinfo"
-    USERS_JSON="$(curl -sf "$HUB_URL/api/collections/users" -H "Authorization: $SU_TOKEN")"
     OIDC_PATCH="$(printf '%s' "$USERS_JSON" | jq \
       --arg cid "$OIDC_CLIENT_ID" \
       --arg csec "$OIDC_CLIENT_SECRET" \
@@ -159,6 +159,39 @@ else
     else
       echo "beszel-bootstrap: OIDC collection patch failed" >&2
     fi
+  else
+    OIDC_PATCH="$(printf '%s' "$USERS_JSON" | jq \
+      '.oauth2.enabled = false
+       | .oauth2.providers = ((.oauth2.providers // []) | map(select(.name != "oidc")))')"
+    if curl -sf -X PATCH "$HUB_URL/api/collections/users" \
+      -H "Authorization: $SU_TOKEN" \
+      -H "Content-Type: application/json" \
+      -d "$OIDC_PATCH" >/dev/null; then
+      echo "beszel-bootstrap: OIDC disabled (password login only)"
+    else
+      echo "beszel-bootstrap: OIDC disable patch failed" >&2
+    fi
+  fi
+
+  USERNAME="${BESZEL_USER_USERNAME:-admin}"
+  if curl -sf -X PATCH "$HUB_URL/api/collections/users/records/$USER_ID" \
+    -H "Authorization: $SU_TOKEN" \
+    -H "Content-Type: application/json" \
+    -d "{\"username\":\"$USERNAME\",\"role\":\"admin\"}" >/dev/null; then
+    echo "beszel-bootstrap: user username=$USERNAME role=admin"
+  else
+    echo "beszel-bootstrap: username/role patch failed" >&2
+  fi
+  USERS_COLL="$(curl -sf "$HUB_URL/api/collections/users" -H "Authorization: $SU_TOKEN")"
+  ID_PATCH="$(printf '%s' "$USERS_COLL" | jq \
+    '.passwordAuth.identityFields = ["username", "email"]')"
+  if curl -sf -X PATCH "$HUB_URL/api/collections/users" \
+    -H "Authorization: $SU_TOKEN" \
+    -H "Content-Type: application/json" \
+    -d "$ID_PATCH" >/dev/null; then
+    echo "beszel-bootstrap: password identity fields → username, email"
+  else
+    echo "beszel-bootstrap: identityFields patch failed" >&2
   fi
 fi
 

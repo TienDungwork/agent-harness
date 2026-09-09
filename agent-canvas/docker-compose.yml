@@ -12,7 +12,7 @@
 # First time only (full install + build inside Docker — slow):
 #   docker compose --profile overlay-build run --rm canvas-ui-build
 # Then:
-#   docker compose up
+#   docker compose up -d --build
 #
 # Fast UI iteration while Docker is already up (preferred):
 #   # fix root-owned build/locales if a prior Docker build wrote them:
@@ -23,6 +23,7 @@
 #   # path gateway: http://localhost:18000/agents/
 #
 # UI: http://localhost:18010/agents/
+# Path gateway (agents + admin + monitoring): http://localhost:18000/
 # Local login (after overlay): admin / admin123
 #
 # Networking (Atin191 rule): Docker bridge MUST use 10.240.0.0/16 pools.
@@ -55,6 +56,7 @@ services:
       HOST: 0.0.0.0
       PORT: "18110"
       AUTH_BACKEND: local
+      LOCAL_ADMIN_PASSWORD: ${LOCAL_ADMIN_PASSWORD:-}
       AGENT_SERVER_URL: http://agent-canvas:18000
       DATABASE_URL: sqlite:////data/agent-canvas/local-gateway.db
       SESSION_SECRET: ${OH_SECRET_KEY:-change-me-creanova-local-session-secret}
@@ -210,6 +212,7 @@ services:
       HUB_URL: http://beszel:8090
       BESZEL_USER_EMAIL: ${BESZEL_USER_EMAIL:-admin@creanova.local}
       BESZEL_USER_PASSWORD: ${BESZEL_USER_PASSWORD:-admin123}
+      BESZEL_USER_USERNAME: ${BESZEL_USER_USERNAME:-admin}
       BESZEL_AGENT_PORT: "45876"
       BESZEL_SMTP_ENABLED: ${BESZEL_SMTP_ENABLED:-true}
       BESZEL_SMTP_HOST: ${BESZEL_SMTP_HOST:-mailpit}
@@ -219,7 +222,8 @@ services:
       BESZEL_SMTP_TLS: ${BESZEL_SMTP_TLS:-false}
       BESZEL_SMTP_SENDER_NAME: ${BESZEL_SMTP_SENDER_NAME:-Creanova Alerts}
       BESZEL_SMTP_SENDER_ADDRESS: ${BESZEL_SMTP_SENDER_ADDRESS:-alerts@creanova.local}
-      BESZEL_OIDC_ENABLED: ${BESZEL_OIDC_ENABLED:-true}
+      # Off unless Keycloak compose is up (AUTH_BACKEND=keycloak).
+      BESZEL_OIDC_ENABLED: ${BESZEL_OIDC_ENABLED:-false}
       KEYCLOAK_PUBLIC_URL: ${KEYCLOAK_PUBLIC_URL:-http://192.168.1.191:18180}
       KEYCLOAK_REALM: ${KEYCLOAK_REALM:-creanova}
       BESZEL_OIDC_CLIENT_ID: ${BESZEL_OIDC_CLIENT_ID:-beszel}
@@ -272,6 +276,37 @@ services:
       NVIDIA_DRIVER_CAPABILITIES: compute,utility
       # nvidia-smi: host + container GPU; nvml alone left system_stats without GPU data here
       GPU_COLLECTOR: nvidia-smi
+
+  # Static Creanova FE for :18000/admin/ (no host Vite).
+  admin-ui:
+    build:
+      context: ../frontend
+      dockerfile: Dockerfile.admin
+    image: creanova-admin:local
+    container_name: creanova-admin
+    restart: unless-stopped
+    expose:
+      - "80"
+    networks:
+      - default
+
+  # One host port: /agents /admin /monitoring
+  gateway:
+    image: nginx:1.27-alpine
+    container_name: creanova-gateway
+    restart: unless-stopped
+    depends_on:
+      - agent-canvas
+      - admin-ui
+      - beszel-ui
+    ports:
+      - "0.0.0.0:${GATEWAY_HOST_PORT:-18000}:18000"
+    volumes:
+      - ../deploy/gateway/nginx.conf:/etc/nginx/nginx.conf:ro
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    networks:
+      - default
 
 volumes:
   canvas_ui_npm:

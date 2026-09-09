@@ -8,9 +8,11 @@ Repo giả định: clone OpenHands, thư mục làm việc chính là `agent-ca
 OpenHands/
 ├── agent-canvas/          ← bạn đứng ở đây hầu hết lệnh
 │   ├── setup.md           ← file này
-│   ├── docker-compose.yml
+│   ├── docker-compose.yml  ← agents + admin + monitoring + gateway :18000
 │   ├── docker/build-beszel-gpu.sh
 │   └── .env.sample
+├── frontend/              ← image creanova-admin (Dockerfile.admin)
+├── deploy/gateway/        ← nginx.conf (compose cũng nằm trong agent-canvas)
 └── services/
     ├── beszel/            ← source hub/agent (build local)
     └── local-gateway/
@@ -25,7 +27,7 @@ cd /path/to/OpenHands/agent-canvas
 cp -n .env.sample .env          # lần đầu
 bash docker/build-beszel-gpu.sh # BẮT BUỘC — image không có trên Docker Hub
 docker compose --profile overlay-build run --rm canvas-ui-build   # lần đầu / khi cần UI overlay
-docker compose up -d
+docker compose up -d --build   # lần đầu build creanova-admin (~1–2 phút)
 ```
 
 URLs mặc định:
@@ -33,8 +35,8 @@ URLs mặc định:
 | Service | URL | Login |
 |---------|-----|--------|
 | Canvas | http://\<IP\>:18010/agents/ | `admin` / `admin123` (local auth) |
-| Path gateway | http://\<IP\>:18000/ | `/agents` `/admin` `/monitoring` — see `deploy/gateway/` |
-| Beszel | http://\<IP\>:18090/ | `admin@creanova.local` / `admin123` |
+| Path gateway | http://\<IP\>:18000/ | `/agents` `/admin` `/monitoring` — cùng `docker compose up` |
+| Beszel | http://\<IP\>:18090/ | `admin` / `admin123` (email `admin@creanova.local` cũng được) |
 | Mailpit (alert mail) | http://\<IP\>:18025/ | — |
 
 ---
@@ -77,10 +79,10 @@ Chỉnh tối thiểu khi đổi máy / IP LAN:
 | `CANVAS_HOST_PORT` | Port Canvas | `18010` |
 | `MAILPIT_UI_PORT` | Port Mailpit | `18025` |
 | `CORS_ORIGINS` | Thêm origin Canvas/Beszel theo IP máy mới | xem default trong compose |
-| `KEYCLOAK_PUBLIC_URL` | OIDC (nếu bật) | tắt OIDC: `BESZEL_OIDC_ENABLED=false` |
+| `KEYCLOAK_PUBLIC_URL` | OIDC (tắt mặc định) | chỉ khi `BESZEL_OIDC_ENABLED=true` + Keycloak up |
 | `PROJECTS_PATH` | Mount `/projects` vào canvas | mặc định `$HOME/projects` |
 
-Login Beszel mặc định: `BESZEL_USER_EMAIL` / `BESZEL_USER_PASSWORD` (`admin@creanova.local` / `admin123`).
+Login Beszel mặc định: `admin` / `admin123` (`BESZEL_USER_EMAIL` / `BESZEL_USER_PASSWORD`). Agents + Admin: `admin` / `admin123`, hoặc `LOCAL_ADMIN_PASSWORD` trong `.env`.
 
 ---
 
@@ -189,10 +191,9 @@ docker compose up -d --force-recreate beszel-bootstrap
 4. Sửa `beszel-agent.devices` nếu không có `/dev/nvme0`
 5. `bash docker/build-beszel-gpu.sh`
 6. `docker compose --profile overlay-build run --rm canvas-ui-build` (lần đầu)
-7. `docker compose up -d`
-8. Mở `:18010/agents/` (hoặc gateway `:18000/agents/`) và `:18090/` — login như bảng trên
-9. (Tuỳ chọn) Path gateway: `docker compose -f ../deploy/gateway/docker-compose.yml up -d` → `:18000/`
-10. (Tuỳ chọn) Volume cũ: `docker volume ls | grep agent-canvas` — copy/migrate nếu muốn giữ conversation + Beszel DB
+7. `docker compose up -d --build`
+8. Mở `:18000/` (`/agents` `/admin` `/monitoring`) hoặc trực tiếp `:18010/agents/` và `:18090/` — login như bảng trên
+9. (Tuỳ chọn) Volume cũ: `docker volume ls | grep agent-canvas` — copy/migrate nếu muốn giữ conversation + Beszel DB
 
 Dừng:
 
@@ -204,6 +205,16 @@ docker compose down -v       # XOÁ state (Beszel DB, canvas_state, token agent)
 ---
 
 ## 7. Troubleshooting
+
+**Admin `/admin/` 502**
+
+```bash
+docker compose up -d --build admin-ui gateway
+docker logs creanova-admin --tail 30
+docker logs creanova-gateway --tail 20
+```
+
+Không chạy thêm `deploy/gateway/docker-compose.yml` khi stack `agent-canvas` đã `up` (trùng tên `creanova-gateway` / `creanova-admin`).
 
 **Beszel UI 502 / không healthy**
 
@@ -227,15 +238,16 @@ docker compose up -d beszel-agent
 - Cần `gpus: all`, `pid: host`, `GPU_COLLECTOR=nvidia-smi`, image `creanova/beszel-agent:gpu-containers` (không dùng upstream thuần)
 - Host phải có nvidia-container-toolkit
 
-**OIDC / Keycloak lỗi**
+**OIDC / Keycloak**
 
-- Tắt tạm: `BESZEL_OIDC_ENABLED=false` trong `.env`, recreate bootstrap
-- Hoặc chỉnh `KEYCLOAK_PUBLIC_URL` trỏ đúng Keycloak máy đó (`deploy/local-auth/`)
+- Mặc định tắt (password: `admin` / `admin123`). Nút "Continue with Creanova Keycloak" không hiện.
+- Bật lại: `BESZEL_OIDC_ENABLED=true` + Keycloak `deploy/local-auth/`, rồi recreate bootstrap
+- `KEYCLOAK_PUBLIC_URL` phải trỏ đúng máy đang chạy Keycloak
 
 **Port đã chiếm**
 
 ```bash
-ss -tlnp | grep -E '18010|18090|18025|45876'
+ss -tlnp | grep -E '18000|18010|18090|18025|45876'
 ```
 
 Đổi qua `.env` (`CANVAS_HOST_PORT`, `BESZEL_PORT`, `MAILPIT_UI_PORT`). Agent listen `45876` (host network).
@@ -261,5 +273,7 @@ docker network inspect agent-canvas_net --format '{{json .IPAM.Config}}'
 | `beszel-ui` | `nginx` | Publish `:18090` + branding JS |
 | `beszel-bootstrap` | `alpine` one-shot | Token agent, SMTP, OIDC, sync systems |
 | `beszel-agent` | `creanova/beszel-agent:gpu-containers` | Metrics host/GPU/containers |
+| `admin-ui` | build `frontend/Dockerfile.admin` | Static Creanova FE `/admin/` |
+| `gateway` | `nginx:1.27-alpine` | Path gateway `:18000` |
 
 Volumes quan trọng: `canvas_state`, `beszel_data`, `beszel_shared` (token + pubkey agent), `beszel_agent_data`.
