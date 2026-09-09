@@ -1,0 +1,13 @@
+---
+description: After repeated failures, list 5–7 causes and work from most likely. Do not silently rewrite the user's plan.
+alwaysApply: true
+---
+
+# Troubleshooting
+
+- If repeated attempts still fail tests, or the user says it is still broken:
+  1. Step back and list 5–7 possible sources of the problem.
+  2. Rank them by likelihood.
+  3. Work the most likely causes first.
+  4. Explain that reasoning to the user.
+- If a major issue blocks a plan the user gave you, do not quietly work around it. Propose a new plan and wait for confirmation.

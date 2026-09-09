@@ -1,0 +1,13 @@
+---
+description: If the user asks to run an app that is missing, install it. Prefer lockfiles over one-off package installs.
+alwaysApply: true
+---
+
+# Environment setup
+
+- If the user asks to run an application and it is not installed, install it and run the command again. Do not stop at "not found".
+- On missing dependencies:
+  1. Look for `requirements.txt`, `pyproject.toml`, `package.json`, `Gemfile`, or similar.
+  2. If those exist, install the whole set (`pip install -r`, `npm install`, …).
+  3. Install a single package only when there is no dependency file or only that package is needed.
+- Install missing essential tools for the requested task when that is possible.

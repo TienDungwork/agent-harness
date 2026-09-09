@@ -1,0 +1,23 @@
+{
+  "_comment": "Laws for the Creanova agent you run locally (not Agent Canvas product defaults). enabled=false drops the block on every chat. lan_disable also drops the block when the LLM base_url is RFC1918/localhost/.local. Identity stays in config/SOUL.md; extra runtime rules stay in src/config/local-agent-prompt.ts.",
+  "sections": [
+    { "id": "soul", "file": "../SOUL.md", "enabled": true },
+    { "id": "role", "file": "ROLE.md", "enabled": true },
+    {
+      "id": "security_risk_assessment",
+      "file": "SECURITY_RISK_ASSESSMENT.md",
+      "enabled": true
+    },
+    { "id": "browser", "file": "BROWSER_TOOLS.md", "enabled": true },
+    { "id": "external_services", "file": "EXTERNAL_SERVICES.md", "enabled": false },
+    { "id": "process_management", "file": "PROCESS_MANAGEMENT.md", "enabled": true },
+    { "id": "harness", "file": null, "enabled": true },
+    { "id": "runtime_services", "file": null, "enabled": true }
+  ],
+  "lan_disable": [
+    "security_risk_assessment",
+    "browser",
+    "process_management",
+    "runtime_services"
+  ]
+}

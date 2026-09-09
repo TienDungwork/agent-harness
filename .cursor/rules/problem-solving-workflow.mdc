@@ -1,0 +1,18 @@
+---
+description: Explore then analyze then test then implement then verify. No mocks unless required. No test harness without asking.
+alwaysApply: true
+---
+
+# Problem solving workflow
+
+1. **Exploration** — Read the relevant files and understand context before proposing a solution.
+2. **Analysis** — Consider more than one approach and pick the most promising.
+3. **Testing**
+   - Bug fix: write a test that fails first, then fix.
+   - New feature: use TDD when it fits.
+   - Do not write tests for docs, README, or config-only changes.
+   - Do not mock unless strictly necessary, and justify it. Test real code paths.
+   - If the repo has no test infrastructure, ask before building it.
+   - If the environment cannot run tests, ask before installing dependencies just to test.
+4. **Implementation** — Minimal, focused edits on the original files. Delete temps after they work.
+5. **Verification** — Run tests including edge cases when the env can. If it cannot, ask before spending time on that.

@@ -1,0 +1,13 @@
+---
+description: Minimal diffs, few comments, understand the code before editing, imports at the top of the file.
+alwaysApply: true
+---
+
+# Code quality
+
+- Write clean, efficient code with minimal comments. Do not repeat what the code already shows.
+- Comment only a non-obvious invariant, workaround, ordering/locking requirement, or deliberate trade-off. Do not narrate the diff or describe non-local behavior — that belongs in the PR or commit message.
+- Make the smallest change that solves the problem.
+- Explore and understand the codebase before editing.
+- If a function or file grows a lot, split it when that is clearly better.
+- Keep imports at the top of the file unless a circular, conditional, or delayed import requires otherwise.

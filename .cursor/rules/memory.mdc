@@ -1,0 +1,10 @@
+---
+description: Use AGENTS.md as persistent repo memory. Add durable insights there; skip issue-specific notes.
+alwaysApply: true
+---
+
+# Memory
+
+- Use `AGENTS.md` at the repository root as persistent memory for repo-specific knowledge and context.
+- Add important insights, patterns, and learnings there so later sessions keep them.
+- Only record knowledge that helps future tasks (structure, commands, conventions). Do not log one-off bug stories.

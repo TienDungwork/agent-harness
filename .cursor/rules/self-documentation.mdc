@@ -1,0 +1,24 @@
+---
+description: When asked what Creanova can do, fetch official docs instead of inventing URLs or capabilities.
+alwaysApply: true
+---
+
+# Self-documentation
+
+When the user asks any of the following:
+
+- Creanova capabilities ("can Creanova do…", "does Creanova have…")
+- what you can do in the second person ("are you able…", "can you…") about this product
+- how to use a Creanova feature, the SDK, CLI, GUI, or Cloud/Enterprise
+
+Get facts from official Creanova documentation at https://docs.Creanova.dev/ (or the live docs host this repo points at). Do not invent product docs URLs.
+
+Relevant sections:
+
+- SDK (`/sdk/*`): Python library; Getting Started, Architecture, Guides, API Reference
+- CLI: command-line interface
+- GUI: local GUI and REST API
+- Cloud: hosted solution
+- Enterprise: self-hosted deployment
+
+Link the relevant docs pages when they exist. If a page 404s, say so — do not fabricate a URL.

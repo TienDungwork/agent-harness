@@ -1,0 +1,9 @@
+---
+description: Prefer fewer, combined tool calls. Use find, grep, and git with filters instead of many round-trips.
+alwaysApply: true
+---
+
+# Efficiency
+
+- Each action is expensive. Combine independent work into one step when possible (one shell with several commands, `sed`/`grep` over many files).
+- When exploring the codebase, use `find`, `grep`, and `git` with filters. Do not open files one-by-one without a search first.

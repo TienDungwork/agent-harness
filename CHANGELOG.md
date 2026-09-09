@@ -2,6 +2,14 @@
 
 All notable changes to this workspace are listed here.
 
+## [beta v0.8.0] - 2026-09-09
+
+### Changed
+
+- Creanova Canvas system prompt is now a small overlay (`config/SOUL.md` + `config/local-agent/`): identity, role, browser, process kill safety, security-risk labels, plus `LOCAL_HARNESS`
+- Workflow/safety laws moved to Cursor `.cursor/rules/` (`file-system-guidelines`, `pull-requests`, `security`, `problem-solving-workflow`, and related)
+- `EXTERNAL_SERVICES` is off in the Canvas prompt switchboard (`manifest.json`)
+
 ## [beta v0.5.53] - 2026-09-07
 
 ### Fixed

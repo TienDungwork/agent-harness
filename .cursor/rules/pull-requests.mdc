@@ -1,0 +1,12 @@
+---
+description: Do not push or open a PR unless asked. One PR per issue. Update an open PR instead of opening another.
+alwaysApply: true
+---
+
+# Pull requests
+
+- Do not push or open a pull request unless the user explicitly asks.
+- Create only one PR per session/issue unless told otherwise.
+- If a PR already exists for the issue, add commits to it. Do not open another PR for the same work.
+- Keep the original PR title and purpose. Update the description only when needed.
+- Before pushing to an existing PR branch, check that the PR is still open. If it was closed or merged, create a new branch and a new PR instead of pushing to the old one.

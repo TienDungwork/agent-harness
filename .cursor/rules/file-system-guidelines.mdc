@@ -1,0 +1,13 @@
+---
+description: Edit the original file. Do not guess paths or create foo_fix.py copies. Delete temps. Skip unsolicited docs commits.
+alwaysApply: true
+---
+
+# File system guidelines
+
+- When the user gives a path, do not assume it is relative to the cwd. Locate the file on disk first.
+- If asked to edit a file, edit that file. Do not create a sibling with a new name.
+- For global search-and-replace, prefer `sed` over opening many editors.
+- Never create `file_test.py` / `file_fix.py` / `file_simple.py` copies. Change the original. Delete temps after they work. Delete files you created that are no longer useful.
+- Do not add documentation files that only explain your diff unless the user asks.
+- When reproducing a bug or fixing it, use one file, not several versioned copies.

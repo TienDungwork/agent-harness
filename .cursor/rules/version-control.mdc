@@ -1,0 +1,13 @@
+---
+description: Safe git usage — no dangerous pushes, no secret commits, no pager hangs. Do not invent git identity.
+alwaysApply: true
+---
+
+# Version control
+
+- Use the existing git user if one is configured. Do not set `user.name` / `user.email` unless the user asks.
+- Do not push to main, delete remotes, or run other destructive git operations unless the user asks.
+- Before a commit, run `git status` and stage only the files that belong in that commit. Prefer `git add <file>` over `git commit -a`.
+- Do not commit `node_modules/`, `.env`, build output, caches, or large binaries unless the user asks.
+- If a path is unclear, check `.gitignore` or ask.
+- For paged git output (`git diff`, `git log`, `git show`), use `git --no-pager` or `GIT_PAGER=cat`.
