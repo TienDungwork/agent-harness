@@ -1,4 +1,16 @@
 (() => {
+  // Gateway serves Beszel under /monitoring/. Hub HTML still has BASE_PATH "/".
+  // Router treats unknown pathnames as 404 after login — set the subpath first
+  // (this classic script runs before the deferred SPA module).
+  const onMonitoring =
+    location.pathname === "/monitoring" ||
+    location.pathname.startsWith("/monitoring/");
+  if (onMonitoring) {
+    globalThis.BESZEL = Object.assign({}, globalThis.BESZEL || {}, {
+      BASE_PATH: "/monitoring",
+    });
+  }
+
   const BRAND = "Creanova";
   // Natural glyph proportions — do NOT use textLength (it stretches letters).
   // Height-only CSS; width follows viewBox aspect ratio.
@@ -191,7 +203,7 @@
         "pocketbase_auth",
         JSON.stringify({ token: data.token, record: data.record }),
       );
-      location.reload();
+      location.assign("/monitoring/");
     } catch (err) {
       console.error(err);
     }

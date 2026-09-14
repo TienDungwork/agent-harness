@@ -219,9 +219,16 @@ echo "$SERVERS" | while IFS='|' read -r _SRV_ID SRV_NAME SRV_HOST; do
   # Display name = InfraServer.name (label set by user), fallback to hostname
   DISPLAY_NAME="${SRV_NAME:-$SRV_HOST}"
 
-  # Match by host (stable across renames).
+  # Prefer host match, then name. Host-network WS agents register as the
+  # compose-bridge gateway (not the LAN IP), so host-only match creates a
+  # second pending/down system that still appears in Command Palette.
   EXISTING_ID="$(printf '%s' "$ALL_SYSTEMS" \
-    | jq -r --arg h "$SRV_HOST" '.items[] | select(.host==$h) | .id // empty' \
+    | jq -r --arg h "$SRV_HOST" --arg n "$DISPLAY_NAME" \
+      '(.items[] | select(.host==$h) | .id), (.items[] | select(.name==$n) | .id)' \
+    | awk 'NF' | head -1)"
+  EXISTING_STATUS="$(printf '%s' "$ALL_SYSTEMS" \
+    | jq -r --arg id "$EXISTING_ID" \
+      '.items[] | select(.id==$id) | .status // empty' \
     | head -1)"
 
   if [ -z "$EXISTING_ID" ]; then
@@ -232,6 +239,13 @@ echo "$SERVERS" | while IFS='|' read -r _SRV_ID SRV_NAME SRV_HOST; do
       -d "{\"name\":\"$DISPLAY_NAME\",\"host\":\"$SRV_HOST\",\"port\":\"$AGENT_PORT\",\"users\":[\"$USER_ID\"],\"status\":\"pending\"}" \
       >/dev/null
     echo "beszel-bootstrap: created system '$DISPLAY_NAME' ($SRV_HOST:$AGENT_PORT)"
+  elif [ "$EXISTING_STATUS" = "up" ]; then
+    curl -sf -X PATCH "$HUB_URL/api/collections/systems/records/$EXISTING_ID" \
+      -H "Authorization: $PB_TOKEN" \
+      -H "Content-Type: application/json" \
+      -d "{\"name\":\"$DISPLAY_NAME\"}" \
+      >/dev/null
+    echo "beszel-bootstrap: synced name '$DISPLAY_NAME' (kept live agent host)"
   else
     curl -sf -X PATCH "$HUB_URL/api/collections/systems/records/$EXISTING_ID" \
       -H "Authorization: $PB_TOKEN" \

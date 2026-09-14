@@ -58,10 +58,33 @@ describe("ProfilesService", () => {
     mockRenameProfile.mockReset();
     mockActivateProfile.mockReset();
     vi.mocked(ProfilesClient).mockClear();
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: RequestInfo | URL) => {
+        const url = String(input);
+        if (url.includes("/models")) {
+          return new Response(
+            JSON.stringify({
+              data: [
+                { id: "gpt-4" },
+                { id: "qwen3:4b" },
+                { id: "qwen3-16k" },
+              ],
+            }),
+            {
+              status: 200,
+              headers: { "content-type": "application/json" },
+            },
+          );
+        }
+        return new Response("not found", { status: 404 });
+      }),
+    );
   });
 
   afterEach(() => {
     vi.clearAllMocks();
+    vi.unstubAllGlobals();
   });
 
   describe("listProfiles", () => {
@@ -176,7 +199,77 @@ describe("ProfilesService", () => {
 
       await ProfilesService.saveProfile("custom-profile", request);
 
-      expect(mockSaveProfile).toHaveBeenCalledWith("custom-profile", request);
+      expect(mockSaveProfile).toHaveBeenCalledWith("custom-profile", {
+        llm: {
+          model: "openai/gpt-4",
+          base_url: "https://custom.api.com/v1",
+          stream: false,
+        },
+      });
+    });
+
+    it("prefixes a LAN Ollama model and drops hosted thinking params", async () => {
+      mockSaveProfile.mockResolvedValue({
+        name: "qw",
+        message: "Profile saved",
+      });
+
+      await ProfilesService.saveProfile("qw", {
+        llm: {
+          model: "qwen3-16k",
+          base_url: "http://192.168.1.196:11434/v1",
+          stream: true,
+          reasoning_effort: "high",
+          extended_thinking_budget: 200000,
+        },
+      });
+
+      expect(mockSaveProfile).toHaveBeenCalledWith("qw", {
+        llm: {
+          model: "openai/qwen3-16k",
+          base_url: "http://192.168.1.196:11434/v1",
+          stream: false,
+          force_string_serializer: true,
+          native_tool_calling: false,
+          caching_prompt: false,
+        },
+      });
+    });
+
+    it("rewrites qwen3-4b to qwen3:4b when the gateway only lists the colon id", async () => {
+      mockSaveProfile.mockResolvedValue({
+        name: "ntiendung",
+        message: "Profile saved",
+      });
+
+      await ProfilesService.saveProfile("ntiendung", {
+        llm: {
+          model: "qwen3-4b",
+          base_url: "http://192.168.1.196:11434/v1",
+        },
+      });
+
+      expect(mockSaveProfile).toHaveBeenCalledWith(
+        "ntiendung",
+        expect.objectContaining({
+          llm: expect.objectContaining({
+            model: "openai/qwen3:4b",
+            base_url: "http://192.168.1.196:11434/v1",
+          }),
+        }),
+      );
+    });
+
+    it("blocks save when the model is not on the gateway", async () => {
+      await expect(
+        ProfilesService.saveProfile("bad", {
+          llm: {
+            model: "qwen8b",
+            base_url: "http://192.168.1.196:11434/v1",
+          },
+        }),
+      ).rejects.toThrow(/not on/);
+      expect(mockSaveProfile).not.toHaveBeenCalled();
     });
   });
 

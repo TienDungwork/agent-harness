@@ -1,7 +1,10 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import {
   applyStrictOpenAiCompatibleLlmGuards,
+  assertAndResolveLlmModelOnEndpoint,
   assertLlmProfileCompatibleWithLiteLLM,
+  bareLlmModelId,
+  findGatewayModelMatch,
   getUnsupportedLlmProfileReason,
   hasLlmProviderPrefix,
   isPrivateOrLocalLlmEndpoint,
@@ -97,10 +100,14 @@ describe("llm-model-wire", () => {
       base_url: "http://192.168.1.196:18083/v1",
       stream: true,
       reasoning_effort: "high",
+      native_tool_calling: true,
     };
     applyStrictOpenAiCompatibleLlmGuards(llm);
     expect(llm.stream).toBe(false);
     expect(llm.reasoning_effort).toBeUndefined();
+    expect(llm.force_string_serializer).toBe(true);
+    expect(llm.native_tool_calling).toBe(false);
+    expect(llm.caching_prompt).toBe(false);
   });
 
   it("detects private/local LLM endpoints", () => {
@@ -116,5 +123,70 @@ describe("llm-model-wire", () => {
     expect(isPrivateOrLocalLlmEndpoint("https://api.openai.com/v1")).toBe(
       false,
     );
+  });
+
+  it("matches hyphen/colon gateway model aliases", () => {
+    expect(bareLlmModelId("openai/qwen3:4b")).toBe("qwen3:4b");
+    expect(findGatewayModelMatch("qwen3-4b", ["qwen3:4b", "qwen3:8b"])).toBe(
+      "qwen3:4b",
+    );
+    expect(findGatewayModelMatch("openai/qwen3:4b", ["qwen3:4b"])).toBe(
+      "qwen3:4b",
+    );
+    expect(findGatewayModelMatch("missing", ["qwen3:4b"])).toBeNull();
+  });
+
+  it("resolves LAN model against /v1/models and rewrites aliases", async () => {
+    const fetchImpl = vi.fn(async () =>
+      new Response(
+        JSON.stringify({
+          data: [{ id: "qwen3:4b" }, { id: "qwen3-16k:latest" }],
+        }),
+        { status: 200, headers: { "content-type": "application/json" } },
+      ),
+    );
+    const llm: Record<string, unknown> = {
+      model: "openai/qwen3-4b",
+      base_url: "http://192.168.1.196:11434/v1",
+    };
+    await assertAndResolveLlmModelOnEndpoint(llm, fetchImpl as typeof fetch);
+    expect(llm.model).toBe("openai/qwen3:4b");
+    expect(fetchImpl).toHaveBeenCalled();
+  });
+
+  it("rejects save when model is not on the gateway", async () => {
+    const fetchImpl = vi.fn(async () =>
+      new Response(JSON.stringify({ data: [{ id: "qwen3:4b" }] }), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      }),
+    );
+    await expect(
+      assertAndResolveLlmModelOnEndpoint(
+        {
+          model: "openai/qwen8b",
+          base_url: "http://192.168.1.196:11434/v1",
+        },
+        fetchImpl as typeof fetch,
+      ),
+    ).rejects.toThrow(/not on/);
+  });
+
+  it("rejects HTML responses that are not OpenAI /v1/models", async () => {
+    const fetchImpl = vi.fn(async () =>
+      new Response("<!doctype html><html></html>", {
+        status: 200,
+        headers: { "content-type": "text/html" },
+      }),
+    );
+    await expect(
+      assertAndResolveLlmModelOnEndpoint(
+        {
+          model: "openai/qwen3:4b",
+          base_url: "http://192.168.1.196:8080/v1",
+        },
+        fetchImpl as typeof fetch,
+      ),
+    ).rejects.toThrow(/HTML/);
   });
 });

@@ -32,6 +32,8 @@ import type {
 import { getAgentServerClientOptions } from "../agent-server-client-options";
 import { getActiveBackend } from "../backend-registry/active-store";
 import {
+  applyStrictOpenAiCompatibleLlmGuards,
+  assertAndResolveLlmModelOnEndpoint,
   assertLlmProfileCompatibleWithLiteLLM,
   normalizeLlmModelForLiteLLM,
   normalizeOpenAiCompatibleBaseUrl,
@@ -95,6 +97,8 @@ class ProfilesService {
       assertLlmProfileCompatibleWithLiteLLM(rawModel, baseUrl);
       llm.model = normalizeLlmModelForLiteLLM(rawModel, baseUrl);
     }
+    applyStrictOpenAiCompatibleLlmGuards(llm);
+    await assertAndResolveLlmModelOnEndpoint(llm);
     const normalizedRequest: SaveProfileRequest = {
       ...request,
       llm: llm as SaveProfileRequest["llm"],

@@ -12,6 +12,7 @@ import { getAgentServerClientOptions } from "./agent-server-client-options";
 import { isAgentServerToolAvailable } from "./agent-server-compatibility";
 import { getAgentServerWorkingDir } from "./agent-server-config";
 import { LOCAL_AGENT_SYSTEM_SUFFIX } from "#/config/local-agent-prompt";
+import { ensureCreanovaInfraMcpConfig } from "#/config/creanova-infra-mcp";
 import {
   assembleCanvasStaticSystemPrompt,
   isCanvasPromptSectionEnabled,
@@ -843,10 +844,10 @@ function buildConfiguredCreanovaAgentSettings(
     delete llm.subscription_vendor;
   }
 
-  const mcpConfig = toRecord(agentSettings.mcp_config);
-  if (Object.keys(mcpConfig).length === 0) {
-    delete agentSettings.mcp_config;
-  }
+  const mcpConfig = ensureCreanovaInfraMcpConfig(
+    toRecord(agentSettings.mcp_config),
+  );
+  agentSettings.mcp_config = mcpConfig;
 
   delete agentSettings.acp_server;
   for (const key of ACP_SETTINGS_KEYS) {
@@ -993,6 +994,14 @@ export function buildStartConversationRequest(
   const acpServerTag = acpMode
     ? getAcpServerTag(sourceAgentSettings)
     : undefined;
+  const llmForLanCheck = toRecord(
+    toRecord(sourceAgentSettings.agent_settings).llm,
+  );
+  // Small LAN models spam canvas_ui_control (navigate_to_file loops) and
+  // invent invalid params; omit the client tool for private/local endpoints.
+  const skipCanvasUiClientTool = isPrivateOrLocalLlmEndpoint(
+    typeof llmForLanCheck.base_url === "string" ? llmForLanCheck.base_url : null,
+  );
 
   const sourceConversationOptions = options.encryptedConversationSettings
     ? {
@@ -1020,13 +1029,15 @@ export function buildStartConversationRequest(
     // software-agent-sdk#3967 (profile resolution must attach the default
     // toolset + public skills, else a profile-launched Creanova agent has only
     // Finish/Think). The dev ``RUNTIME_SERVICES`` system-message suffix remains
-    // agent-settings-only; the Canvas UI tool is a top-level client tool and
-    // therefore works on both inline-agent and profile launch paths.
+    // agent-settings-only. Canvas UI client tool is omitted for LAN LLMs.
     ...(options.agentProfileId
       ? { agent_profile_id: options.agentProfileId }
       : { agent_settings: agentSettings }),
     workspace: conversationSettings.workspace,
-    client_tools: launchAgentKind === "Creanova" ? [CANVAS_UI_CLIENT_TOOL] : [],
+    client_tools:
+      launchAgentKind === "Creanova" && !skipCanvasUiClientTool
+        ? [CANVAS_UI_CLIENT_TOOL]
+        : [],
     confirmation_policy:
       getConversationConfirmationPolicy(conversationSettings),
     max_iterations:

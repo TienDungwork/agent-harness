@@ -125,7 +125,10 @@ describe("buildStartConversationRequest", () => {
     expect(payload.agent_settings.system_prompt).toContain("<SOUL>");
     expect(payload.agent_settings.system_prompt).toContain("<ROLE>");
     expect(payload.agent_settings.system_prompt).toContain(
-      "You are Creanova, a local AI software engineer",
+      "You are Creanova, a local AI assistant",
+    );
+    expect(payload.agent_settings.system_prompt).toContain(
+      "Prefer short, direct answers",
     );
     expect(payload.agent_settings.agent_context).toMatchObject({
       load_public_skills: false,
@@ -292,12 +295,19 @@ describe("buildStartConversationRequest", () => {
       agent_settings: {
         enable_switch_llm_tool?: boolean;
         include_default_tools?: unknown;
+        mcp_config?: Record<string, unknown>;
       };
     };
 
     expect(payload.agent).toBeUndefined();
     expect(payload.agent_settings.enable_switch_llm_tool).toBe(true);
     expect(payload.agent_settings.include_default_tools).toBeUndefined();
+    expect(payload.agent_settings.mcp_config).toMatchObject({
+      creanova_infra: {
+        command: "uv",
+        args: expect.arrayContaining(["/opt/infra-mcp/mcp_stdio.py"]),
+      },
+    });
   });
 
   it("omits browser_tool_set and task_tool_set when the server does not advertise them", () => {
@@ -660,6 +670,23 @@ describe("buildStartConversationRequest", () => {
   });
 
   describe("canvas_ui client tool injection", () => {
+    it("omits canvas_ui for private/LAN LLM endpoints", () => {
+      const payload = buildStartConversationRequest({
+        settings: {
+          ...DEFAULT_SETTINGS,
+          agent_settings: {
+            ...DEFAULT_SETTINGS.agent_settings,
+            llm: {
+              ...(DEFAULT_SETTINGS.agent_settings as { llm?: object }).llm,
+              base_url: "http://192.168.1.196:11434/v1",
+              model: "openai/qwen3-16k-nothink:latest",
+            },
+          },
+        },
+      });
+      expect(payload.client_tools).toEqual([]);
+    });
+
     it("sends canvas_ui as a client-defined JSON tool", () => {
       const payload = buildStartConversationRequest({
         settings: DEFAULT_SETTINGS,

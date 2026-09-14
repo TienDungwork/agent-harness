@@ -11,7 +11,9 @@ describe("assembleCanvasStaticSystemPrompt", () => {
   it("joins enabled sections including Canvas SOUL.md when not LAN", () => {
     const prompt = assembleCanvasStaticSystemPrompt({ enableBrowser: true });
     expect(prompt).toContain("<SOUL>");
-    expect(prompt).toContain("You are Creanova, a local AI software engineer");
+    expect(prompt).toContain("You are Creanova, a local AI assistant");
+    expect(prompt).toContain("Do not use the think tool for greetings");
+    expect(prompt).toContain("Prefer short, direct answers");
     expect(prompt).toContain("<ROLE>");
     expect(prompt).toContain("<SECURITY_RISK_ASSESSMENT>");
     expect(prompt).toContain("<BROWSER_TOOLS>");

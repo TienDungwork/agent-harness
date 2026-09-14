@@ -2,6 +2,42 @@
 
 All notable changes to this workspace are listed here.
 
+## [beta v0.9.7] - 2026-09-14
+
+### Fixed
+
+- Agent Canvas SSH harness: default `creanova_infra` MCP (`infra_resolve_server` / `infra_run`), SOUL + LOCAL_HARNESS always reply in Vietnamese, short answers, no invented `ip`/`sudo`/`nginx` after bare `ssh vào <octet>`, clarify host SSH password ≠ sudo password.
+
+## [beta v0.9.6] - 2026-09-14
+
+### Fixed
+
+- Stop LAN Canvas `canvas_ui_control` / `navigate_to_file` spam and SSH skill loops: omit client tool for private LLM endpoints, disable `ssh` skill on profile `ntiendung`, harden SOUL/LOCAL_HARNESS (infra resolve only, no invented `security_risk`).
+
+## [beta v0.9.5] - 2026-09-14
+
+### Fixed
+
+- LLM profile save now probes custom/LAN `/v1/models`, rejects HTML/wrong ports, rewrites unambiguous aliases (`qwen3-4b` → `qwen3:4b`), and applies LAN guards (`force_string_serializer`, `native_tool_calling=false`). Live profile `ntiendung` pointed at Ollama `http://192.168.1.196:11434/v1` + `openai/qwen3:4b` (port `:8080` is no longer an LLM gateway).
+
+## [beta v0.9.4] - 2026-09-09
+
+### Fixed
+
+- Canvas LLM profile `qw` / agent `vinhdq` chat 404: model must be the LAN Ollama id `qwen3-16k` (not `qwen8b`); saving a LAN OpenAI-compatible profile now drops hosted-only stream/thinking params
+
+## [beta v0.9.3] - 2026-09-09
+
+### Fixed
+
+- Beszel Command Palette / All Systems no longer keep a down duplicate of this host (`192.168.1.198` vs live `atin`): bootstrap matches by name as well as host, and does not overwrite a live WebSocket agent's host
+
+## [beta v0.9.2] - 2026-09-09
+
+### Fixed
+
+- Beszel `/monitoring/` post-login 404: SPA `BASE_PATH` is `/monitoring` behind the path gateway (was `/`, so the router missed every route)
+
 ## [beta v0.9.1] - 2026-09-09
 
 ### Fixed

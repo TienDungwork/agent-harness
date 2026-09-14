@@ -1,5 +1,23 @@
 # Infra MCP bridge (agent tools → local-gateway)
 
+## Agent Canvas (stdio MCP — preferred)
+
+Agent-server spawns this automatically when Canvas injects `creanova_infra`
+into `mcp_config` (see `agent-canvas/src/config/creanova-infra-mcp.ts`):
+
+```bash
+uv run --with httpx --with mcp python /opt/infra-mcp/mcp_stdio.py
+```
+
+Env inside the container: `GATEWAY_URL=http://local-gateway:18110`,
+`INFRA_AGENT_TOKEN` (from canvas entrypoint). Tools: `vms_summary`,
+`vms_top_cameras`, `vms_search_plate`, `vms_search_person`, `vms_daily`,
+`infra_resolve_server`.
+
+Compose mounts `services/infra-mcp` → `/opt/infra-mcp`.
+
+## HTTP bridge (optional / debug)
+
 ```bash
 cd services/infra-mcp
 uv run --with fastapi --with uvicorn --with httpx --with pydantic python main.py

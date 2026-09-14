@@ -124,6 +124,8 @@ services:
       - ./scripts/static-server.mjs:/opt/agent-canvas/static-server.mjs:ro
       - ./scripts/proxy-utils.mjs:/opt/agent-canvas/proxy-utils.mjs:ro
       - ./build:/opt/agent-canvas/frontend-overlay:ro
+      # VMS / infra MCP stdio (vms_summary, …) — spawned by agent-server.
+      - ../services/infra-mcp:/opt/infra-mcp:ro
       # Hub image writes state here (user=openhands). Named volume keeps
       # conversations across recreate; local-gateway shares the same data.
       - canvas_state:/home/openhands/.openhands
