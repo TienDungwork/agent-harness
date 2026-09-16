@@ -6,6 +6,8 @@ import type { SourceType } from "#/types/agent-server/core/base/common";
 import { StyledTooltip } from "#/components/shared/buttons/styled-tooltip";
 import { I18nKey } from "#/i18n/declaration";
 import { TextShimmer } from "#/components/shared/text-shimmer";
+import { displayErrorToast } from "#/utils/custom-toast-handlers";
+import { copyTextToClipboard } from "#/utils/copy-text-to-clipboard";
 import { MarkdownRenderer } from "../markdown/markdown-renderer";
 import { PendingStopIcon } from "./pending-stop-icon";
 import {
@@ -54,8 +56,12 @@ export function ChatMessage({
   }, [message]);
 
   const handleCopyToClipboard = async () => {
-    await navigator.clipboard.writeText(message);
-    setIsCopy(true);
+    try {
+      await copyTextToClipboard(message);
+      setIsCopy(true);
+    } catch {
+      displayErrorToast(t(I18nKey.CHAT_INTERFACE$CHAT_MESSAGE_COPY_FAILED));
+    }
   };
 
   React.useEffect(() => {

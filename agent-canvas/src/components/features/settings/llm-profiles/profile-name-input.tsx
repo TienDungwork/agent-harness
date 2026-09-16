@@ -1,7 +1,10 @@
 import React, { forwardRef } from "react";
 import { useTranslation } from "react-i18next";
 import { SettingsInput } from "#/components/features/settings/settings-input";
-import { isProfileNameValid } from "#/utils/derive-profile-name";
+import {
+  isProfileNameValid,
+  sanitizeProfileNameInput,
+} from "#/utils/derive-profile-name";
 import { I18nKey } from "#/i18n/declaration";
 import { cn } from "#/utils/utils";
 
@@ -58,7 +61,7 @@ export const ProfileNameInput = forwardRef<
         placeholder={
           placeholder ?? t(I18nKey.SETTINGS$PROFILE_NAME_PLACEHOLDER)
         }
-        onChange={onChange}
+        onChange={(next) => onChange(sanitizeProfileNameInput(next))}
         onKeyDown={onKeyDown}
         isDisabled={isDisabled}
         ariaDescribedBy={describedById}

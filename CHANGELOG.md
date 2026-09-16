@@ -2,6 +2,13 @@
 
 All notable changes to this workspace are listed here.
 
+## [beta v0.10.3] - 2026-09-16
+
+### Fixed
+
+- Chat copy works on HTTP LAN (Clipboard API fallback via `execCommand`).
+- LLM Profile Name accepts Ollama-style tags by sanitizing `:` to `-`.
+
 ## [beta v0.10.2] - 2026-09-16
 
 ### Added

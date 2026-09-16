@@ -4,6 +4,7 @@ import { Check, CircleX, Copy, X } from "lucide-react";
 import { OH_STATUS_ERROR_COLOR } from "#/constants/status-colors";
 import { I18nKey } from "#/i18n/declaration";
 import { displayErrorToast } from "#/utils/custom-toast-handlers";
+import { copyTextToClipboard } from "#/utils/copy-text-to-clipboard";
 import { getAcpErrorHeaderKey } from "#/utils/acp-error-codes";
 import { cn } from "#/utils/utils";
 
@@ -18,36 +19,6 @@ interface ErrorMessageBannerProps {
 }
 
 const DEFAULT_MAX_COLLAPSED_CHARS = 220;
-
-async function copyTextToClipboard(text: string): Promise<void> {
-  try {
-    await navigator.clipboard.writeText(text);
-    return;
-  } catch {
-    // Clipboard API is missing or blocked (HTTP, iframe, permissions).
-  }
-
-  const textarea = document.createElement("textarea");
-  textarea.value = text;
-  textarea.setAttribute("readonly", "");
-  textarea.style.position = "fixed";
-  textarea.style.top = "0";
-  textarea.style.left = "-9999px";
-  document.body.appendChild(textarea);
-  textarea.select();
-  textarea.setSelectionRange(0, textarea.value.length);
-
-  try {
-    const copied =
-      typeof document.execCommand === "function" &&
-      document.execCommand("copy");
-    if (!copied) {
-      throw new Error("execCommand copy failed");
-    }
-  } finally {
-    textarea.remove();
-  }
-}
 
 export function ErrorMessageBanner({
   message,

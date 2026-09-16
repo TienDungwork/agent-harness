@@ -138,6 +138,28 @@ describe("ChatMessage", () => {
     );
   });
 
+  it("falls back to execCommand when the Clipboard API is blocked", async () => {
+    const user = userEvent.setup();
+    const writeText = vi.fn().mockRejectedValue(new Error("denied"));
+    vi.spyOn(navigator.clipboard, "writeText").mockImplementation(writeText);
+    const execCommand = vi.fn().mockReturnValue(true);
+    Object.defineProperty(document, "execCommand", {
+      configurable: true,
+      value: execCommand,
+    });
+
+    render(<ChatMessage type="user" message="Hello, World!" />);
+    await user.click(screen.getByTestId("copy-to-clipboard"));
+
+    expect(writeText).toHaveBeenCalledWith("Hello, World!");
+    expect(execCommand).toHaveBeenCalledWith("copy");
+    await waitFor(() =>
+      expect(screen.getByTestId("copy-to-clipboard")).toHaveAccessibleName(
+        "BUTTON$COPIED",
+      ),
+    );
+  });
+
   it("should render a component passed as a prop", () => {
     function Component() {
       return <div data-testid="custom-component">Custom Component</div>;

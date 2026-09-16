@@ -63,6 +63,24 @@ describe("ProfileNameInput", () => {
     expect(handleChange).toHaveBeenNthCalledWith(5, "4");
   });
 
+  it("rewrites pasted Ollama tags with colons into a valid profile name", async () => {
+    const handleChange = vi.fn();
+    const user = userEvent.setup();
+
+    render(
+      <ProfileNameInput
+        testId="profile-name"
+        value=""
+        onChange={handleChange}
+      />,
+    );
+
+    await user.click(screen.getByTestId("profile-name"));
+    await user.paste("qwen3:4b-q4_K_M");
+
+    expect(handleChange).toHaveBeenCalledWith("qwen3-4b-q4_K_M");
+  });
+
   it("displays the current value", () => {
     render(
       <ProfileNameInput

@@ -3,8 +3,24 @@
  * Profile names: 1-64 chars, must start with alphanumeric, then alphanumerics
  * or '.', '_', '-'. Blocks empty names, path separators, leading dots
  * (hidden files / path traversal), and shell-special characters.
+ *
+ * Colons are intentionally excluded: profiles are stored as `{name}.json`,
+ * and `:` is not a valid filename character on Windows. Ollama model tags
+ * like `qwen3:4b-q4_K_M` are rewritten via {@link sanitizeProfileNameInput}.
  */
 export const PROFILE_NAME_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/;
+
+/**
+ * Rewrite free-form input (e.g. pasted Ollama tags with `:`) into a
+ * filesystem-safe profile name without changing already-valid names.
+ */
+export function sanitizeProfileNameInput(value: string): string {
+  if (value === "") return value;
+  return value
+    .replace(/[^A-Za-z0-9._-]/g, "-")
+    .replace(/-+/g, "-")
+    .slice(0, 64);
+}
 
 /**
  * Shared profile name validation. Any whitespace (including leading/trailing)

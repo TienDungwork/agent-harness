@@ -2,7 +2,31 @@ import { describe, expect, it } from "vitest";
 import {
   PROFILE_NAME_PATTERN,
   deriveProfileNameFromModel,
+  sanitizeProfileNameInput,
 } from "#/utils/derive-profile-name";
+
+describe("sanitizeProfileNameInput", () => {
+  it("rewrites Ollama tag colons to hyphens", () => {
+    expect(sanitizeProfileNameInput("qwen3:4b-q4_K_M")).toBe(
+      "qwen3-4b-q4_K_M",
+    );
+  });
+
+  it("leaves already-valid names unchanged", () => {
+    expect(sanitizeProfileNameInput("gpt-4")).toBe("gpt-4");
+    expect(sanitizeProfileNameInput("claude_3.5")).toBe("claude_3.5");
+  });
+
+  it("collapses runs of replaced characters into a single hyphen", () => {
+    expect(sanitizeProfileNameInput("name::with  spaces")).toBe(
+      "name-with-spaces",
+    );
+  });
+
+  it("truncates to 64 characters", () => {
+    expect(sanitizeProfileNameInput("a".repeat(70))).toBe("a".repeat(64));
+  });
+});
 
 describe("PROFILE_NAME_PATTERN", () => {
   it("matches valid profile names starting with alphanumeric", () => {
