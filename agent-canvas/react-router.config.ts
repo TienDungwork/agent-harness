@@ -11,6 +11,9 @@ const normalizeBasePath = (value?: string) => {
 
 const basename = normalizeBasePath(process.env.VITE_BASE_PATH);
 
+/** Staging dir for live overlay publishes (see scripts/sync-overlay-build.mjs). */
+const buildDirectory = process.env.OVERLAY_BUILD_DIR?.trim() || "build";
+
 /**
  * This script is used to unpack the client directory from the frontend build directory.
  * Remix SPA mode builds the client directory into the build directory. This function
@@ -53,7 +56,7 @@ const unpackClientDirectoryOnce = async () => {
   const fs = await import("fs");
   const path = await import("path");
 
-  const buildDir = path.resolve(__dirname, "build");
+  const buildDir = path.resolve(__dirname, buildDirectory);
   const clientDir = path.resolve(buildDir, "client");
 
   let files: string[];
@@ -87,6 +90,7 @@ const unpackClientDirectory = async () => {
 
 export default {
   appDirectory: "src",
+  buildDirectory,
   ...(basename ? { basename } : {}),
   buildEnd: unpackClientDirectory,
   presets: [vercelPreset()],

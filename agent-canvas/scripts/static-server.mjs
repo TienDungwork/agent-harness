@@ -87,6 +87,7 @@ export function parseArgs(argv = process.argv.slice(2)) {
     runtimeServicesInfo: null,
     lockToCloud: null,
     localAuthEnabled: false,
+    liveStatic: false,
     basePath: "/",
   };
 
@@ -138,6 +139,11 @@ export function parseArgs(argv = process.argv.slice(2)) {
         break;
       case "--local-auth-enabled":
         config.localAuthEnabled = true;
+        break;
+      case "--live-static":
+        // Disable sirv's startup file-tree cache so bind-mounted overlay
+        // rebuilds (new hashed assets) are visible without restarting.
+        config.liveStatic = true;
         break;
       case "--reject-prefix": {
         const prefix = argv[++i];
@@ -217,6 +223,10 @@ OPTIONS:
   --base-path <path>           Mount the SPA under <path> (default: /).
                                For example, --base-path /canvas serves
                                index.html and assets under /canvas.
+  --live-static                Do not cache the static file tree (sirv
+                               dev mode). Required when --dir is a live
+                               bind-mount that rebuilds hashed assets in
+                               place (agent-canvas overlay workflow).
   --reject-prefix <prefix>     Return 503 for requests matching <prefix>
                                instead of SPA-fallbacking to index.html;
                                may be repeated. Useful in --frontend-only
@@ -489,10 +499,14 @@ function setStaticHeaders(res, pathname) {
   res.setHeader("Cache-Control", "no-cache");
 }
 
-function createStaticMiddleware(dirAbs) {
+function createStaticMiddleware(dirAbs, { liveStatic = false } = {}) {
   return sirv(dirAbs, {
     etag: true,
     single: false,
+    // sirv caches the directory listing at startup unless `dev` is set.
+    // Overlay rebuilds replace hashed assets under a bind-mount; without
+    // this, index.html (read fresh) points at hashes sirv still 404s.
+    dev: liveStatic,
     setHeaders: setStaticHeaders,
   });
 }
@@ -571,7 +585,8 @@ export function startStaticServer(config) {
   };
   const basePath = injectionOpts.basePath;
   const rejectPrefixes = config.rejectPrefixes ?? [];
-  const staticMiddleware = createStaticMiddleware(dirAbs);
+  const liveStatic = Boolean(config.liveStatic);
+  const staticMiddleware = createStaticMiddleware(dirAbs, { liveStatic });
 
   const uninstallDiagnostics = proxy.installDiagnostics();
 
@@ -617,6 +632,9 @@ export function startStaticServer(config) {
       );
       console.log(`  Static dir: ${dirAbs}`);
       console.log(`  Base path: ${basePath}`);
+      if (liveStatic) {
+        console.log("  Live static: on (sirv file-tree cache disabled)");
+      }
       const sortedRoutes = Object.entries(config.routes).sort(
         ([a], [b]) => b.length - a.length,
       );

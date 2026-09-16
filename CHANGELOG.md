@@ -2,6 +2,12 @@
 
 All notable changes to this workspace are listed here.
 
+## [beta v0.10.4] - 2026-09-16
+
+### Fixed
+
+- Overlay UI rebuilds no longer 404 hashed assets: static server `--live-static`, staging sync script, and path-gateway Docker DNS re-resolve after container recreate.
+
 ## [beta v0.10.3] - 2026-09-16
 
 ### Fixed

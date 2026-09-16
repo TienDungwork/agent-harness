@@ -120,6 +120,11 @@ describe("static-server.mjs", () => {
       const config = parseArgs(["--local-auth-enabled"]);
       expect(config.localAuthEnabled).toBe(true);
     });
+
+    it("parses --live-static", () => {
+      const config = parseArgs(["--live-static"]);
+      expect(config.liveStatic).toBe(true);
+    });
   });
 
   describe("runtime services info injection", () => {
@@ -444,6 +449,32 @@ describe("static-server.mjs", () => {
       "application/javascript",
     );
     await expect(response.text()).resolves.toContain("loaded = true");
+  });
+
+  it("with liveStatic, serves hashed assets added after the server started", async () => {
+    const buildDir = mkdtempSync(path.join(tmpdir(), "agent-canvas-build-"));
+    tempDirs.push(buildDir);
+    mkdirSync(path.join(buildDir, "assets"));
+    writeFileSync(path.join(buildDir, "index.html"), "<main>app</main>");
+    writeFileSync(
+      path.join(buildDir, "assets", "entry.client-old.js"),
+      "export const generation = 'old';\n",
+    );
+
+    const cachedOrigin = await startServer(buildDir);
+    const liveOrigin = await startServer(buildDir, { liveStatic: true });
+
+    writeFileSync(
+      path.join(buildDir, "assets", "entry.client-new.js"),
+      "export const generation = 'new';\n",
+    );
+
+    expect(
+      (await fetch(`${cachedOrigin}/assets/entry.client-new.js`)).status,
+    ).toBe(404);
+    const live = await fetch(`${liveOrigin}/assets/entry.client-new.js`);
+    expect(live.status).toBe(200);
+    await expect(live.text()).resolves.toContain("generation = 'new'");
   });
 
   describe("base path mounting", () => {

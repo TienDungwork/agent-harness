@@ -24,10 +24,11 @@ OpenHands/
 
 ```bash
 cd /path/to/OpenHands/agent-canvas
-cp -n .env.sample .env          # lần đầu
+cp -n .env.sample .env          # lần đầu — điền CH_PASSWORD (= CH_VMS_PASSWORD)
+cp -n ../deploy/clickhouse/.env.example ../deploy/clickhouse/.env  # passwords CH + PG sync
 bash docker/build-beszel-gpu.sh # BẮT BUỘC — image không có trên Docker Hub
 docker compose --profile overlay-build run --rm canvas-ui-build   # lần đầu / khi cần UI overlay
-docker compose up -d --build   # lần đầu build creanova-admin (~1–2 phút)
+docker compose up -d --build   # agents + ClickHouse + vms-sync + admin + gateway (~1–2 phút)
 ```
 
 URLs mặc định:
@@ -38,6 +39,7 @@ URLs mặc định:
 | Path gateway | http://\<IP\>:18000/ | `/agents` `/admin` `/monitoring` — cùng `docker compose up` |
 | Beszel | http://\<IP\>:18090/ | `admin` / `admin123` (email `admin@creanova.local` cũng được) |
 | Mailpit (alert mail) | http://\<IP\>:18025/ | — |
+| ClickHouse HTTP | http://127.0.0.1:18123 | user `vms_ro` / `CH_VMS_PASSWORD` |
 
 ---
 
