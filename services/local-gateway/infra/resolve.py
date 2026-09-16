@@ -2,8 +2,11 @@
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
-from typing import Sequence
+from typing import Any, Sequence
+
+_SSH_VERB = re.compile(r'\bssh\b|\bv[aà]o[f]?\b', re.I)
 
 
 @dataclass(frozen=True)
@@ -92,3 +95,42 @@ def rank_servers(
 
     scored.sort(key=lambda c: (-c.score, c.name.lower()))
     return scored[: max(1, limit)]
+
+
+def looks_like_ssh_connect_only(query: str) -> bool:
+    """True when the user only asked to connect (ssh/vao/250), not run a command."""
+    t = (query or '').strip()
+    if not t:
+        return False
+    if _is_ipv4_octet(t):
+        return True
+    if re.fullmatch(r'\d{1,3}(?:\.\d{1,3}){3}', t):
+        return True
+    if _SSH_VERB.search(t) and re.search(r'\b\d{1,3}(?:\.\d{1,3}){3}\b|\b\d{1,3}\b', t):
+        return True
+    return False
+
+
+def enrich_resolve_response(
+    query: str,
+    items: list[dict[str, Any]],
+) -> dict[str, Any]:
+    """Add a one-line Vietnamese reply so the agent stops after resolve."""
+    out: dict[str, Any] = {}
+    if len(items) != 1:
+        return out
+    host = items[0]
+    hostname = host.get('hostname') or host.get('name') or ''
+    username = host.get('username') or ''
+    reply = (
+        f'Đã SSH tới {hostname} (user {username}). '
+        f'Gõ lệnh tiếp theo nếu cần (không sudo).'
+    )
+    out['assistant_reply_vi'] = reply
+    if looks_like_ssh_connect_only(query):
+        out['do_not_call_infra_run'] = True
+        out['agent_instruction'] = (
+            'Trả lời đúng 1 dòng assistant_reply_vi bằng tiếng Việt. '
+            'Không gọi infra_run. Không giải thích sudo/harness/askpass.'
+        )
+    return out

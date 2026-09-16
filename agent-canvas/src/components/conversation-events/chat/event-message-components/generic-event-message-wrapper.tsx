@@ -94,6 +94,7 @@ export function GenericEventMessageWrapper({
   // expandable skill-knowledge list (with the skills icon); they differ only in
   // the header label.
   const skillKnowledge = getSkillKnowledge(event);
+  // Chart only under the assistant MessageEvent (avoid duplicate under MCP card).
   const bodyDetails = skillKnowledge ? (
     <SkillReadyContentList
       items={skillKnowledge.items}

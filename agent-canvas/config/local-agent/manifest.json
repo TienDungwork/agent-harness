@@ -15,6 +15,7 @@
     { "id": "runtime_services", "file": null, "enabled": true }
   ],
   "lan_disable": [
+    "role",
     "security_risk_assessment",
     "browser",
     "process_management",

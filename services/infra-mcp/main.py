@@ -107,6 +107,25 @@ TOOLS = [
         },
     },
     {
+        'name': 'vms_count_vehicles',
+        'description': (
+            'Count vehicles/plates. VN dates DD/MM. Use day=YYYY-MM-DD, '
+            "days_list='YYYY-MM-DD,YYYY-MM-DD' for multi-day (ngày 5 và 6), "
+            'or days=1 for today. Reply with reply_vi when present.'
+        ),
+        'inputSchema': {
+            'type': 'object',
+            'properties': {
+                'day': {'type': 'string', 'description': 'YYYY-MM-DD'},
+                'days': {'type': 'integer', 'description': 'rolling window; 1=today'},
+                'days_list': {
+                    'type': 'string',
+                    'description': 'Comma-separated YYYY-MM-DD for several days',
+                },
+            },
+        },
+    },
+    {
         'name': 'vms_summary',
         'description': (
             'VMS event counts by module/event_type for the last N days. '
@@ -144,7 +163,10 @@ TOOLS = [
     },
     {
         'name': 'vms_search_plate',
-        'description': 'Find license-plate sightings. Pass the plate text only.',
+        'description': (
+            'Find sightings of ONE license-plate string (q=plate text only). '
+            'NEVER use for vehicle counts / "bao nhiêu xe" / a calendar day — use vms_daily or vms_summary.'
+        ),
         'inputSchema': {
             'type': 'object',
             'properties': {
@@ -170,12 +192,20 @@ TOOLS = [
     },
     {
         'name': 'vms_daily',
-        'description': 'Daily trend counts (pre-aggregated).',
+        'description': (
+            'Daily plate/event counts from the ClickHouse mart. '
+            'For a specific calendar day (e.g. 2026-09-06) pass day=YYYY-MM-DD and module=PLATE. '
+            'Read total_n (or sum field n). Do not write SQL.'
+        ),
         'inputSchema': {
             'type': 'object',
             'properties': {
                 'days': {'type': 'integer', 'default': 30},
                 'module': {'type': 'string'},
+                'day': {
+                    'type': 'string',
+                    'description': 'Calendar day YYYY-MM-DD; when set, ignores rolling days window',
+                },
             },
         },
     },
@@ -259,6 +289,30 @@ async def call_tool(body: ToolCall) -> Any:
                 headers=headers,
                 params=params,
             )
+        elif body.name == 'vms_count_vehicles':
+            days_list = (body.arguments.get('days_list') or '').strip()
+            day = (body.arguments.get('day') or '').strip()
+            if days_list:
+                r = await client.get(
+                    f'{GATEWAY_URL}/api/infra/analytics/daily',
+                    headers=headers,
+                    params={'days_list': days_list, 'module': 'PLATE'},
+                )
+            elif day:
+                r = await client.get(
+                    f'{GATEWAY_URL}/api/infra/analytics/daily',
+                    headers=headers,
+                    params={'day': day, 'module': 'PLATE'},
+                )
+            else:
+                r = await client.get(
+                    f'{GATEWAY_URL}/api/infra/analytics/summary',
+                    headers=headers,
+                    params={
+                        'days': body.arguments.get('days', 1),
+                        'module': 'PLATE',
+                    },
+                )
         elif body.name == 'vms_summary':
             params = {'days': body.arguments.get('days', 7)}
             if body.arguments.get('module'):
@@ -306,6 +360,8 @@ async def call_tool(body: ToolCall) -> Any:
             params = {'days': body.arguments.get('days', 30)}
             if body.arguments.get('module'):
                 params['module'] = body.arguments['module']
+            if body.arguments.get('day'):
+                params['day'] = body.arguments['day']
             r = await client.get(
                 f'{GATEWAY_URL}/api/infra/analytics/daily',
                 headers=headers,

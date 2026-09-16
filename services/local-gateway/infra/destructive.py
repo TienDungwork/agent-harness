@@ -1,4 +1,4 @@
-"""Detect destructive remote shell commands that require explicit confirmation."""
+"""Detect destructive / sudo remote shell commands that must not auto-run."""
 
 from __future__ import annotations
 
@@ -18,6 +18,13 @@ _DESTRUCTIVE_RES: tuple[re.Pattern[str], ...] = (
     re.compile(r'>\s*/', re.I),  # redirect overwrite toward absolute paths
 )
 
+# Host Add-Host password is SSH login only; interactive sudo always fails in this harness.
+_SUDO_RE = re.compile(r'(^|[;&|]\s*|\n)\s*sudo\b', re.I)
+
+SUDO_BLOCKED_MESSAGE = (
+    'Đã vào máy rồi — đừng dùng sudo. Bạn muốn chạy lệnh gì (không sudo)?'
+)
+
 
 def looks_destructive(command: str) -> bool:
     text = command or ''
@@ -33,3 +40,16 @@ def destructive_reason(command: str) -> str | None:
         'Command looks destructive (rm/dd/mkfs/find -delete/git clean -f/…). '
         'Ask the user, then retry with confirm_destructive=true.'
     )
+
+
+def looks_like_sudo(command: str) -> bool:
+    text = command or ''
+    if not text.strip():
+        return False
+    return bool(_SUDO_RE.search(text))
+
+
+def sudo_blocked_reason(command: str) -> str | None:
+    if not looks_like_sudo(command):
+        return None
+    return SUDO_BLOCKED_MESSAGE

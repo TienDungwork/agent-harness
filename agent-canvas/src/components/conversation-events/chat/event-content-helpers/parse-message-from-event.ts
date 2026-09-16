@@ -1,6 +1,7 @@
 import { MessageEvent } from "#/types/agent-server/core";
 import i18n from "#/i18n";
 import { I18nKey } from "#/i18n/declaration";
+import { stripVmsChartMarker } from "#/components/charts/vms/parse-vms-chart-marker";
 
 export const parseMessageFromEvent = (event: MessageEvent): string => {
   const message = event.llm_message;
@@ -24,6 +25,8 @@ export const parseMessageFromEvent = (event: MessageEvent): string => {
       textContent = message.content;
     }
   }
+
+  textContent = stripVmsChartMarker(textContent);
 
   // Check if there are image_urls in the message content
   const hasImages =

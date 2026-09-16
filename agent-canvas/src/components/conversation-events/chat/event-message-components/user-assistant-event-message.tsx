@@ -17,6 +17,9 @@ import { useForkConversation } from "#/hooks/mutation/use-fork-conversation";
 import { useConversationStore } from "#/stores/conversation-store";
 import ConversationService from "#/api/conversation-service/conversation-service.api";
 import { displayErrorToast } from "#/utils/custom-toast-handlers";
+import { VmsAnalyticsChartSafe } from "#/components/charts/vms";
+import { parseVmsChartFromMessageText } from "#/components/charts/vms/parse-vms-chart-marker";
+import { useRecentVmsChart } from "#/components/charts/vms/use-recent-vms-chart";
 
 interface UserAssistantEventMessageProps {
   event: MessageEvent;
@@ -41,6 +44,13 @@ export function UserAssistantEventMessage({
   // Blocks a same-tick double-click, before `isForking` flips.
   const forkInFlightRef = React.useRef(false);
 
+  const rawText =
+    Array.isArray(event.llm_message?.content)
+      ? event.llm_message.content
+          .filter((c) => c.type === "text")
+          .map((c) => c.text)
+          .join("\n")
+      : "";
   const parsed = parseMessageFromEvent(event);
   // Route an inline <think> block (e.g. from a streamed reply) to the thinking
   // section so reloaded conversations match the live rendering.
@@ -48,6 +58,14 @@ export function UserAssistantEventMessage({
     event.source === "agent"
       ? splitInlineThink(parsed)
       : { reasoning: "", message: parsed };
+
+  // Prefer chart embedded in MessageEvent (short-circuit); else nearest VMS obs.
+  // Parse from raw text — parseMessageFromEvent strips the marker.
+  const recentVmsChart = useRecentVmsChart(event.timestamp);
+  const embeddedChart =
+    event.source === "agent" ? parseVmsChartFromMessageText(rawText) : null;
+  const vmsChart =
+    event.source === "agent" ? embeddedChart || recentVmsChart : null;
 
   const imageUrls: string[] = [];
   if (Array.isArray(event.llm_message.content)) {
@@ -126,6 +144,7 @@ export function UserAssistantEventMessage({
         )}
         {isLastMessage && <ConversationConfirmationButtons />}
       </ChatMessage>
+      {vmsChart ? <VmsAnalyticsChartSafe chart={vmsChart} /> : null}
       {event.source === "agent" && event.critic_result != null && (
         <CriticResultDisplay criticResult={event.critic_result} />
       )}

@@ -64,6 +64,12 @@
 
 :root {
   color-scheme: dark;
+  /* shadcn chart palette (local, no CDN) */
+  --chart-1: #c9b974;
+  --chart-2: #6ea8fe;
+  --chart-3: #a5e75e;
+  --chart-4: #e76a5e;
+  --chart-5: #c084fc;
   --oh-color-primary: #c9b974;
   --oh-color-logo: #cfb755;
   --oh-color-base: var(--cool-grey-950);

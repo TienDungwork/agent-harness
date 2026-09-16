@@ -2,8 +2,17 @@ from __future__ import annotations
 
 from types import SimpleNamespace
 
-from infra.destructive import destructive_reason, looks_destructive
-from infra.resolve import rank_servers
+from infra.destructive import (
+    destructive_reason,
+    looks_destructive,
+    looks_like_sudo,
+    sudo_blocked_reason,
+)
+from infra.resolve import (
+    enrich_resolve_response,
+    looks_like_ssh_connect_only,
+    rank_servers,
+)
 
 
 def test_rank_servers_exact_hostname_wins():
@@ -87,3 +96,36 @@ def test_destructive_rm_requires_confirm():
     assert not looks_destructive('systemctl status nginx')
     assert destructive_reason('rm -rf /') is not None
     assert destructive_reason('uptime') is None
+
+
+def test_ssh_connect_only_intent():
+    assert looks_like_ssh_connect_only('250')
+    assert looks_like_ssh_connect_only('ssh vào 250')
+    assert looks_like_ssh_connect_only('ssh vaof 250')
+    assert not looks_like_ssh_connect_only('ls -la /home')
+
+
+def test_enrich_resolve_adds_vi_reply_for_ssh_connect():
+    items = [
+        {
+            'id': 'x',
+            'hostname': '192.168.1.250',
+            'username': 'atin',
+        }
+    ]
+    extra = enrich_resolve_response('250', items)
+    assert 'assistant_reply_vi' in extra
+    assert '192.168.1.250' in extra['assistant_reply_vi']
+    assert extra.get('do_not_call_infra_run') is True
+    assert 'agent_instruction' in extra
+
+
+def test_sudo_is_always_blocked():
+    assert looks_like_sudo('sudo systemctl status nginx')
+    assert looks_like_sudo('echo hi; sudo -n true')
+    assert not looks_like_sudo('whoami')
+    assert not looks_like_sudo('systemctl status nginx')
+    reason = sudo_blocked_reason('sudo apt update')
+    assert reason is not None
+    assert 'sudo' in reason.lower() or 'Đã vào máy' in reason
+    assert sudo_blocked_reason('uptime') is None

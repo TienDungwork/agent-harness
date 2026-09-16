@@ -2,6 +2,12 @@
 
 All notable changes to this workspace are listed here.
 
+## [beta v0.10.2] - 2026-09-16
+
+### Added
+
+- Single MCP tool `vms_query` with slim chart payloads; Agent Canvas renders ApexCharts from `<!--CREANOVA_VMS_CHART:…-->` markers (CSS bars as fallback). Reply-vi short-circuit finishes without a second LLM rewrite.
+
 ## [beta v0.10.1] - 2026-09-16
 
 ### Added

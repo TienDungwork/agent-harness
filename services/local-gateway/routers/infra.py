@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import re
+import time
 from datetime import datetime, timedelta, timezone
 from typing import Any
 from uuid import uuid4
@@ -20,10 +21,15 @@ from infra.container_lifecycle import (
     build_docker_lifecycle_command,
 )
 from infra.crypto import CryptoError, decrypt_text, encrypt_text
-from infra.destructive import destructive_reason, looks_destructive
+from infra.destructive import (
+    destructive_reason,
+    looks_destructive,
+    looks_like_sudo,
+    sudo_blocked_reason,
+)
 from infra.gpu import is_nvidia_smi_missing, parse_nvidia_smi_csv
 from infra.pins import rank_pins
-from infra.resolve import rank_servers
+from infra.resolve import enrich_resolve_response, rank_servers
 from infra.services import parse_systemctl_list_units
 from infra.ssh_client import SSHError, run_ssh
 from pydantic import BaseModel, Field
@@ -40,7 +46,21 @@ from storage.models import (
 )
 from storage.users import AuthUser, to_auth_user
 
+# Block auto infra_run briefly after connect-only resolve (same host).
+_CONNECT_ONLY_UNTIL: dict[str, tuple[float, str]] = {}
+_CONNECT_ONLY_TTL_SEC = 45.0
+
 router = APIRouter(tags=['infra'])
+
+_AUTO_PROBE_CMD = re.compile(
+    r'(^|[;&|]\s*)(sudo\b|systemctl\b|nginx\b|ip\s|ls\b|cd\s+/home/ubuntu)',
+    re.I,
+)
+
+
+def _looks_like_auto_probe(command: str) -> bool:
+    return bool(_AUTO_PROBE_CMD.search(command or ''))
+
 
 _NAME_RE = re.compile(r'^[A-Za-z0-9][A-Za-z0-9._ -]{0,127}$')
 _INFRA_TOKEN_HEADER = 'X-Creanova-Infra-Token'
@@ -260,6 +280,20 @@ async def list_servers(
     return [_server_public(s) for s in q.order_by(InfraServer.name).all()]
 
 
+@router.delete('/api/infra/servers/{server_id}/connect-only-gate')
+async def clear_connect_only_gate(
+    server_id: str,
+    user: AuthUser = Depends(get_auth_user),
+    db: Session = Depends(get_db),
+) -> dict[str, Any]:
+    """Allow infra_run after a connect-only turn once the user sends a real command."""
+    u = _current_user(user, db)
+    if not user_has_server_access(db, user=u, server_id=server_id, required='operate'):
+        raise HTTPException(status_code=403, detail='Forbidden')
+    _CONNECT_ONLY_UNTIL.pop(server_id, None)
+    return {'ok': True, 'server_id': server_id}
+
+
 @router.get('/api/infra/servers/resolve')
 async def resolve_servers(
     q: str,
@@ -275,23 +309,34 @@ async def resolve_servers(
     u = _current_user(user, db)
     rows = _servers_visible_to(u, db)
     ranked = rank_servers(query, rows, limit=limit)
-    return {
+    items = [
+        {
+            'id': c.server_id,
+            'name': c.name,
+            'hostname': c.hostname,
+            'port': c.port,
+            'username': c.username,
+            'tags': list(c.tags),
+            'score': c.score,
+            'match': c.match,
+        }
+        for c in ranked
+    ]
+    payload: dict[str, Any] = {
         'query': query,
-        'count': len(ranked),
-        'items': [
-            {
-                'id': c.server_id,
-                'name': c.name,
-                'hostname': c.hostname,
-                'port': c.port,
-                'username': c.username,
-                'tags': list(c.tags),
-                'score': c.score,
-                'match': c.match,
-            }
-            for c in ranked
-        ],
+        'count': len(items),
+        'items': items,
     }
+    extra = enrich_resolve_response(query, items)
+    payload.update(extra)
+    if extra.get('do_not_call_infra_run') and items:
+        sid = str(items[0]['id'])
+        reply = str(
+            extra.get('assistant_reply_vi')
+            or 'Đã SSH tới host. Gõ lệnh tiếp theo nếu cần (không sudo).'
+        )
+        _CONNECT_ONLY_UNTIL[sid] = (time.time() + _CONNECT_ONLY_TTL_SEC, reply)
+    return payload
 
 
 def _pin_public(row: InfraPinnedContainer) -> dict[str, Any]:
@@ -637,6 +682,67 @@ async def run_on_server(
     command = body.command.strip()
     if not command:
         raise HTTPException(status_code=400, detail='command is required')
+
+    gate = _CONNECT_ONLY_UNTIL.get(server_id)
+    if gate is not None:
+        expires, reply_vi = gate
+        if time.time() < expires:
+            write_audit(
+                db,
+                actor_user_id=user.id,
+                action='shell.run.blocked',
+                success=False,
+                server_id=server_id,
+                server_name=server.name,
+                command_rendered=command[:500],
+                error_excerpt='connect_only',
+            )
+            db.commit()
+            raise HTTPException(
+                status_code=409,
+                detail={
+                    'connect_only': True,
+                    'ssh_ok': True,
+                    'assistant_reply_vi': reply_vi,
+                    'agent_instruction': (
+                        'User chỉ yêu cầu ssh vào host. Trả lời đúng 1 dòng '
+                        'assistant_reply_vi. Không gọi infra_run lại.'
+                    ),
+                    'server_id': server_id,
+                    'server_name': server.name,
+                    'hostname': server.hostname,
+                },
+            )
+        _CONNECT_ONLY_UNTIL.pop(server_id, None)
+
+    if looks_like_sudo(command):
+        reason = sudo_blocked_reason(command) or 'sudo blocked'
+        write_audit(
+            db,
+            actor_user_id=user.id,
+            action='shell.run.blocked',
+            success=False,
+            server_id=server_id,
+            server_name=server.name,
+            command_rendered=command[:500],
+            error_excerpt=reason[:500],
+        )
+        db.commit()
+        raise HTTPException(
+            status_code=409,
+            detail={
+                'sudo_blocked': True,
+                'ssh_ok': True,
+                'assistant_reply_vi': reason,
+                'agent_instruction': (
+                    'Trả lời đúng 1 dòng assistant_reply_vi. '
+                    'Không giải thích harness/sudo/askpass bằng tiếng Anh.'
+                ),
+                'server_id': server_id,
+                'server_name': server.name,
+                'hostname': server.hostname,
+            },
+        )
 
     if looks_destructive(command) and not body.confirm_destructive:
         reason = destructive_reason(command) or 'destructive command'
