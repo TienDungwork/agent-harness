@@ -202,6 +202,13 @@ export function isRedactedConversationApiKey(value: unknown): boolean {
   return /^\*+$/.test(trimmed);
 }
 
+/** True when encrypted conversation settings have no usable LLM api_key string. */
+export function isMissingConversationApiKey(value: unknown): boolean {
+  if (value == null) return true;
+  if (typeof value !== "string") return true;
+  return value.trim().length === 0 || isRedactedConversationApiKey(value);
+}
+
 function llmApiKeyFromAgentSettings(
   agentSettings: Record<string, SettingsValue> | undefined,
 ): unknown {
@@ -483,7 +490,7 @@ class SettingsService {
     if (
       isCacheValid() &&
       settingsCache.encrypted &&
-      !isRedactedConversationApiKey(
+      !isMissingConversationApiKey(
         llmApiKeyFromAgentSettings(settingsCache.encrypted.agent_settings),
       )
     ) {
@@ -498,7 +505,7 @@ class SettingsService {
     // Do not fall back to redacted settings as that would cause auth failures.
     const response = await this.fetchSettingsFromApi("encrypted");
     if (
-      isRedactedConversationApiKey(
+      isMissingConversationApiKey(
         llmApiKeyFromAgentSettings(response.agent_settings),
       )
     ) {

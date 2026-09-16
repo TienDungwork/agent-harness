@@ -53,7 +53,6 @@ import {
   getAgentServerClientOptions,
   NoBackendAvailableError,
 } from "../agent-server-client-options";
-import SettingsService from "../settings-service/settings-service.api";
 import {
   ConversationMetadata,
   getStoredConversationMetadata,
@@ -415,7 +414,6 @@ class AgentServerConversationService {
       return createCloudAppConversation(request);
     }
 
-    const settings = await SettingsService.getSettings();
     const conversationId = uuidv4();
     // @spec WUP-001 — Send an absolute working_dir to the agent-server.
     // The default is `workspace/project/<hex>` (relative); without
@@ -429,9 +427,9 @@ class AgentServerConversationService {
     const resolvedWorkspaceMode =
       workspaceMode ?? (workingDirOverride ? "local_repo" : "new_worktree");
 
-    // Use encrypted settings to avoid exposing secrets in the browser
+    // Encrypted settings + base settings + secrets load in parallel inside
+    // the builder (no prior getSettings round-trip).
     const payload = await buildStartConversationRequestWithEncryptedSettings({
-      settings,
       query: initialUserMsg,
       conversationInstructions,
       plugins,

@@ -182,19 +182,21 @@ if [ -f /opt/agent-canvas/patch_litellm_stream_options.py ]; then
     || log "WARNING: stream_options file patch failed (continuing)"
 fi
 
+IMPORT_MODULES="patch_litellm_stream_options,patch_vms_reply_vi_finish,patch_no_profile_skills,patch_lean_local_agent"
+
 if command -v Creanova-agent-server >/dev/null 2>&1; then
   Creanova-agent-server --port "$AGENT_SERVER_PORT" \
-    --import-modules patch_litellm_stream_options &
+    --import-modules "$IMPORT_MODULES" &
 elif command -v openhands-agent-server >/dev/null 2>&1; then
   openhands-agent-server --port "$AGENT_SERVER_PORT" \
-    --import-modules patch_litellm_stream_options &
+    --import-modules "$IMPORT_MODULES" &
 elif [ -x /agent-server/.venv/bin/python ]; then
   if /agent-server/.venv/bin/python -c "import Creanova.agent_server" 2>/dev/null; then
     /agent-server/.venv/bin/python -m Creanova.agent_server --port "$AGENT_SERVER_PORT" \
-      --import-modules patch_litellm_stream_options &
+      --import-modules "$IMPORT_MODULES" &
   else
     /agent-server/.venv/bin/python -m openhands.agent_server --port "$AGENT_SERVER_PORT" \
-      --import-modules patch_litellm_stream_options &
+      --import-modules "$IMPORT_MODULES" &
   fi
 else
   log_error "Cannot find agent-server binary or source venv."
@@ -283,9 +285,13 @@ is_truthy() {
 # Local source overlay: bind-mount ./build → /opt/agent-canvas/frontend-overlay
 # so the Hub image stays a runtime and this tree's UI is applied at start.
 FRONTEND_DIR="/opt/agent-canvas/frontend"
+LIVE_STATIC_ARGS=()
 if [ -f /opt/agent-canvas/frontend-overlay/index.html ]; then
   FRONTEND_DIR="/opt/agent-canvas/frontend-overlay"
-  log "Using local frontend overlay at $FRONTEND_DIR"
+  # Overlay is a bind-mount; rebuilds swap hashed assets without restarting.
+  # sirv caches the file tree at startup unless --live-static is set.
+  LIVE_STATIC_ARGS=(--live-static)
+  log "Using local frontend overlay at $FRONTEND_DIR (live static)"
 else
   log "No local frontend overlay (missing index.html); using image UI"
 fi
@@ -358,6 +364,7 @@ node /opt/agent-canvas/static-server.mjs \
   --session-api-key "$EFFECTIVE_SESSION_KEY" \
   --runtime-services-info "$RUNTIME_SERVICES_INFO" \
   "${LOCAL_AUTH_ARGS[@]}" \
+  "${LIVE_STATIC_ARGS[@]}" \
   --route "/api/automation=http://127.0.0.1:${AUTOMATION_PORT}" \
   "${GATEWAY_ROUTE_ARGS[@]}" \
   --route "/server_info=http://127.0.0.1:${AGENT_SERVER_PORT}" \
@@ -386,6 +393,7 @@ if [ -n "${PUBLIC_MODE_PORT:-}" ]; then
     --auth-required \
     --runtime-services-info "$RUNTIME_SERVICES_INFO" \
     "${LOCAL_AUTH_ARGS[@]}" \
+    "${LIVE_STATIC_ARGS[@]}" \
     --route "/api/automation=http://127.0.0.1:${AUTOMATION_PORT}" \
     "${GATEWAY_ROUTE_ARGS[@]}" \
     --route "/server_info=http://127.0.0.1:${AGENT_SERVER_PORT}" \

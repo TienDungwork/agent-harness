@@ -63,3 +63,60 @@ def test_settings_patch_diff_is_not_a_usable_blob():
         )
         is True
     )
+
+
+def test_lean_create_forces_plaintext_for_tunnel_via_analytics(monkeypatch):
+    """trycloudflare UI blob must land on ANALYTICS_LLM with plaintext key."""
+    import json
+
+    from proxy import _lean_conversation_create_body
+
+    class _S:
+        analytics_llm_base_url = 'http://192.168.1.196:11434/v1'
+        analytics_llm_model = 'qwen3-16k-nothink:latest'
+        analytics_llm_api_key = 'ollama'
+
+    monkeypatch.setattr('config.get_settings', lambda: _S())
+    body = {
+        'secrets_encrypted': True,
+        'agent_settings': {
+            'llm': {
+                'model': 'openai/old',
+                'base_url': 'https://old.trycloudflare.com/v1',
+                'api_key': 'gAAAAAencrypted-key',
+            },
+            'tools': ['terminal'],
+            'agent_context': {},
+        },
+    }
+    blob = {
+        'agent_settings': {
+            'llm': {
+                'model': 'openai/nemotron',
+                'base_url': 'https://x.trycloudflare.com/v1',
+                'api_key': '**********',
+            }
+        }
+    }
+    out = json.loads(
+        _lean_conversation_create_body(json.dumps(body).encode(), blob).decode()
+    )
+    llm = out['agent_settings']['llm']
+    assert out.get('secrets_encrypted') is False
+    assert llm['api_key'] == 'ollama'
+    assert '11434' in llm['base_url']
+
+
+def test_rewrite_clears_fernet_on_local_ollama():
+    from proxy import _rewrite_llm_from_ui_blob
+
+    agent = {
+        'llm': {
+            'model': 'qwen',
+            'base_url': 'http://192.168.1.196:11434/v1',
+            'api_key': 'gAAAAAencrypted',
+        }
+    }
+    assert _rewrite_llm_from_ui_blob(agent, None) is True
+    assert agent['llm']['api_key'] == 'ollama'
+    assert agent['llm']['model'].startswith('openai/')

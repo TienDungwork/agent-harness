@@ -1,3 +1,4 @@
+import { useEffect } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import AgentServerConversationService from "#/api/conversation-service/agent-server-conversation-service.api";
 import { PluginSpec } from "#/api/conversation-service/agent-server-conversation-service.types";
@@ -15,6 +16,9 @@ import AgentProfilesService, {
 import PluginsManagementService, {
   type InstalledPluginInfo,
 } from "#/api/plugins-management-service";
+import SettingsService from "#/api/settings-service/settings-service.api";
+import { SecretsService } from "#/api/secrets-service";
+import { isLocalAuthEnabled } from "#/api/local-auth/client";
 import {
   PLUGINS_QUERY_KEYS,
   LLM_PROFILES_QUERY_KEYS,
@@ -52,7 +56,7 @@ export interface CreateConversationVariables {
 
 export const CREATE_CONVERSATION_MUTATION_KEY = ["create-conversation"];
 
-interface CreateConversationResponse {
+export interface CreateConversationResponse {
   conversation_id: string;
   session_api_key: string | null;
   url: string | null;
@@ -74,6 +78,14 @@ export const useCreateConversation = () => {
   // wrong agent.
   const { backend, orgId } = useActiveBackend();
   useAgentProfiles();
+
+  // Warm encrypted settings + secrets while the user is still typing on Home
+  // so Enter does not pay a cold getSettingsForConversation round-trip.
+  useEffect(() => {
+    if (backend.kind !== "local") return;
+    void SettingsService.getSettingsForConversation().catch(() => undefined);
+    void SecretsService.getSecrets().catch(() => undefined);
+  }, [backend.id, backend.kind]);
 
   return useMutation({
     mutationKey: CREATE_CONVERSATION_MUTATION_KEY,
@@ -140,7 +152,11 @@ export const useCreateConversation = () => {
       // (#1571 review).
       const isCloud = backend.kind === "cloud";
       let effectiveAgentProfileId = requestedAgentProfileId;
-      if (
+      // Local-auth VMS/SSH: never resolve named profiles — they inject the
+      // public skill catalog (~480KB) and exceed LiteLLM project limits.
+      if (!isCloud && isLocalAuthEnabled()) {
+        effectiveAgentProfileId = undefined;
+      } else if (
         !isCloud &&
         resolvedAgentProfile?.name === WELL_KNOWN_DEFAULT_AGENT_PROFILE_NAME &&
         resolvedAgentProfile?.agent_kind === "Creanova"

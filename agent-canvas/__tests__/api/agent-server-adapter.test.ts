@@ -14,7 +14,6 @@ import {
   setStoredConversationMetadata,
 } from "#/api/conversation-metadata-store";
 import { ACP_VERTEX_SAFE_MODEL } from "#/constants/acp-providers";
-import { LOCAL_AGENT_SYSTEM_SUFFIX } from "#/config/local-agent-prompt";
 import { DEFAULT_SETTINGS } from "#/services/settings";
 import {
   LLM_AUTH_TYPE_SUBSCRIPTION,
@@ -54,6 +53,9 @@ vi.mock("#/api/backend-registry/active-store", () => ({
 }));
 
 beforeEach(() => {
+  // Default unit tests expect the full bundled skill catalog unless a case
+  // stubs local-auth / LAN lean mode explicitly.
+  vi.stubEnv("VITE_LOCAL_AUTH_ENABLED", "");
   mockIsAgentServerToolAvailable.mockReturnValue(true);
   mockGetEffectiveLocalBackend.mockReturnValue({
     id: "default-local",
@@ -62,6 +64,10 @@ beforeEach(() => {
     apiKey: "session-key",
     kind: "local",
   });
+});
+
+afterEach(() => {
+  vi.unstubAllEnvs();
 });
 
 describe("buildStartConversationRequest", () => {
@@ -130,42 +136,13 @@ describe("buildStartConversationRequest", () => {
     expect(payload.agent_settings.system_prompt).toContain(
       "Prefer short, direct answers",
     );
+    // VMS/SSH agent: never inject the public coding-skill catalog.
     expect(payload.agent_settings.agent_context).toMatchObject({
       load_public_skills: false,
-      load_user_skills: true,
-      load_project_skills: true,
+      load_user_skills: false,
+      load_project_skills: false,
+      skills: [],
     });
-    // Bundled public skills are injected into agent_context.skills so the
-    // SDK can perform trigger matching without cloning the extensions repo.
-    expect(Array.isArray(payload.agent_settings.agent_context.skills)).toBe(
-      true,
-    );
-    const skills = payload.agent_settings.agent_context.skills as Record<
-      string,
-      unknown
-    >[];
-    expect(skills.length).toBeGreaterThan(0);
-    // Every bundled skill must carry the fields the SDK needs for trigger
-    // matching and system-prompt injection.
-    for (const skill of skills) {
-      expect(skill).toHaveProperty("name");
-      expect(skill).toHaveProperty("content");
-      // source must be an absolute path to the skill's SKILL.md so the
-      // Python agent-server can resolve bundled resources (scripts/, references/).
-      const source = skill.source as string;
-      expect(source).toMatch(/^\//);
-      expect(source).toMatch(
-        new RegExp(`/${skill.name as string}/SKILL\\.md$`),
-      );
-      expect(skill).toHaveProperty("is_agentskills_format", true);
-      // trigger is either null (always-active) or { type, keywords }
-      if (skill.trigger !== null) {
-        expect(skill.trigger).toMatchObject({
-          type: "keyword",
-          keywords: expect.arrayContaining([expect.any(String)]),
-        });
-      }
-    }
     expect(payload.agent_settings.agent).toBe("CodeActAgent");
     expect(payload.agent_settings.enable_switch_llm_tool).toBe(true);
     expect(payload.workspace.working_dir).toBe(
@@ -1308,6 +1285,7 @@ describe("agent_settings runtime services suffix", () => {
   });
 
   it("always injects the local Creanova harness suffix", () => {
+    vi.stubEnv("VITE_LOCAL_AUTH_ENABLED", "");
     const payload = buildStartConversationRequest({
       settings: DEFAULT_SETTINGS,
       query: "hello",
@@ -1316,18 +1294,33 @@ describe("agent_settings runtime services suffix", () => {
     };
     expect(payload.agent_settings.agent_context).toMatchObject({
       load_public_skills: false,
-      load_user_skills: true,
-      load_project_skills: true,
+      load_user_skills: false,
+      load_project_skills: false,
+      skills: [],
     });
-    expect(Array.isArray(payload.agent_settings.agent_context.skills)).toBe(
-      true,
-    );
     const suffix = payload.agent_settings.agent_context
       .system_message_suffix as string;
     expect(suffix).toContain("<LOCAL_HARNESS>");
-    expect(suffix).toContain("Settings → Host");
-    expect(suffix).toContain("last IPv4 octet");
-    expect(suffix).toBe(LOCAL_AGENT_SYSTEM_SUFFIX);
+    expect(suffix).toContain("CLOCK");
+    expect(suffix).toContain("Thời điểm hiện tại:");
+    // Fresh clock each conversation — not a frozen module constant.
+    expect(suffix).toContain("vms_count_vehicles");
+  });
+
+  it("keeps skills disabled when local-auth lean mode is on", () => {
+    vi.stubEnv("VITE_LOCAL_AUTH_ENABLED", "true");
+    const payload = buildStartConversationRequest({
+      settings: DEFAULT_SETTINGS,
+      query: "hello",
+    }) as {
+      agent_settings: { agent_context: Record<string, unknown> };
+    };
+    expect(payload.agent_settings.agent_context).toMatchObject({
+      load_public_skills: false,
+      load_user_skills: false,
+      load_project_skills: false,
+      skills: [],
+    });
   });
 
   it("keeps an existing suffix in front of runtime services", () => {
@@ -1386,7 +1379,9 @@ describe("agent_settings runtime services suffix", () => {
     };
     expect(payload.agent_settings.agent_context).toMatchObject({
       load_public_skills: false,
-      load_user_skills: true,
+      load_user_skills: false,
+      load_project_skills: false,
+      skills: [],
     });
     expect(
       payload.agent_settings.agent_context.system_message_suffix as string,
@@ -1444,10 +1439,10 @@ describe("buildStartConversationRequest — ACP discriminator", () => {
     >;
     expect(acpAgentContext).toMatchObject({
       load_public_skills: false,
-      load_user_skills: true,
-      load_project_skills: true,
+      load_user_skills: false,
+      load_project_skills: false,
+      skills: [],
     });
-    expect(Array.isArray(acpAgentContext.skills)).toBe(true);
     expect(payload.tags).toEqual({ [ACP_SERVER_TAG_KEY]: "claude-code" });
   });
 

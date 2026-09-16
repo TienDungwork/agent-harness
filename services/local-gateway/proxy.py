@@ -130,6 +130,468 @@ def _is_usable_settings_blob(payload: Any) -> bool:
     return 'agent_settings' in payload or 'conversation_settings' in payload
 
 
+def _is_slow_uv_infra_mcp(entry: object) -> bool:
+    if not isinstance(entry, dict):
+        return False
+    command = entry.get('command')
+    if command in ('uv', 'uvx'):
+        return True
+    args = entry.get('args')
+    if not isinstance(args, list):
+        return False
+    str_args = [str(a) for a in args]
+    return '--with' in str_args and any('mcp' in a for a in str_args)
+
+
+_INFRA_MCP_ENV = {
+    'GATEWAY_URL': 'http://local-gateway:18110',
+    'MCP_VMS_ONLY': '1',
+}
+
+
+def _fast_infra_mcp_config(agent: dict) -> None:
+    """Replace legacy ``uv run --with mcp`` with system python3 (~2–3s saved)."""
+    mcp = agent.get('mcp_config')
+    if not isinstance(mcp, dict):
+        mcp = {}
+        agent['mcp_config'] = mcp
+
+    for name in ('creanova_infra', 'creanova-infra'):
+        if name in mcp and _is_slow_uv_infra_mcp(mcp.get(name)):
+            del mcp[name]
+
+    has_usable = any(
+        name in mcp and not _is_slow_uv_infra_mcp(mcp.get(name))
+        for name in ('creanova_infra', 'creanova-infra')
+    )
+    if has_usable:
+        # Existing config may omit MCP_VMS_ONLY — force it so tool schemas stay small.
+        for name in ('creanova_infra', 'creanova-infra'):
+            cfg = mcp.get(name)
+            if isinstance(cfg, dict):
+                env = dict(cfg.get('env') or {})
+                env.update(_INFRA_MCP_ENV)
+                cfg['env'] = env
+                mcp[name] = cfg
+        return
+
+    mcp['creanova_infra'] = {
+        'command': 'python3',
+        'args': ['/opt/infra-mcp/mcp_stdio.py'],
+        'env': dict(_INFRA_MCP_ENV),
+    }
+
+
+_FERNET_API_KEY_PREFIX = 'gAAAA'
+_REDACTED_API_KEYS = frozenset({'**********', '***'})
+
+
+def _is_fernet_api_key(value: object) -> bool:
+    return isinstance(value, str) and value.startswith(_FERNET_API_KEY_PREFIX)
+
+
+def _is_redacted_api_key(value: object) -> bool:
+    if not isinstance(value, str):
+        return False
+    trimmed = value.strip()
+    if not trimmed:
+        return False
+    if trimmed in _REDACTED_API_KEYS:
+        return True
+    return bool(re.fullmatch(r'\*+', trimmed))
+
+
+def _is_usable_plaintext_api_key(value: object) -> bool:
+    if not isinstance(value, str):
+        return False
+    trimmed = value.strip()
+    if not trimmed:
+        return False
+    if _is_redacted_api_key(trimmed) or _is_fernet_api_key(trimmed):
+        return False
+    return True
+
+
+def _sanitize_blob_llm(blob_llm: dict) -> dict:
+    """Copy UI blob LLM without redacted/empty api_key sentinels."""
+    out = dict(blob_llm)
+    key = out.get('api_key')
+    if not _is_usable_plaintext_api_key(key) and not _is_fernet_api_key(key):
+        out.pop('api_key', None)
+    return out
+
+
+def _is_fast_local_llm_base(base_url: str) -> bool:
+    b = (base_url or '').lower()
+    if ':11434' in b or 'ollama' in b:
+        return True
+    # RFC1918 / localhost OpenAI-compatible endpoints.
+    for host in (
+        '127.0.0.1',
+        'localhost',
+        '192.168.',
+        '10.',
+        '172.16.',
+        '172.17.',
+        '172.18.',
+        '172.19.',
+        '172.2',
+        '172.30.',
+        '172.31.',
+    ):
+        if host in b:
+            return True
+    return False
+
+
+def _rewrite_llm_from_ui_blob(agent: dict, settings_blob: object) -> bool:
+    """Prefer a fast local LLM (Ollama / LAN) over encrypted disk or tunnels.
+
+    Returns True when ``llm.api_key`` is usable plaintext (safe to set
+    ``secrets_encrypted=False``). Fernet keys must keep ``secrets_encrypted=True``
+    so the agent-server decrypts them — forcing False caused missing/invalid
+    OPENAI_API_KEY AuthenticationError when logging in from another client.
+    """
+    llm = dict(agent.get('llm') or {})
+    blob_llm: dict | None = None
+    if isinstance(settings_blob, dict):
+        blob_agent = settings_blob.get('agent_settings')
+        if isinstance(blob_agent, dict) and isinstance(blob_agent.get('llm'), dict):
+            blob_llm = blob_agent.get('llm')  # type: ignore[assignment]
+
+    if isinstance(blob_llm, dict):
+        model = blob_llm.get('model')
+        base_url = blob_llm.get('base_url')
+        if isinstance(model, str) and model.strip():
+            llm['model'] = model.strip()
+        if isinstance(base_url, str) and base_url.strip():
+            llm['base_url'] = base_url.strip()
+
+    base = str(llm.get('base_url') or '')
+    if not _is_fast_local_llm_base(base):
+        from config import get_settings
+
+        settings = get_settings()
+        analytics_base = (settings.analytics_llm_base_url or '').strip()
+        analytics_model = (settings.analytics_llm_model or '').strip()
+        if analytics_base and _is_fast_local_llm_base(analytics_base):
+            llm['base_url'] = analytics_base
+            if analytics_model:
+                llm['model'] = analytics_model
+            llm['api_key'] = (settings.analytics_llm_api_key or '').strip() or 'ollama'
+            base = analytics_base
+
+    if _is_fast_local_llm_base(base):
+        key = llm.get('api_key')
+        if not _is_usable_plaintext_api_key(key):
+            blob_key = blob_llm.get('api_key') if isinstance(blob_llm, dict) else None
+            if _is_usable_plaintext_api_key(blob_key):
+                llm['api_key'] = blob_key
+            else:
+                llm['api_key'] = 'ollama'
+        model = str(llm.get('model') or '').strip()
+        if model and '/' not in model:
+            llm['model'] = f'openai/{model}'
+        agent['llm'] = llm
+        return True
+
+    key = llm.get('api_key')
+    if _is_usable_plaintext_api_key(key):
+        agent['llm'] = llm
+        return True
+    if _is_fernet_api_key(key):
+        agent['llm'] = llm
+        return False
+
+    blob_key = blob_llm.get('api_key') if isinstance(blob_llm, dict) else None
+    if _is_usable_plaintext_api_key(blob_key):
+        llm['api_key'] = blob_key
+        agent['llm'] = llm
+        return True
+    if _is_fernet_api_key(blob_key):
+        llm['api_key'] = blob_key
+        agent['llm'] = llm
+        return False
+
+    if _is_redacted_api_key(key) or key in ('', None):
+        llm.pop('api_key', None)
+    if llm.get('base_url'):
+        llm['api_key'] = 'sk-local'
+        agent['llm'] = llm
+        return True
+
+    agent['llm'] = llm
+    return False
+
+
+def _lean_conversation_create_body(
+    body: bytes, settings_blob: object | None = None
+) -> bytes:
+    """Strip the ~60 bundled coding skills from conversation create.
+
+    Agent Canvas UI sometimes still injects the public skill catalog (or a
+    cached overlay does), which dominates create latency (~10s) and every
+    LLM turn (~480KB dynamic context). For this self-hosted VMS stack, force
+    a lean agent_context before the agent-server sees it.
+
+    Named ``agent_profile_id`` launches resolve skills server-side via
+    ``discover_profile_skills``; that path is neutralized by
+    ``patch_no_profile_skills``. Here we still strip any inline agent_settings
+    and refuse to trust a client-supplied skills array.
+    """
+    if not body:
+        return body
+    try:
+        payload = json.loads(body.decode('utf-8'))
+    except (UnicodeDecodeError, json.JSONDecodeError):
+        return body
+    if not isinstance(payload, dict):
+        return body
+
+    # Named profiles re-inject coding tools/skills. Convert to lean
+    # agent_settings using the UI blob's LLM (Ollama), not the stale profile.
+    if payload.get('agent_profile_id') and isinstance(settings_blob, dict):
+        blob_agent = settings_blob.get('agent_settings')
+        blob_llm = blob_agent.get('llm') if isinstance(blob_agent, dict) else None
+        payload.pop('agent_profile_id', None)
+        lean_agent = {
+            'agent_kind': 'Creanova',
+            'llm': (_sanitize_blob_llm(blob_llm) if isinstance(blob_llm, dict) else {}),
+            'mcp_config': (
+                blob_agent.get('mcp_config')
+                if isinstance(blob_agent, dict)
+                and isinstance(blob_agent.get('mcp_config'), dict)
+                else {}
+            ),
+            'agent_context': {},
+            'tools': [],
+            'include_default_tools': ['FinishTool'],
+            'enable_switch_llm_tool': False,
+            'condenser': {'condenser_kind': 'no_op'},
+        }
+        payload['agent_settings'] = lean_agent
+        payload['agent'] = lean_agent
+        # Create used encrypted secrets from disk; lean agent has plaintext
+        # ollama key after rewrite — do not ask the server to decrypt.
+        payload['secrets_encrypted'] = False
+
+    agent = payload.get('agent_settings')
+    if not isinstance(agent, dict):
+        # Some clients nest under ``agent`` instead of ``agent_settings``.
+        agent = payload.get('agent')
+    if not isinstance(agent, dict):
+        return body
+
+    ctx = agent.get('agent_context')
+    if not isinstance(ctx, dict):
+        ctx = {}
+        agent['agent_context'] = ctx
+    ctx['skills'] = []
+    ctx['load_public_skills'] = False
+    ctx['load_user_skills'] = False
+    ctx['load_project_skills'] = False
+    ctx['disabled_skills'] = []
+
+    # Skip ThinkTool — extra LLM round on simple analytics questions.
+    agent['include_default_tools'] = ['FinishTool']
+    agent['enable_switch_llm_tool'] = False
+
+    # Coding tools compete with MCP on every turn (~seconds of tool-choice).
+    # Analytics via MCP vms_query only (MCP_VMS_ONLY). Keep SDK tools empty.
+    agent['tools'] = []
+
+    # Condenser fires a second LLM — use NoOp for lean VMS/SSH turns.
+    # OpenHandsAgentSettings discriminator is ``condenser_kind``, not ``kind``.
+    agent['condenser'] = {'condenser_kind': 'no_op'}
+
+    # Align LLM with the UI settings blob (local Ollama), not stale LiteLLM disk.
+    plaintext_llm_key = _rewrite_llm_from_ui_blob(agent, settings_blob)
+
+    # Local Ollama: string-serialized tool calls + "reasoning" knobs add
+    # tens of seconds before the first <function=…> appears.
+    llm = agent.get('llm')
+    if isinstance(llm, dict):
+        llm = {
+            **llm,
+            'temperature': 0.1,
+            'stream': False,
+            'force_string_serializer': False,
+            'native_tool_calling': True,
+            'reasoning_effort': None,
+            'reasoning_summary': None,
+            'enable_encrypted_reasoning': False,
+            'extended_thinking_budget': None,
+            'prompt_cache_retention': None,
+            # Cap completion — greets/VMS reply_vi are short; long max slows decode.
+            'max_output_tokens': 128,
+        }
+        agent['llm'] = llm
+        # Only disable decrypt when we actually installed plaintext.
+        # Fernet keys from X-Expose-Secrets: encrypted must stay decryptable.
+        if plaintext_llm_key:
+            payload['secrets_encrypted'] = False
+        elif _is_fernet_api_key(llm.get('api_key')):
+            payload['secrets_encrypted'] = True
+
+    # Keep agent/agent_settings in sync when both are present.
+    if isinstance(payload.get('agent'), dict):
+        payload['agent'] = agent
+    payload['agent_settings'] = agent
+
+    # Always keep lean MCP on local creates. Stripping it for greetings broke
+    # mid-chat VMS ("số xe…") — conversation had FinishTool only → empty LLM
+    # replies + corrective nudge loops (10–15s). Warm-pool hides the ~2s handshake.
+    _fast_infra_mcp_config(agent)
+
+    # Default SDK static prompt is ~16KB coding rules (CODE_QUALITY, SECURITY…).
+    # That alone adds seconds of Ollama prefill vs a direct API call. Force the
+    # short Canvas SOUL (+ harness clock) as an inline system_prompt.
+    _apply_lean_system_prompt(agent)
+
+    payload.get('initial_message')
+
+    # Autotitle fires a second LLM call (~5–15s on LAN) before/after the reply.
+    payload['autotitle'] = False
+    # LLM security analyzer is another extra call — skip for lean VMS/SSH.
+    payload['security_analyzer'] = None
+
+    try:
+        return json.dumps(payload, ensure_ascii=False).encode('utf-8')
+    except (TypeError, ValueError):
+        return body
+
+
+# Keep in sync with agent-canvas/config/SOUL.md (VMS lean identity).
+_LEAN_SOUL = """\
+<SOUL>
+You are Creanova, a local AI assistant on this machine via Agent Canvas.
+
+Language: ALWAYS reply in Vietnamese (tiếng Việt) — kể cả khi user hỏi tiếng Anh. Short answers (1–5 lines). Prefer tools over guessing. Do not invent product docs URLs. Never answer analytics in English.
+Do not lecture or explain command output unless the user asks "giải thích/why".
+No emoji section headers. No encyclopedias about Docker/veth/K8s/WireGuard.
+Do not use the think tool for greetings or simple data questions.
+
+Never invent tool parameters. CẤM `security_risk`, CẤM `summary`. Only listed parameters (e.g. q=, day=).
+
+Do NOT call canvas_ui_control / navigate_to_file for greetings, SSH, analytics, or loops.
+Only use canvas_ui_control after a user-requested file edit, once per step.
+
+VMS / ClickHouse (bắt buộc — agent TỰ GỌI tool, không bịa số):
+- Ngày = DD/MM/YYYY (VN). CẤM MM/DD Mỹ.
+  · "tháng M" + "ngày D1 và D2" → days_list="YYYY-MM-D1,YYYY-MM-D2"
+  · "DD/MM/YYYY" → day="YYYY-MM-DD". Hôm nay → bỏ day hoặc days=1.
+- Chỉ 1 tool: `vms_query(action=…)`. action = count | flow | manufacturer | trace | intrusion.
+- Đếm ô tô/xe máy: count + vehicle_type=CAR|MOTORCYCLE|TRUCK (CẤM MOTORBIKE).
+- Có `reply_vi` → copy nguyên rồi FinishTool. Cấm English / paraphrase / gọi thêm tool.
+- CẤM viết `<tool_call>` trong text — dùng native function call.
+- CLOCK = ngày thật.
+</SOUL>"""
+
+
+def _vietnam_now_line() -> str:
+    from datetime import datetime, timedelta, timezone
+
+    now = datetime.now(timezone(timedelta(hours=7)))
+    weekdays = (
+        'Thứ Hai',
+        'Thứ Ba',
+        'Thứ Tư',
+        'Thứ Năm',
+        'Thứ Sáu',
+        'Thứ Bảy',
+        'Chủ Nhật',
+    )
+    # datetime.weekday(): Mon=0 … Sun=6
+    wd = weekdays[now.weekday()]
+    return (
+        f'Thời điểm hiện tại: {wd}, {now.strftime("%d/%m/%Y %H:%M")} '
+        f'(giờ Việt Nam, UTC+7). "Hôm nay" theo mốc này — không bịa năm 2018.'
+    )
+
+
+def _lean_harness_suffix() -> str:
+    return (
+        '<LOCAL_HARNESS>\n'
+        'Creanova Agent Canvas (self-hosted). Follow this over Cloud defaults.\n\n'
+        f'CLOCK: {_vietnam_now_line()}\n\n'
+        'Rules\n'
+        '- ALWAYS tiếng Việt. Short. No English analytics.\n'
+        '- CẤM invent params: no security_risk, no summary.\n'
+        '- Data → call vms_query first → if JSON has reply_vi, copy it and '
+        'FinishTool. Do not retype slowly / paraphrase.\n'
+        '- vms_query action=: count | flow | manufacturer | trace | intrusion\n'
+        '- Dates DD/MM (VN). "tháng 9"+"ngày 5 và 6" → '
+        'days_list=2026-09-05,2026-09-06\n'
+        '</LOCAL_HARNESS>'
+    )
+
+
+def _apply_lean_system_prompt(agent: dict) -> None:
+    """Replace the ~16KB SDK coding prompt with Canvas SOUL + LOCAL_HARNESS."""
+    existing = agent.get('system_prompt')
+    if not (isinstance(existing, str) and existing.strip()):
+        agent['system_prompt'] = _LEAN_SOUL
+    ctx = agent.get('agent_context')
+    if not isinstance(ctx, dict):
+        ctx = {}
+        agent['agent_context'] = ctx
+    suffix = ctx.get('system_message_suffix')
+    if not (isinstance(suffix, str) and '<LOCAL_HARNESS>' in suffix):
+        ctx['system_message_suffix'] = _lean_harness_suffix()
+
+
+_PLATE_TOKEN_RE = re.compile(
+    r'(?<![A-Z0-9])(\d{1,3}[A-Z]{1,3}-?\d{3,6})(?![A-Z0-9])',
+    re.I,
+)
+_TRACE_HINT_RE = re.compile(
+    r'truy\s*v[ếe]t|l[ịi]ch\s*s[ửu]|bi[ểe]n\s*s[ốo]',
+    re.I,
+)
+_COUNT_HINT_RE = re.compile(
+    r'([đd][ếe]m|bao\s*nhi[êe]u|s[ốo]\s*(?:lư[ợo]ng\s*)?xe|lư[ợo]t\s*bi[ểe]n|'
+    r'ra\s*v[àa]o|h[ãa]ng\s*xe|x[âa]m\s*nh[ậa]p|xe\s*m[áa]y|'
+    r'g[ầa]n\s*nh[ấa]t|ngày\s*g[ầa]n)',
+    re.I,
+)
+_SSH_HINT_RE = re.compile(
+    r'\bssh\b|infra_|server|máy\s*ch[ủu]|container|docker|uptime|disk|cpu',
+    re.I,
+)
+
+
+def _initial_message_text(initial: object) -> str:
+    if not isinstance(initial, dict):
+        return ''
+    content = initial.get('content')
+    text = ''
+    if isinstance(content, list):
+        for part in content:
+            if isinstance(part, dict) and part.get('type') == 'text':
+                text += str(part.get('text') or '')
+    elif isinstance(content, str):
+        text = content
+    return text.strip()
+
+
+def _needs_infra_mcp(initial: object) -> bool:
+    text = _initial_message_text(initial)
+    if not text:
+        return False
+    if _PLATE_TOKEN_RE.search(text):
+        return True
+    if _TRACE_HINT_RE.search(text) or _COUNT_HINT_RE.search(text):
+        return True
+    if _SSH_HINT_RE.search(text):
+        return True
+    return False
+
+
+def _lean_events_body(body: bytes) -> bytes:
+    """Passthrough for mid-chat events (no forced tool hints — agent chooses)."""
+    return body
+
+
 def _is_chargeable_conversation_post(
     path: str,
 ) -> tuple[bool, str | None, float | None]:
@@ -483,7 +945,10 @@ async def proxy_api(
                     raise_http_for_credits(exc)
 
             if path.rstrip('/') == '/api/conversations':
-                resp = await _forward(request, settings)
+                body = await request.body()
+                settings_blob = _get_blob(db, user.id, 'settings')
+                body = _lean_conversation_create_body(body, settings_blob)
+                resp = await _forward(request, settings, body=body)
                 if 200 <= resp.status_code < 300:
                     try:
                         data = json.loads(resp.body)
@@ -544,7 +1009,10 @@ async def proxy_api(
                 return resp
 
             if chargeable and cost_key == 'run':
-                resp = await _forward(request, settings)
+                body = await request.body()
+                if path.rstrip('/').endswith('/events') or '/events' in path:
+                    body = _lean_events_body(body)
+                resp = await _forward(request, settings, body=body)
                 if (
                     not (200 <= resp.status_code < 300)
                     and reserved_cost > 0

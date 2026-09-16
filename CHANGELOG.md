@@ -2,6 +2,12 @@
 
 All notable changes to this workspace are listed here.
 
+## [beta v0.10.0] - 2026-09-16
+
+### Fixed
+
+- Lean conversation create: strip skill catalog / profile skills, rewrite LLM from per-user UI settings (Ollama), and keep Fernet secrets when blob api_key is redacted — stops LiteLLM project limits and cross-login `AuthenticationError`.
+
 ## [beta v0.9.9] - 2026-09-15
 
 ### Added

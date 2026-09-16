@@ -1,5 +1,4 @@
 import { ACP_SETTINGS_KEYS } from "@Creanova/typescript-client";
-import { SKILLS_CATALOG } from "@Creanova/extensions/skills";
 import { DEFAULT_SETTINGS } from "#/services/settings";
 import { ExecutionStatus } from "#/types/agent-server/core";
 import { AgentKind, Settings, SettingsValue } from "#/types/settings";
@@ -11,7 +10,7 @@ import {
 import { getAgentServerClientOptions } from "./agent-server-client-options";
 import { isAgentServerToolAvailable } from "./agent-server-compatibility";
 import { getAgentServerWorkingDir } from "./agent-server-config";
-import { LOCAL_AGENT_SYSTEM_SUFFIX } from "#/config/local-agent-prompt";
+import { buildLocalAgentSystemSuffix } from "#/config/local-agent-prompt";
 import { ensureCreanovaInfraMcpConfig } from "#/config/creanova-infra-mcp";
 import {
   assembleCanvasStaticSystemPrompt,
@@ -46,6 +45,7 @@ import {
   isPrivateOrLocalLlmEndpoint,
   normalizeLlmModelForLiteLLM,
 } from "#/utils/llm-model-wire";
+import { isLocalAuthEnabled } from "#/api/local-auth/client";
 
 export interface DirectConversationInfo {
   id: string;
@@ -600,58 +600,6 @@ function buildInitialMessage(
   };
 }
 
-/**
- * Shape of a bundled skill entry passed to the agent-server SDK via
- * `agent_context.skills`. Mirrors the SDK's `Skill` model fields that
- * the server uses for trigger matching, activation, and system-prompt
- * injection.
- */
-interface BundledSkill {
-  name: string;
-  content: string;
-  trigger: { type: "keyword"; keywords: string[] } | null;
-  source: string;
-  description: string | null;
-  is_agentskills_format: true;
-  license?: string;
-  compatibility?: string;
-}
-
-/**
- * Convert the bundled `SKILLS_CATALOG` entries into the SDK `Skill` JSON
- * shape so the agent-server can perform trigger matching, skill activation,
- * and system-prompt injection without cloning the extensions repo.
- *
- * The SDK discriminates triggers via `{ type: "keyword", keywords: [...] }`.
- * Skills with no triggers get `trigger: null` (always-active / on-demand).
- */
-function buildBundledSkills(): BundledSkill[] {
-  return SKILLS_CATALOG.map((entry) => {
-    const trigger: BundledSkill["trigger"] =
-      entry.triggers?.length > 0
-        ? { type: "keyword", keywords: entry.triggers }
-        : null;
-
-    // Use the absolute path to the skill's SKILL.md so the Python
-    // agent-server can resolve bundled resources (scripts/, references/).
-    // Falls back to "public" in library builds where the path isn't known.
-    const source = __EXTENSIONS_SKILLS_DIR__
-      ? `${__EXTENSIONS_SKILLS_DIR__}/${entry.name}/SKILL.md`
-      : "public";
-
-    return {
-      name: entry.name,
-      content: entry.content,
-      trigger,
-      source,
-      description: entry.description ?? null,
-      is_agentskills_format: true as const,
-      ...(entry.license ? { license: entry.license } : {}),
-      ...(entry.compatibility ? { compatibility: entry.compatibility } : {}),
-    };
-  });
-}
-
 function buildAgentContext(
   agentSettings: SettingsRecord,
   llm?: Record<string, unknown>,
@@ -661,17 +609,22 @@ function buildAgentContext(
   const llmRecord = llm ?? toRecord(agentSettings.llm);
   const baseUrl =
     typeof llmRecord.base_url === "string" ? llmRecord.base_url : null;
-  // LAN 4B gateways 400 with context_length_exceeded when Canvas injects
-  // the full public skills catalog (~380KB) into the first completion.
-  const skipBundledSkills = isPrivateOrLocalLlmEndpoint(baseUrl);
-  const promptOpts = { isLan: skipBundledSkills };
+  // Lean prompt sections when:
+  // - LLM is on a private LAN, or
+  // - local-auth / self-hosted Canvas, or
+  // - VITE_LEAN_AGENT_CONTEXT is baked true (docker overlay).
+  const leanEnv = (
+    import.meta.env.VITE_LEAN_AGENT_CONTEXT ?? ""
+  )
+    .toString()
+    .toLowerCase();
+  const lean =
+    isPrivateOrLocalLlmEndpoint(baseUrl) ||
+    isLocalAuthEnabled() ||
+    leanEnv === "true" ||
+    leanEnv === "1";
+  const promptOpts = { isLan: lean };
 
-  const existingSkills = Array.isArray(existingContext.skills)
-    ? (existingContext.skills as SettingsRecord[])
-    : [];
-  const mergedSkills = skipBundledSkills
-    ? []
-    : [...existingSkills, ...buildBundledSkills()];
   const existingSuffix =
     typeof existingContext.system_message_suffix === "string"
       ? existingContext.system_message_suffix
@@ -679,7 +632,7 @@ function buildAgentContext(
   const includeHarness = isCanvasPromptSectionEnabled("harness", promptOpts);
   const localSuffix =
     includeHarness && !existingSuffix?.includes("<LOCAL_HARNESS>")
-      ? LOCAL_AGENT_SYSTEM_SUFFIX
+      ? buildLocalAgentSystemSuffix()
       : undefined;
   const includeRuntimeServices = isCanvasPromptSectionEnabled(
     "runtime_services",
@@ -693,19 +646,13 @@ function buildAgentContext(
 
   return {
     ...existingContext,
-    // Public skills are bundled at build time from the @Creanova/extensions
-    // npm package and passed directly in agent_context.skills. Setting
-    // load_public_skills to false tells the agent-server SDK to skip its own
-    // extensions-repo clone — the frontend is the sole source of public
-    // skills now.
-    //
-    // Migration: the former VITE_LOAD_PUBLIC_SKILLS env var was removed
-    // because bundled skills have no clone latency. Users who previously set
-    // VITE_LOAD_PUBLIC_SKILLS=false to avoid clone delays no longer need it.
-    skills: mergedSkills,
+    // This VMS/SSH agent never uses the ~350KB public coding-skill catalog.
+    // Injecting it overflows LiteLLM project message limits. Gateway also
+    // strips skills on POST /api/conversations as a second line of defense.
+    skills: [],
     load_public_skills: false,
-    load_user_skills: !skipBundledSkills,
-    load_project_skills: !skipBundledSkills,
+    load_user_skills: false,
+    load_project_skills: false,
     ...(systemMessageSuffix
       ? { system_message_suffix: systemMessageSuffix }
       : {}),
@@ -833,6 +780,23 @@ function buildConfiguredCreanovaAgentSettings(
   // LiteLLM's stream_options.include_usage with 400 validation_error.
   llm.stream = true;
   applyStrictOpenAiCompatibleLlmGuards(llm);
+  // Lean local / LAN: cut TTFT before first tool call (string-serializer +
+  // reasoning knobs were adding ~60s+ on qwen local).
+  const llmBaseForTemp =
+    typeof llm.base_url === "string" ? llm.base_url : null;
+  const leanLlm =
+    isLocalAuthEnabled() || isPrivateOrLocalLlmEndpoint(llmBaseForTemp);
+  if (leanLlm) {
+    llm.temperature = 0.1;
+    llm.stream = false;
+    llm.force_string_serializer = false;
+    llm.native_tool_calling = true;
+    llm.reasoning_effort = null;
+    llm.reasoning_summary = null;
+    llm.enable_encrypted_reasoning = false;
+    llm.extended_thinking_budget = null;
+    llm.prompt_cache_retention = null;
+  }
 
   if (isSubscriptionLlmConfig(llm)) {
     llm.auth_type = LLM_AUTH_TYPE_SUBSCRIPTION;
@@ -864,12 +828,21 @@ function buildConfiguredCreanovaAgentSettings(
       ? agentSettings.system_prompt.trim()
       : "";
   const llmBaseUrl = typeof llm.base_url === "string" ? llm.base_url : null;
+  const lean =
+    isPrivateOrLocalLlmEndpoint(llmBaseUrl) || isLocalAuthEnabled();
+  const leanTools = lean ? [] : tools;
   const systemPrompt =
     existingSystemPrompt ||
     assembleCanvasStaticSystemPrompt({
-      enableBrowser: tools.some((tool) => tool.name === BROWSER_TOOL_SET_NAME),
-      isLan: isPrivateOrLocalLlmEndpoint(llmBaseUrl),
+      enableBrowser:
+        !lean &&
+        leanTools.some((tool) => tool.name === BROWSER_TOOL_SET_NAME),
+      isLan: lean,
     });
+
+  const condenser = lean
+    ? { kind: "NoOpCondenser" }
+    : agentSettings.condenser;
 
   return {
     ...agentSettings,
@@ -881,7 +854,14 @@ function buildConfiguredCreanovaAgentSettings(
       ) ?? API_DEFAULT_AGENT_KIND,
     llm,
     agent_context: buildAgentContext(agentSettings, llm),
-    tools,
+    tools: leanTools,
+    condenser,
+    ...(lean
+      ? {
+          include_default_tools: ["FinishTool"],
+          enable_switch_llm_tool: false,
+        }
+      : {}),
     system_prompt: systemPrompt,
   };
 }
@@ -1158,7 +1138,7 @@ export async function assertSubscriptionAuthReady(
 }
 
 export async function buildStartConversationRequestWithEncryptedSettings(options: {
-  settings: Settings;
+  settings?: Settings;
   query?: string;
   conversationInstructions?: string;
   plugins?: PluginSpec[];
@@ -1170,7 +1150,12 @@ export async function buildStartConversationRequestWithEncryptedSettings(options
 }): Promise<Record<string, unknown>> {
   const { SecretsService } = await import("./secrets-service");
 
-  const [settingsResult, customSecrets] = await Promise.all([
+  // Parallelize the three create-time reads that used to be sequential
+  // (getSettings → getSettingsForConversation → getSecrets).
+  const [baseSettings, settingsResult, customSecrets] = await Promise.all([
+    options.settings
+      ? Promise.resolve(options.settings)
+      : SettingsService.getSettings(),
     SettingsService.getSettingsForConversation(),
     SecretsService.getSecrets(),
   ]);
@@ -1186,6 +1171,7 @@ export async function buildStartConversationRequestWithEncryptedSettings(options
 
   return buildStartConversationRequest({
     ...options,
+    settings: baseSettings,
     encryptedAgentSettings: agentSettings,
     encryptedConversationSettings: conversationSettings,
     secretsEncrypted,
