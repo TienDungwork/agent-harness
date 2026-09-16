@@ -2,11 +2,21 @@
 
 Postgres on `192.168.1.242:18644` stays the hot OLTP store. This stack copies **analytics columns** (no `snapshot_base64` / `image` / `face_feature`) into ClickHouse `vms.ai_events` for history queries.
 
+**Preferred boot (cùng Agent Canvas):** services `clickhouse` + `vms-sync` live in `agent-canvas/docker-compose.yml`. From `agent-canvas/`:
+
+```bash
+cp -n ../deploy/clickhouse/.env.example ../deploy/clickhouse/.env   # set passwords
+# ensure agent-canvas/.env has CH_PASSWORD=<same as CH_VMS_PASSWORD>
+docker compose up -d
+```
+
+This file (`deploy/clickhouse/docker-compose.yml`) remains a **standalone** option if you only want the warehouse (still needs external `agent-canvas_net` for MCP DNS). Prefer the agent-canvas compose for day-to-day.
+
 **One replica only** (`creanova-vms-sync`). Do not `compose scale`.
 
 Which files from the cloned `ClickHouse/` tree this stack actually uses: [UPSTREAM.md](UPSTREAM.md).
 
-## Boot
+## Boot (standalone)
 
 ```bash
 cp deploy/clickhouse/.env.example deploy/clickhouse/.env
@@ -17,10 +27,10 @@ docker run --rm -i --network host -e PGPASSWORD="$DEV_PASSWORD" postgres:16-alpi
   psql -h 192.168.1.242 -p 18644 -U dev -d postgres \
   -v pwd="$PG_PASSWORD" -f - < deploy/clickhouse/sql/pg_vms_sync_ro.sql
 
+# Requires agent-canvas_net already created:
+docker network create agent-canvas_net --subnet 10.240.120.0/24 2>/dev/null || true
 docker compose -f deploy/clickhouse/docker-compose.yml --env-file deploy/clickhouse/.env up -d
 ```
-
-Requires existing Docker network `agent-canvas_net` (Agent Canvas compose).
 
 - HTTP: `http://127.0.0.1:18123` (loopback only)
 - Image: `clickhouse/clickhouse-server:26.8.2.7` (26.8 LTS line; Hub has no `26.8-lts` tag yet)

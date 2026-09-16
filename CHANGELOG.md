@@ -2,6 +2,12 @@
 
 All notable changes to this workspace are listed here.
 
+## [beta v0.9.9] - 2026-09-15
+
+### Added
+
+- VMS ClickHouse analytics scoped by organization hierarchy (`VMS_ORGANIZATION_ID`, optional site/area/zone); default tenant org_id **106**.
+
 ## [beta v0.9.8] - 2026-09-15
 
 ### Fixed

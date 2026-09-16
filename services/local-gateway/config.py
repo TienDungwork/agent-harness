@@ -53,6 +53,13 @@ class Settings(BaseSettings):
     ch_user: str = 'vms_ro'
     ch_password: str = ''
     ch_database: str = 'vms'
+    # Tenant scope for every VMS query (KCN = 106). Required > 0.
+    vms_organization_id: int = 106
+
+    # KCN-style analytics agent (OpenAI-compatible LLM, e.g. LAN Ollama).
+    analytics_llm_base_url: str = 'http://192.168.1.196:11434/v1'
+    analytics_llm_model: str = 'qwen3-16k-nothink:latest'
+    analytics_llm_api_key: str = 'ollama'
 
     # Beszel integration (shared volume written by beszel-bootstrap container)
     beszel_shared_path: str = '/beszel_shared'
