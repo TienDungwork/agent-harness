@@ -2,6 +2,13 @@
 
 All notable changes to this workspace are listed here.
 
+## [beta v0.9.8] - 2026-09-15
+
+### Fixed
+
+- LLM profile Save no longer fails when the browser CORS-blocks the LAN `/v1/models` probe (e.g. Internal LLM Gateway `:18083` with a still-valid API key); toast now shows the real error message instead of generic "An error occurred".
+- Custom Model accepts/preserves hyphen ids like `qwen3-8b` for Internal LLM Gateway: on CORS soft-skip, Ollama-style `qwen3:8b` is rewritten to `qwen3-8b` for non-`:11434` LAN ports; placeholder no longer steers users toward colon-only tags.
+
 ## [beta v0.9.7] - 2026-09-14
 
 ### Fixed

@@ -23,6 +23,7 @@ import {
   displayErrorToast,
   displaySuccessToast,
 } from "#/utils/custom-toast-handlers";
+import { retrieveAxiosErrorMessage } from "#/utils/retrieve-axios-error-message";
 import { I18nKey } from "#/i18n/declaration";
 import {
   deriveProfileNameFromModel,
@@ -352,7 +353,8 @@ export function LlmSettingsLocalView() {
       handleBackToList();
     } catch (error) {
       console.error("Failed to save profile:", error);
-      displayErrorToast(t(I18nKey.ERROR$GENERIC));
+      const message = retrieveAxiosErrorMessage(error);
+      displayErrorToast(message || t(I18nKey.ERROR$GENERIC));
     } finally {
       setIsSaving(false);
     }

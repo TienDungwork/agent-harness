@@ -189,4 +189,45 @@ describe("llm-model-wire", () => {
       ),
     ).rejects.toThrow(/HTML/);
   });
+
+
+  it("skips gateway model probe when the browser cannot reach the endpoint (CORS)", async () => {
+    const fetchImpl = vi.fn(async () => {
+      throw new TypeError("Failed to fetch");
+    });
+    const llm: Record<string, unknown> = {
+      model: "openai/qwen3-8b",
+      base_url: "http://192.168.1.196:18083/v1",
+      api_key: "still-valid-key",
+    };
+    await expect(
+      assertAndResolveLlmModelOnEndpoint(llm, fetchImpl as typeof fetch),
+    ).resolves.toBeUndefined();
+    expect(llm.model).toBe("openai/qwen3-8b");
+  });
+
+  it("on CORS soft-skip, rewrites Ollama-style colon tags to hyphen on non-Ollama LAN ports", async () => {
+    const fetchImpl = vi.fn(async () => {
+      throw new TypeError("Failed to fetch");
+    });
+    const llm: Record<string, unknown> = {
+      model: "openai/qwen3:8b",
+      base_url: "http://192.168.1.196:18083/v1",
+      api_key: "still-valid-key",
+    };
+    await assertAndResolveLlmModelOnEndpoint(llm, fetchImpl as typeof fetch);
+    expect(llm.model).toBe("openai/qwen3-8b");
+  });
+
+  it("on CORS soft-skip, keeps hyphen size tags on Internal LLM Gateway ports", async () => {
+    const fetchImpl = vi.fn(async () => {
+      throw new TypeError("Failed to fetch");
+    });
+    const llm: Record<string, unknown> = {
+      model: "openai/qwen3-8b",
+      base_url: "http://192.168.1.196:18083/v1",
+    };
+    await assertAndResolveLlmModelOnEndpoint(llm, fetchImpl as typeof fetch);
+    expect(llm.model).toBe("openai/qwen3-8b");
+  });
 });

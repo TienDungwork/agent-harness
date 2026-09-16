@@ -205,6 +205,70 @@ export function findGatewayModelMatch(
 }
 
 /**
+ * Ollama tags look like ``qwen3:8b``; some Internal LLM Gateways register
+ * the same model as ``qwen3-8b``. Only rewrite that size-tag shape.
+ */
+const OLLAMA_SIZE_TAG =
+  /^([A-Za-z0-9._]+):(\d+[bB](?:-[A-Za-z0-9._]+)?)$/;
+const HYPHEN_SIZE_TAG =
+  /^([A-Za-z0-9._]+)-(\d+[bB](?:-[A-Za-z0-9._]+)?)$/;
+
+function llmEndpointPort(baseUrl: string): string | null {
+  try {
+    const url = new URL(baseUrl);
+    if (url.port) return url.port;
+    return url.protocol === "https:" ? "443" : "80";
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * When the browser cannot probe ``/v1/models`` (CORS), keep the user's id
+ * style aligned with common LAN gateways: Ollama ``:11434`` prefers
+ * ``qwen3:8b``; other private OpenAI gateways often ACL ``qwen3-8b``.
+ */
+export function applyLanModelIdStyleWhenProbeSkipped(
+  llm: Record<string, unknown>,
+): void {
+  const baseUrl = typeof llm.base_url === "string" ? llm.base_url : "";
+  const model = typeof llm.model === "string" ? llm.model : "";
+  if (!baseUrl.trim() || !model.trim()) return;
+  if (!isPrivateOrLocalLlmEndpoint(baseUrl)) return;
+
+  const port = llmEndpointPort(baseUrl);
+  const bare = bareLlmModelId(model);
+  if (port === "11434") {
+    const m = HYPHEN_SIZE_TAG.exec(bare);
+    if (m) {
+      llm.model = normalizeLlmModelForLiteLLM(`${m[1]}:${m[2]}`, baseUrl);
+    }
+    return;
+  }
+
+  const m = OLLAMA_SIZE_TAG.exec(bare);
+  if (m) {
+    llm.model = normalizeLlmModelForLiteLLM(`${m[1]}-${m[2]}`, baseUrl);
+  }
+}
+
+/** Browser/network failure talking to a custom LLM base_url (often CORS). */
+export class LlmEndpointUnreachableError extends Error {
+  readonly name = "LlmEndpointUnreachableError";
+}
+
+export function isLlmEndpointUnreachableError(
+  error: unknown,
+): error is LlmEndpointUnreachableError {
+  return (
+    error instanceof LlmEndpointUnreachableError ||
+    (error instanceof Error &&
+      (error.name === "LlmEndpointUnreachableError" ||
+        error.message.startsWith("Cannot reach LLM endpoint ")))
+  );
+}
+
+/**
  * List model ids from an OpenAI-compatible ``GET .../models`` endpoint.
  * Rejects HTML (wrong port / SPA) so save fails before chat.
  */
@@ -231,7 +295,10 @@ export async function fetchOpenAiCompatibleModelIds(
       signal: AbortSignal.timeout(12_000),
     });
   } catch (err) {
-    throw new Error(
+    // Mark as unreachable so save can soft-skip: browser CORS / offline
+    // hosts throw TypeError("Failed to fetch") even when the API key is valid
+    // for server-side calls from the agent-server.
+    throw new LlmEndpointUnreachableError(
       `Cannot reach LLM endpoint ${modelsUrl}: ${
         err instanceof Error ? err.message : String(err)
       }`,
@@ -302,11 +369,23 @@ export async function assertAndResolveLlmModelOnEndpoint(
   }
 
   const apiKey = typeof llm.api_key === "string" ? llm.api_key : null;
-  const available = await fetchOpenAiCompatibleModelIds(
-    baseUrl,
-    apiKey,
-    fetchImpl,
-  );
+  let available: string[];
+  try {
+    available = await fetchOpenAiCompatibleModelIds(
+      baseUrl,
+      apiKey,
+      fetchImpl,
+    );
+  } catch (error) {
+    // Cross-origin LAN gateways (e.g. :18083) often omit CORS. The probe runs
+    // in the browser and fails with Failed to fetch even when the key works
+    // from the agent-server. Soft-skip so Save can persist the profile.
+    if (isLlmEndpointUnreachableError(error)) {
+      applyLanModelIdStyleWhenProbeSkipped(llm);
+      return;
+    }
+    throw error;
+  }
   if (available.length === 0) {
     throw new Error(
       `LLM endpoint ${baseUrl} returned an empty model list. Cannot save profile.`,
@@ -319,7 +398,7 @@ export async function assertAndResolveLlmModelOnEndpoint(
     throw new Error(
       `Model "${bareLlmModelId(model)}" is not on ${baseUrl}. ` +
         `Available: ${sample}${available.length > 12 ? ", …" : ""}. ` +
-        `Copy an id exactly (e.g. qwen3:4b, not qwen3-4b).`,
+        `Copy an id exactly from that list (hyphen or colon — gateways differ).`,
     );
   }
 
