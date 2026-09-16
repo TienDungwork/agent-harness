@@ -1,0 +1,117 @@
+schema_version: "1.0.0"
+id: "system.create-user"
+type: "how_to"
+status: "published"
+locale: "vi"
+version: 1
+title: "Tạo người dùng VMS"
+intent: "create_user"
+aliases:
+  - "thêm người dùng"
+  - "tạo tài khoản VMS"
+  - "tạo user mới"
+module: "system"
+tags:
+  - "người dùng"
+  - "tài khoản"
+  - "quản trị hệ thống"
+roles:
+  - "Quản trị viên hệ thống"
+  - "Quản trị viên tổ chức"
+features:
+  - "system_management"
+  - "user_management"
+route: "/system?tab=users"
+menu_path:
+  - "Quản Trị Hệ Thống"
+  - "Quản trị người dùng"
+preconditions:
+  - "Đã đăng nhập bằng tài khoản được phép mở Quản Trị Hệ Thống."
+  - "Có quyền quản lý người dùng trong phạm vi tổ chức được giao."
+summary: "Mở tab Quản trị người dùng, nhập các trường bắt buộc và tạo tài khoản trong phạm vi quản trị được phép."
+steps:
+  - order: 1
+    say: "Mở Quản Trị Hệ Thống."
+    ui:
+      label: "Quản Trị Hệ Thống"
+      i18n_key: "sidebar.systemManagement"
+      element_id: null
+  - order: 2
+    say: "Chọn tab Quản trị người dùng."
+    ui:
+      label: "Quản trị người dùng"
+      i18n_key: "system.userManagement"
+      element_id: null
+  - order: 3
+    say: "Chọn Thêm người dùng."
+    ui:
+      label: "Thêm người dùng"
+      i18n_key: "system.addUser"
+      element_id: null
+  - order: 4
+    say: "Nhập Tên đăng nhập, Email và Mật khẩu."
+    ui:
+      label: "Thêm người dùng"
+      i18n_key: "system.addUser"
+      element_id: null
+    fields:
+      - label: "Tên đăng nhập"
+        i18n_key: "system.username"
+        required: true
+      - label: "Email"
+        i18n_key: "system.email"
+        required: true
+        constraints:
+          - "Phải đúng định dạng email."
+      - label: "Mật khẩu"
+        i18n_key: "system.password"
+        required: true
+        constraints:
+          - "Có ít nhất 8 ký tự."
+  - order: 5
+    say: "Nếu cần, chọn vai trò và các cấp Tổ chức, Cơ sở, Khu vực hoặc Phân vùng mà giao diện yêu cầu cho vai trò đó."
+    ui:
+      label: "Chọn vai trò"
+      i18n_key: "system.roleSelect"
+      element_id: null
+    note: "Vai trò là tùy chọn; các trường phạm vi bắt buộc thay đổi theo vai trò được chọn."
+  - order: 6
+    say: "Chọn Trạng thái cho tài khoản."
+    ui:
+      label: "Trạng thái"
+      i18n_key: "common.status"
+      element_id: null
+    fields:
+      - label: "Trạng thái"
+        i18n_key: "common.status"
+        required: true
+  - order: 7
+    say: "Chọn Tạo người dùng."
+    ui:
+      label: "Tạo người dùng"
+      i18n_key: "system.createUser"
+      element_id: null
+verify: "Giao diện báo tạo tài khoản thành công và người dùng mới xuất hiện trong danh sách thuộc phạm vi được phép."
+sources:
+  - path: "frontend/src/App.jsx"
+    kind: "route"
+    note: "SystemRoute chỉ cho phép tài khoản vượt qua canViewSystem mở trang /system."
+  - path: "frontend/src/contexts/UserContext.jsx"
+    kind: "component"
+    note: "checkCanViewSystem giới hạn trang cho quản trị viên hệ thống hoặc quản trị viên tổ chức."
+  - path: "frontend/src/pages/System/System.jsx"
+    kind: "component"
+    note: "Đọc tab từ query tab; tab users kết xuất UsersTab và UserModal."
+  - path: "frontend/src/pages/System/tabs/UsersTab.jsx"
+    kind: "component"
+    note: "Cung cấp nút Thêm người dùng và danh sách người dùng đã được scope."
+  - path: "frontend/src/pages/System/UserModal.jsx"
+    kind: "component"
+    note: "Xác minh trường bắt buộc, ràng buộc email và mật khẩu, phạm vi theo vai trò, thao tác tạo và thông báo thành công."
+  - path: "frontend/src/i18n/locales/vi/common.json"
+    kind: "i18n"
+    note: "Nguồn nhãn tiếng Việt của menu, tab, trường và nút."
+  - path: "frontend/src/pages/System/UserModal.test.jsx"
+    kind: "test"
+    note: "Kiểm tra lựa chọn vai trò và các cấp phạm vi hiển thị trong UserModal."
+last_verified: "2026-09-16"

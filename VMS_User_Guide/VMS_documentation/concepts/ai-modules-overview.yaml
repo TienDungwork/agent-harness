@@ -1,0 +1,74 @@
+schema_version: "1.0.0"
+id: "concept.ai-modules-overview"
+type: concept
+status: published
+locale: vi
+version: 1
+title: "Module AI và menu Dịch Vụ"
+intent: "understand_ai_modules"
+aliases:
+  - "module AI là gì"
+  - "menu Dịch Vụ có những gì"
+  - "vì sao danh sách AI của tôi khác người khác"
+module: "ai"
+tags:
+  - "module AI"
+  - "Dịch Vụ"
+  - "tab AI"
+  - "menu động"
+roles:
+  - "authenticated_user"
+features:
+  - "ai_module_enabled_for_organization"
+route: null
+menu_path:
+  - "Dịch Vụ"
+preconditions:
+  - "Người dùng đã đăng nhập vào VMS."
+summary: "Nhóm Dịch Vụ hiển thị động các module AI khả dụng cho tổ chức; danh sách module và tab có thể khác giữa các tài khoản hoặc tổ chức."
+answer: >-
+  Nhóm Dịch Vụ không chứa một danh sách module cố định. Thanh bên nạp danh sách
+  module AI từ hệ thống, chỉ giữ module đang hoạt động, được bật cho tổ chức và
+  không phải nhóm phân loại, rồi tạo mục điều hướng cho từng module. Vì thế không
+  có cơ sở để khẳng định một module cụ thể được bật cho mọi người dùng. Tên module
+  ưu tiên khóa i18n modules.<CODE>.label, sau đó mới dùng tên do hệ thống trả về
+  hoặc mã module. Khi mở module, trang chọn bộ tab theo mã module; nhãn tab dùng
+  các khóa modules.tabs.*. Những tab nằm trong disabled_features của module bị
+  ẩn, và tab không hợp lệ hoặc đã bị tắt được chuyển sang tab khả dụng đầu tiên.
+  Một số module có route chuyên biệt, nên hãy mở từ mục đang hiển thị trong thanh
+  bên thay vì tự suy đoán đường dẫn. Việc một module xuất hiện cũng không tự chứng
+  minh mọi tab đã kết nối dữ liệu thật: giao diện INTRUSION và BEHAVIOR hiện có
+  phần dữ liệu mô phỏng, còn một số tab cấu hình FIRE, ZONE hoặc CROWD là legacy
+  hoặc không được menu hiện hành expose. Chatbot chỉ hướng dẫn các card published
+  đã xác minh, không suy ra thao tác từ tên module. Nếu nhóm Dịch Vụ không có
+  module cần tìm, hãy kiểm tra với quản trị viên tổ chức về module và feature đã
+  được cấp.
+sources:
+  - path: "frontend/src/components/layout/Sidebar.jsx"
+    kind: component
+    note: "Xác minh cách nạp, lọc, nhóm và tạo đường dẫn cho module AI trong nhóm Dịch Vụ."
+  - path: "frontend/src/utils/aiModules.js"
+    kind: component
+    note: "Xác minh điều kiện module khả dụng và loại trừ module nhóm phân loại."
+  - path: "frontend/src/pages/AIModuleDetail/AIModuleDetail.jsx"
+    kind: component
+    note: "Xác minh cách chọn tab, ẩn disabled_features và chuyển sang tab khả dụng."
+  - path: "frontend/src/utils/aiModuleTabs.js"
+    kind: component
+    note: "Xác minh bộ tab, tab mặc định và các route module chuyên biệt."
+  - path: "frontend/src/utils/moduleI18n.js"
+    kind: component
+    note: "Xác minh thứ tự ưu tiên nhãn module."
+  - path: "frontend/src/i18n/locales/vi/modules.json"
+    kind: i18n
+    note: "Xác minh nhãn tiếng Việt của module và tab."
+  - path: "frontend/src/i18n/locales/vi/common.json"
+    kind: i18n
+    note: "Xác minh nhãn nhóm sidebar Dịch Vụ."
+  - path: "frontend/src/pages/AIModuleDetail/components/intrusion/index.jsx"
+    kind: component
+    note: "Dữ liệu INTRUSION hiện được khai báo tĩnh trong component."
+  - path: "frontend/src/pages/AIModuleDetail/components/behavior/index.jsx"
+    kind: component
+    note: "Các màn BEHAVIOR hiện dùng dữ liệu mô phỏng trong component."
+last_verified: "2026-09-16"

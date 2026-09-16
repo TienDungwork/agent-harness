@@ -1,0 +1,110 @@
+schema_version: "1.0.0"
+id: "how-to.ai.manage-monitoring-zone"
+type: how_to
+status: published
+locale: vi
+version: 1
+title: "Vẽ vùng giám sát AI trên camera trực tiếp"
+intent: "manage_monitoring_zone"
+aliases:
+  - "vẽ vùng giám sát AI"
+  - "tạo zone trên camera trực tiếp"
+  - "thiết lập polygon nhận diện"
+module: "ai"
+tags:
+  - "vùng AI"
+  - "zone"
+  - "polygon"
+  - "giám sát trực tiếp"
+roles:
+  - "authenticated_user_with_camera_scope"
+features:
+  - "monitoring"
+  - "camera_ai_feature_enabled"
+route: "/monitoring"
+menu_path:
+  - "Vận hành"
+  - "Giám Sát Trực Tiếp"
+preconditions:
+  - "Người dùng đã đăng nhập và feature monitoring được bật."
+  - "Camera thuộc phạm vi quyền của người dùng và đang được mở trong một ô xem trực tiếp."
+  - "Camera có ít nhất một chức năng AI khả dụng hoặc ngữ cảnh AI hợp lệ để lưu vùng."
+summary: "Trên một ô camera trực tiếp, chọn chức năng AI rồi vẽ polygon khép kín và lưu làm vùng giám sát AI."
+steps:
+  - order: 1
+    say: "Mở Giám Sát Trực Tiếp và đưa camera cần cấu hình vào một ô xem."
+    ui:
+      label: "Giám Sát Trực Tiếp"
+      i18n_key: "sidebar.liveMonitoring"
+      element_id: null
+  - order: 2
+    say: "Trên ô camera, mở Chức năng AI và chọn một chức năng đang được bật cho camera nếu chưa có chức năng hiện tại."
+    ui:
+      label: "Chức năng AI"
+      i18n_key: "generated.Live.chucNangAi"
+      element_id: null
+  - order: 3
+    say: "Nhấn Vẽ Zone mới trên ô camera."
+    ui:
+      label: "Vẽ Zone mới"
+      i18n_key: "generated.Live.veZoneMoi"
+      element_id: null
+  - order: 4
+    say: "Giữ chế độ Vẽ polygon, nhấp ít nhất ba điểm trên khung hình rồi nhấp lại điểm đầu để đóng vùng."
+    ui:
+      label: "Vẽ polygon"
+      i18n_key: "polygonDrawer.shapePolygon"
+      element_id: null
+  - order: 5
+    say: "Sau khi vùng đã khép kín, có thể nhập Mã polygon và chọn màu hiển thị."
+    fields:
+      - label: "Mã polygon"
+        i18n_key: "polygonDrawer.codePlaceholder"
+        required: false
+        constraints:
+          - "Tối đa 100 ký tự."
+          - "Giao diện chuyển giá trị nhập sang chữ hoa."
+      - label: "Màu"
+        i18n_key: "polygonDrawer.viewColors"
+        required: false
+  - order: 6
+    say: "Nhấn Lưu để lưu vùng AI."
+    ui:
+      label: "Lưu"
+      i18n_key: "polygonDrawer.saveLabel"
+      element_id: null
+verify: "Thông báo Đã lưu vùng AI thành công xuất hiện và vùng đã lưu được hiển thị lại trên ô camera."
+errors:
+  - if: "Danh sách Chức năng AI hiển thị Không có chức năng AI khả dụng."
+    then: "Dừng thao tác và nhờ quản trị viên bật hoặc gán chức năng AI cho camera."
+  - if: "Nút Vẽ Zone mới bị vô hiệu hóa hoặc có nhắc Chọn chức năng AI trước khi vẽ zone."
+    then: "Chọn một chức năng AI đang bật cho camera trước khi vẽ."
+  - if: "Không thể đóng polygon hoặc giao diện báo các đoạn cắt nhau."
+    then: "Xóa các điểm đã vẽ và tạo lại một polygon có ít nhất ba điểm, không tự giao nhau."
+  - if: "Thông báo Lưu vùng thất bại xuất hiện."
+    then: "Giữ nguyên tên camera và chức năng AI đã chọn để cung cấp cho quản trị viên; không khẳng định vùng đã được lưu."
+  - if: "Không thấy camera cần cấu hình."
+    then: "Kiểm tra phạm vi camera theo vai trò và tổ chức của người dùng."
+sources:
+  - path: "frontend/src/App.jsx"
+    kind: route
+    note: "Xác minh route monitoring yêu cầu đăng nhập và feature monitoring."
+  - path: "frontend/src/features/common/live-monitoring/Live/Live.jsx"
+    kind: component
+    note: "Xác minh phạm vi camera theo role, chọn chức năng AI, điều kiện bật nút vẽ, lưu và tải lại vùng."
+  - path: "frontend/src/components/PolygonDrawer/PolygonDrawer.jsx"
+    kind: component
+    note: "Xác minh thao tác vẽ polygon, đóng vùng, mã, màu, nút Lưu và các lỗi hình học."
+  - path: "frontend/src/i18n/locales/vi/common.json"
+    kind: i18n
+    note: "Xác minh nhãn Giám Sát Trực Tiếp và Chỉnh sửa Zones."
+  - path: "frontend/src/i18n/locales/vi/generated.json"
+    kind: i18n
+    note: "Xác minh nhãn Chức năng AI, Vẽ Zone mới và trạng thái thiếu chức năng AI."
+  - path: "frontend/src/i18n/locales/vi/live.json"
+    kind: i18n
+    note: "Xác minh nhãn công cụ polygon, thông báo thành công, lỗi và empty state chức năng AI."
+  - path: "frontend/src/components/PolygonDrawer/PolygonDrawer.test.jsx"
+    kind: test
+    note: "Xác minh overlay vẽ được kích hoạt và polygon hiện có được render trong chế độ chỉnh sửa."
+last_verified: "2026-09-16"

@@ -1,0 +1,74 @@
+schema_version: "1.0.0"
+id: operations.view_playback
+type: how_to
+status: published
+locale: vi
+version: 1
+title: "Xem lại bản ghi camera"
+intent: view_playback
+aliases:
+  - "xem lại camera"
+  - "xem video đã ghi"
+  - "mở playback camera"
+module: playback
+tags:
+  - "phát lại"
+  - "bản ghi"
+  - "camera"
+roles:
+  - unknown
+features:
+  - playback
+route: "/playback"
+menu_path:
+  - "Vận hành"
+  - "Phát Lại"
+preconditions:
+  - "Đã đăng nhập vào VMS."
+  - "Tính năng playback được bật cho tổ chức và hiển thị với tài khoản hiện tại."
+summary: "Mở Phát Lại, chọn camera và ngày giờ có bản ghi, rồi chọn thời điểm cần xem trên dòng thời gian."
+steps:
+  - order: 1
+    say: "Trong nhóm Vận hành, mở Phát Lại."
+    ui:
+      label: "Phát Lại"
+      i18n_key: "sidebar.playback"
+      element_id: null
+  - order: 2
+    say: "Mở danh sách camera ở đầu màn hình và chọn camera cần xem; chấm xanh cho biết camera có bản ghi trong ngày."
+    note: "Có thể dùng ô tìm camera trong danh sách nếu có nhiều camera."
+  - order: 3
+    say: "Chọn ngày và giờ cần xem."
+    ui:
+      label: "Chọn ngày/giờ"
+      i18n_key: "generated.Playback.chonNgayGio"
+      element_id: null
+  - order: 4
+    say: "Trên dòng thời gian, chọn thời điểm nằm trong đoạn có bản ghi để phát video tại thời điểm đó."
+  - order: 5
+    say: "Dùng các nút Chơi, Tạm dừng, tua 10 giây hoặc tốc độ phát để xem bản ghi."
+    note: "Nếu chọn khoảng trống không có dữ liệu, màn hình báo không có video tại thời điểm đã chọn."
+verify: "Video của camera đã chọn hiển thị và thời gian phát thay đổi trên dòng thời gian."
+sources:
+  - path: "frontend/src/App.jsx"
+    kind: route
+    note: "Route /playback yêu cầu đăng nhập và feature playback."
+  - path: "frontend/src/components/layout/Sidebar.jsx"
+    kind: component
+    note: "Menu Phát Lại dùng route /playback và i18n key sidebar.playback."
+  - path: "frontend/src/pages/Playback/Playback.jsx"
+    kind: component
+    note: "Xác minh chọn camera, chọn ngày giờ, tải bản ghi, chọn timeline và các điều khiển phát."
+  - path: "frontend/src/i18n/locales/vi/common.json"
+    kind: i18n
+    note: "Xác minh nhãn menu Phát Lại."
+  - path: "frontend/src/i18n/locales/vi/generated.json"
+    kind: i18n
+    note: "Xác minh nhãn Chọn ngày/giờ và các điều khiển phát."
+  - path: "frontend/src/i18n/locales/vi/playback.json"
+    kind: i18n
+    note: "Xác minh trạng thái bản ghi và thông báo khi không có video."
+  - path: "frontend/src/pages/Playback/Playback.test.jsx"
+    kind: test
+    note: "Xác minh trang phát lại, chọn camera theo tham số và tìm camera trong danh sách."
+last_verified: "2026-09-16"

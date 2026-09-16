@@ -1,0 +1,139 @@
+schema_version: "1.0.0"
+id: organization.create_site_area
+type: how_to
+status: published
+locale: vi
+version: 1
+title: "Tạo Cơ sở hoặc Khu vực theo quan hệ cha"
+intent: create_site_or_area
+aliases:
+  - "tạo cơ sở hoặc khu vực"
+  - "thêm site vào tổ chức"
+  - "thêm area vào site"
+  - "tạo cấp con cơ sở khu vực"
+module: organization
+tags:
+  - "cơ sở"
+  - "site"
+  - "khu vực"
+  - "area"
+  - "quan hệ cha"
+roles:
+  - SUPER_ADMIN
+  - ORG_ADMIN
+  - SITE_ADMIN
+features:
+  - none
+route: "/org/sites"
+menu_path:
+  - "Vận hành"
+  - "Quản lý Cơ sở & Khu vực"
+preconditions:
+  - "Người dùng đã đăng nhập."
+  - "Để tạo Cơ sở, tài khoản phải là SUPER_ADMIN hoặc ORG_ADMIN."
+  - "Để tạo Khu vực, tài khoản phải là SUPER_ADMIN, ORG_ADMIN hoặc SITE_ADMIN có quyền quản lý Cơ sở cha."
+  - "Phải có Cơ sở trước khi tạo Khu vực."
+summary: "Mở Quản lý Cơ sở & Khu vực, chọn đúng tab và tạo một cấp con theo quan hệ Tổ chức Gốc → Cơ sở hoặc Cơ sở → Khu vực."
+steps:
+  - order: 1
+    say: "Trong menu Vận hành, chọn Quản lý Cơ sở & Khu vực."
+    ui:
+      label: "Quản lý Cơ sở & Khu vực"
+      i18n_key: "kcn.adminMenu.kcnSites"
+      element_id: null
+  - order: 2
+    say: "Nếu tạo Cơ sở, chọn tab Danh sách Cơ sở rồi chọn Thêm Cơ sở Mới."
+    ui:
+      label: "Danh sách Cơ sở"
+      i18n_key: "kcn.sites.sitesTab"
+      element_id: null
+  - order: 3
+    say: "Trong biểu mẫu Cơ sở, chọn Tổ chức Gốc, nhập Mã và Tên; có thể nhập Địa chỉ Cơ sở."
+    fields:
+      - label: "Tổ chức Gốc"
+        i18n_key: "kcn.sites.organization"
+        required: true
+      - label: "Mã"
+        i18n_key: "kcn.sites.code"
+        required: true
+        example: "site-01"
+        constraints:
+          - "Chỉ gồm chữ thường, số, dấu gạch nối hoặc gạch dưới."
+          - "Không chứa dấu tiếng Việt hoặc khoảng trắng."
+          - "Không trùng mã Cơ sở đang có."
+      - label: "Tên"
+        i18n_key: "kcn.sites.name"
+        required: true
+        constraints:
+          - "Không trùng tên Cơ sở đang có."
+      - label: "Địa chỉ Cơ sở"
+        i18n_key: "kcn.sites.address"
+        required: false
+  - order: 4
+    say: "Chọn Tạo mới để tạo Cơ sở trong Tổ chức Gốc đã chọn."
+    ui:
+      label: "Tạo mới"
+      i18n_key: "kcn.sites.create"
+      element_id: null
+  - order: 5
+    say: "Nếu tạo Khu vực, chọn tab Danh sách Khu vực rồi chọn Thêm Khu vực Mới."
+    ui:
+      label: "Danh sách Khu vực"
+      i18n_key: "kcn.sites.areasTab"
+      element_id: null
+  - order: 6
+    say: "Trong biểu mẫu Khu vực, chọn Cơ sở cha trong Danh sách Cơ sở, rồi nhập Mã và Tên."
+    fields:
+      - label: "Danh sách Cơ sở"
+        i18n_key: "kcn.sites.sitesTab"
+        required: true
+      - label: "Mã"
+        i18n_key: "kcn.sites.code"
+        required: true
+        example: "area-a"
+        constraints:
+          - "Chỉ gồm chữ thường, số, dấu gạch nối hoặc gạch dưới."
+          - "Không chứa dấu tiếng Việt hoặc khoảng trắng."
+          - "Không trùng mã Khu vực trong Cơ sở đã chọn."
+      - label: "Tên"
+        i18n_key: "kcn.sites.name"
+        required: true
+        constraints:
+          - "Không trùng tên Khu vực trong Cơ sở đã chọn."
+  - order: 7
+    say: "Chọn Tạo mới để tạo Khu vực trực thuộc Cơ sở đã chọn."
+    ui:
+      label: "Tạo mới"
+      i18n_key: "kcn.sites.create"
+      element_id: null
+verify: "Biểu mẫu đóng và Cơ sở hoặc Khu vực mới xuất hiện trong đúng danh sách sau khi dữ liệu được tải lại."
+errors:
+  - if: "Không thấy nút Thêm Cơ sở Mới."
+    then: "Tài khoản hiện tại không có canCreateSite; cần SUPER_ADMIN hoặc ORG_ADMIN."
+  - if: "Không thấy nút Thêm Khu vực Mới."
+    then: "Tài khoản hiện tại không có canCreateArea; cần quyền quản trị từ SITE_ADMIN trở lên."
+  - if: "Không thể mở biểu mẫu tạo Khu vực."
+    then: "Hệ thống chưa có Cơ sở; hãy tạo Cơ sở trước."
+sources:
+  - path: "frontend/src/App.jsx"
+    kind: route
+    note: "Khai báo route /org/sites với RequireAuth và không có RequireFeature."
+  - path: "frontend/src/components/layout/Sidebar.jsx"
+    kind: component
+    note: "Xác minh menu Quản lý Cơ sở & Khu vực và điều kiện canViewSiteTab."
+  - path: "frontend/src/features/platform/sites/SitesAreasPage.jsx"
+    kind: component
+    note: "Xác minh hai tab, nút tạo, trường bắt buộc, quan hệ cha, kiểm tra quyền và thao tác tạo Cơ sở/Khu vực."
+  - path: "frontend/src/contexts/UserContext.jsx"
+    kind: component
+    note: "canCreateSite cho SUPER_ADMIN/ORG_ADMIN; canCreateArea cho SUPER_ADMIN/ORG_ADMIN/SITE_ADMIN và kiểm tra phạm vi Cơ sở."
+  - path: "frontend/src/i18n/locales/vi/kcn.json"
+    kind: i18n
+    note: "Xác minh nhãn tab, nút, field, validation và thông báo tạo thành công."
+  - path: "frontend/src/features/platform/sites/__tests__/SitesSlug.test.jsx"
+    kind: test
+    note: "Kiểm tra định dạng Mã slug cho Site, Area và Zone."
+  - path: "frontend/src/features/kcn/system/hierarchy/KcnHierarchyPage.test.jsx"
+    kind: test
+    note: "Kiểm tra ma trận quyền dùng chung: SITE_ADMIN được tạo Area dưới Site trong phạm vi nhưng không được tạo Site dưới Organization."
+last_verified: "2026-09-16"

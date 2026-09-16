@@ -1,0 +1,89 @@
+schema_version: "1.0.0"
+id: auth.update_profile
+type: how_to
+status: published
+locale: vi
+version: 1
+title: "Cập nhật thông tin cá nhân"
+intent: update_profile
+aliases:
+  - "sửa hồ sơ cá nhân"
+  - "đổi họ và tên"
+  - "cập nhật số điện thoại"
+  - "chỉnh thông tin tài khoản"
+module: auth
+tags:
+  - profile
+  - account
+  - personal-information
+roles:
+  - authenticated_user
+features:
+  - none
+route: null
+preconditions:
+  - "Người dùng đã đăng nhập và menu người dùng đang hiển thị trên thanh trên cùng."
+summary: "Mở Thông tin cá nhân từ menu người dùng, cập nhật Họ và tên hoặc Số điện thoại rồi chọn Lưu cập nhật."
+steps:
+  - order: 1
+    say: "Trên thanh trên cùng, chọn nút đang hiển thị tên tài khoản để mở menu người dùng."
+    ui:
+      label: "Tên tài khoản hiện tại"
+      i18n_key: null
+      element_id: "user-menu-btn"
+  - order: 2
+    say: "Chọn Thông tin cá nhân."
+    ui:
+      label: "Thông tin cá nhân"
+      i18n_key: "user.profileInfo"
+      element_id: "user-menu-profile-btn"
+  - order: 3
+    say: "Trong Thông tin cá nhân, nhập Họ và tên và cập nhật Số điện thoại nếu cần."
+    ui:
+      label: "Thông tin cá nhân"
+      i18n_key: "user.profileInfo"
+      element_id: null
+    fields:
+      - label: "Họ và tên"
+        i18n_key: "user.fullName"
+        required: true
+        constraints:
+          - "Không được để trống."
+          - "Không vượt quá 100 ký tự."
+      - label: "Số điện thoại"
+        i18n_key: "user.phone"
+        required: false
+        constraints:
+          - "Có thể để trống."
+          - "Nếu nhập, dùng số di động Việt Nam bắt đầu bằng 0 hoặc +84, tiếp theo là 3, 5, 7, 8 hoặc 9 và tám chữ số."
+  - order: 4
+    say: "Chọn Lưu cập nhật."
+    ui:
+      label: "Lưu cập nhật"
+      i18n_key: "common.saveChanges"
+      element_id: null
+verify: "Hộp thoại hiển thị Cập nhật thông tin cá nhân thành công! và thông tin tài khoản được tải lại."
+errors:
+  - if: "Họ và tên bị bỏ trống."
+    then: "Nhập Họ và tên rồi chọn Lưu cập nhật lại."
+  - if: "Họ và tên vượt quá 100 ký tự."
+    then: "Rút ngắn Họ và tên còn tối đa 100 ký tự."
+  - if: "Số điện thoại không hợp lệ."
+    then: "Nhập lại đúng định dạng số di động Việt Nam hoặc để trống trường này."
+sources:
+  - path: "frontend/src/components/layout/UserMenu.jsx"
+    kind: component
+    note: "Xác minh luồng mở hồ sơ, các field có thể sửa, validation, yêu cầu cập nhật và tải lại thông tin tài khoản."
+  - path: "frontend/src/i18n/locales/vi/common.json"
+    kind: i18n
+    note: "Nguồn nhãn Thông tin cá nhân, Họ và tên, Số điện thoại, Lưu cập nhật và thông báo thành công."
+  - path: "frontend/src/i18n/locales/vi/missing.json"
+    kind: i18n
+    note: "Nguồn thông báo giới hạn Họ và tên và định dạng Số điện thoại."
+  - path: "frontend/tests/e2e/auth/login-profile-workflow.spec.js"
+    kind: test
+    note: "TC61, TC63, TC66 và TC68 xác minh giao diện hồ sơ, cập nhật tên, field chỉ đọc và validation bắt buộc."
+  - path: "frontend/tests/profile/user-profile.spec.js"
+    kind: test
+    note: "Xác minh định dạng Số điện thoại và giới hạn tối đa 100 ký tự của Họ và tên."
+last_verified: "2026-09-16"

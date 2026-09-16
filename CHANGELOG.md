@@ -2,6 +2,12 @@
 
 All notable changes to this workspace are listed here.
 
+## [beta v0.10.6] - 2026-09-16
+
+### Added
+
+- VMS User Guide YAML how-tos (auth, devices, AI modules, operations, organization, system) under `VMS_User_Guide/`.
+
 ## [beta v0.10.5] - 2026-09-16
 
 ### Fixed

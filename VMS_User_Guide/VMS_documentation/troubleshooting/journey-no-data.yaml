@@ -1,0 +1,57 @@
+schema_version: "1.0.0"
+id: troubleshooting.journey_no_data
+type: troubleshooting
+status: published
+locale: vi
+version: 1
+title: "Tra cứu hành trình không có dữ liệu"
+intent: troubleshoot_journey_no_data
+aliases:
+  - "hành trình không có dữ liệu"
+  - "không thấy đường đi biển số"
+  - "không ra hành trình khuôn mặt"
+  - "bản đồ hành trình trống"
+module: ai
+tags:
+  - journey
+  - face
+  - plate
+  - map
+roles:
+  - authenticated_user
+features:
+  - ai-modules
+route: null
+preconditions:
+  - "Tổ chức đã được cấp module Nhận diện Khuôn mặt hoặc Hệ thống giám sát phương tiện."
+summary: "Kiểm tra lại mã đối tượng hoặc biển số và khoảng thời gian; nếu có sự kiện nhưng không vẽ được lộ trình, camera có thể chưa có tọa độ."
+symptoms:
+  - "Hiển thị Không có sự kiện nào trong khoảng thời gian đã chọn."
+  - "Có danh sách sự kiện nhưng bản đồ không vẽ lộ trình."
+  - "Hiển thị Camera chưa có tọa độ trên bản đồ."
+checks:
+  - order: 1
+    if: "Bạn chưa nhập mã nhân sự/đối tượng hoặc biển số."
+    then: "Nhập đúng mã nhân sự/đối tượng đối với Face hoặc biển số đối với phương tiện."
+  - order: 2
+    if: "Đã nhập mã nhưng không có sự kiện."
+    then: "Chọn lại khoảng thời gian có khả năng phát sinh nhận diện rồi bấm Tra cứu hành trình."
+    stop_when: "Danh sách sự kiện được hiển thị."
+  - order: 3
+    if: "Danh sách vẫn trống."
+    then: "Kiểm tra lịch sử nhận diện của cùng module để xác nhận đối tượng có sự kiện trong khoảng đã chọn."
+  - order: 4
+    if: "Có sự kiện nhưng hệ thống báo camera chưa có tọa độ."
+    then: "Nhờ quản trị viên cập nhật tọa độ camera trong trang thiết bị hoặc Sơ đồ mặt bằng; danh sách sự kiện vẫn có thể xem riêng."
+    stop_when: "Các camera có tọa độ và lộ trình hiển thị."
+related:
+  - ai.search_face_journey
+  - how-to.ai.search-plate-journey
+sources:
+  - path: "frontend/src/pages/AIModuleDetail/components/its/PlateJourneySearch.jsx"
+    kind: component
+    note: "Tra cứu theo biển số và khoảng thời gian; xử lý trạng thái không có sự kiện hoặc thiếu tọa độ."
+  - path: "frontend/src/i18n/locales/vi/modules.json"
+    kind: i18n
+    note: "Định nghĩa hướng dẫn, empty state và thông báo camera chưa có tọa độ cho Face/Plate journey; luồng Face cần đối chiếu module được cấp."
+last_verified: "2026-09-16"

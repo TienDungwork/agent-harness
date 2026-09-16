@@ -1,0 +1,115 @@
+schema_version: "1.0.0"
+id: operations.filter_events
+type: how_to
+status: published
+locale: vi
+version: 1
+title: "Lọc danh sách sự kiện"
+intent: filter_events
+aliases:
+  - "lọc sự kiện"
+  - "tìm sự kiện cảnh báo"
+  - "thu hẹp danh sách sự kiện"
+module: events
+tags:
+  - "sự kiện"
+  - "bộ lọc"
+  - "tìm kiếm"
+roles:
+  - unknown
+features:
+  - events
+route: "/events"
+menu_path:
+  - "Vận hành"
+  - "Quản lý sự kiện"
+preconditions:
+  - "Đã đăng nhập vào VMS."
+  - "Tính năng events được bật cho tổ chức và hiển thị với tài khoản hiện tại."
+  - "Bản triển khai hiện tại có thể ẩn mục Quản lý sự kiện khỏi sidebar bằng cờ giao diện."
+summary: "Dùng các trường tìm kiếm và bộ lọc trên màn hình Quản lý sự kiện để thu hẹp danh sách; thao tác này không mở chi tiết hoặc thay đổi trạng thái sự kiện."
+steps:
+  - order: 1
+    say: "Nếu mục Quản lý sự kiện đang hiển thị trong nhóm Vận hành, hãy mở mục đó. Nếu không thấy, dừng lại và kiểm tra quyền, feature cùng cấu hình hiển thị với quản trị viên."
+    ui:
+      label: "Quản lý sự kiện"
+      i18n_key: "sidebar.eventsAlerts"
+      element_id: null
+  - order: 2
+    say: "Trên thiết bị di động, nhấn Lọc để mở các trường lọc; trên màn hình lớn, các trường này đã hiển thị."
+    ui:
+      label: "Lọc"
+      i18n_key: "common.filter"
+      element_id: null
+  - order: 3
+    say: "Nhập từ khóa nếu cần tìm theo biển số, người, camera hoặc khu vực."
+    fields:
+      - label: "Tìm kiếm"
+        i18n_key: "events.searchLabel"
+        required: false
+        constraints:
+          - "Danh sách tự cập nhật sau khi ngừng nhập trong thời gian ngắn."
+  - order: 4
+    say: "Chọn Phân hệ AI hoặc Tổ chức / Doanh nghiệp nếu cần giới hạn phạm vi."
+    fields:
+      - label: "Phân hệ AI"
+        i18n_key: "events.aiModule"
+        required: false
+      - label: "Tổ chức / Doanh nghiệp"
+        i18n_key: "events.organization"
+        required: false
+  - order: 5
+    say: "Nếu lọc theo vị trí, chọn Cơ sở / Site trước, sau đó chọn Khu vực / Area và Phân khu / Zone."
+    fields:
+      - label: "Cơ sở / Site"
+        i18n_key: "events.site"
+        required: false
+      - label: "Khu vực / Area"
+        i18n_key: "events.area"
+        required: false
+        constraints:
+          - "Chỉ chọn được sau khi đã chọn cơ sở."
+      - label: "Phân khu / Zone"
+        i18n_key: "events.zone"
+        required: false
+        constraints:
+          - "Chỉ chọn được sau khi đã chọn khu vực."
+  - order: 6
+    say: "Chọn Mức độ nghiêm trọng và Trạng thái xử lý nếu cần."
+    fields:
+      - label: "Mức độ nghiêm trọng"
+        i18n_key: "events.severityLabel"
+        required: false
+      - label: "Trạng thái xử lý"
+        i18n_key: "events.statusLabel"
+        required: false
+  - order: 7
+    say: "Chọn Mới nhất hoặc Cũ nhất để đổi thứ tự; danh sách tự tải lại theo các điều kiện đã chọn."
+    note: "Màn hình không có bước áp dụng riêng cho các bộ lọc này."
+verify: "Danh sách chỉ còn các sự kiện khớp từ khóa, phạm vi, mức độ, trạng thái và thứ tự đã chọn."
+sources:
+  - path: "frontend/src/App.jsx"
+    kind: route
+    note: "Route /events yêu cầu đăng nhập và feature events."
+  - path: "frontend/src/components/layout/Sidebar.jsx"
+    kind: component
+    note: "Menu Quản lý sự kiện dùng route /events và i18n key sidebar.eventsAlerts."
+  - path: "frontend/src/pages/Events/Events.jsx"
+    kind: component
+    note: "Xác minh tìm kiếm, bộ lọc phân hệ, tổ chức, vị trí phân cấp, mức độ, trạng thái và thứ tự."
+  - path: "frontend/src/i18n/locales/vi/common.json"
+    kind: i18n
+    note: "Xác minh nhãn menu Quản lý sự kiện và nhãn Lọc."
+  - path: "frontend/src/i18n/locales/vi/events.json"
+    kind: i18n
+    note: "Xác minh toàn bộ nhãn trường lọc và giá trị sắp xếp."
+  - path: "frontend/src/pages/Events/Events.test.jsx"
+    kind: test
+    note: "Xác minh tham số phân trang và chuỗi lọc vị trí Cơ sở, Khu vực, Phân khu."
+  - path: "frontend/src/pages/Events/__tests__/EventsResponsive.test.jsx"
+    kind: test
+    note: "Xác minh nút mở bộ lọc trên giao diện di động."
+  - path: "frontend/src/config/features.js"
+    kind: component
+    note: "Cờ FEATURE_EVENTS_ALERTS_VISIBLE có thể ẩn mục sự kiện khỏi sidebar."
+last_verified: "2026-09-16"
