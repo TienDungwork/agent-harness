@@ -2,6 +2,12 @@
 
 All notable changes to this workspace are listed here.
 
+## [beta v0.10.5] - 2026-09-16
+
+### Fixed
+
+- LLM profile Save CORS soft-skip covered by ProfilesService unit test; Custom Model placeholder uses hyphen example `openai/qwen3-8b`.
+
 ## [beta v0.10.4] - 2026-09-16
 
 ### Fixed

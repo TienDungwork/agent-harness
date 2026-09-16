@@ -271,6 +271,39 @@ describe("ProfilesService", () => {
       ).rejects.toThrow(/not on/);
       expect(mockSaveProfile).not.toHaveBeenCalled();
     });
+
+    it("still saves when browser CORS blocks the /v1/models probe", async () => {
+      vi.stubGlobal(
+        "fetch",
+        vi.fn(async () => {
+          throw new TypeError("Failed to fetch");
+        }),
+      );
+      mockSaveProfile.mockResolvedValue({
+        name: "qwen3-8b",
+        message: "Profile saved",
+      });
+
+      await ProfilesService.saveProfile("qwen3-8b", {
+        llm: {
+          model: "qwen3-8b",
+          base_url: "http://192.168.1.196:18083/v1",
+          api_key: "still-valid-key",
+        },
+      });
+
+      expect(mockSaveProfile).toHaveBeenCalledWith(
+        "qwen3-8b",
+        expect.objectContaining({
+          llm: expect.objectContaining({
+            model: "openai/qwen3-8b",
+            base_url: "http://192.168.1.196:18083/v1",
+            force_string_serializer: true,
+            native_tool_calling: false,
+          }),
+        }),
+      );
+    });
   });
 
   describe("deleteProfile", () => {

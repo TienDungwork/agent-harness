@@ -387,7 +387,11 @@ export function LlmSettingsScreen({
                     type="text"
                     className="w-full"
                     value={modelValue}
-                    placeholder={defaultModel}
+                    // Prefer a hyphen example — Internal LLM Gateway ACLs
+                    // often use qwen3-8b; Ollama uses qwen3:8b. Users must
+                    // copy the exact id their endpoint allows.
+                    // eslint-disable-next-line i18next/no-literal-string -- example value
+                    placeholder="openai/qwen3-8b"
                     onChange={(value) => onChange("llm.model", value)}
                     isDisabled={isDisabled}
                   />
