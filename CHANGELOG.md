@@ -2,6 +2,12 @@
 
 All notable changes to this workspace are listed here.
 
+## [beta v0.10.7] - 2026-09-16
+
+### Changed
+
+- AGENTS.md documents Agent Canvas lean create, warm-pool, VMS charts, and overlay rebuild workflow.
+
 ## [beta v0.10.6] - 2026-09-16
 
 ### Added
