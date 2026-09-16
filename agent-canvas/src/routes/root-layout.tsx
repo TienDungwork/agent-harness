@@ -14,6 +14,7 @@ import { SidebarMobileNavProvider } from "#/components/features/sidebar/sidebar-
 import { SidebarMobileMenuBar } from "#/components/features/sidebar/sidebar-mobile-menu-bar";
 import { useSettings } from "#/hooks/query/use-settings";
 import { useEnsureActiveProfile } from "#/hooks/use-ensure-active-profile";
+import { useWarmLocalConversationPrefetch } from "#/hooks/use-warm-local-conversation-prefetch";
 import { useSyncTelemetryConsent } from "#/hooks/use-sync-telemetry-consent";
 import { useTelemetryIdentity } from "#/hooks/use-telemetry-identity";
 import { LoadingSpinner } from "#/components/shared/loading-spinner";
@@ -79,6 +80,8 @@ export default function MainApp() {
   useTelemetryIdentity();
   // Local-mode policy: keep a profile active so a usable LLM is always selected.
   useEnsureActiveProfile();
+  // Prefetch one empty conversation for instant New-chat / Home Enter.
+  useWarmLocalConversationPrefetch();
 
   React.useEffect(() => {
     if (settings?.language) {

@@ -14,6 +14,7 @@ import {
 } from "#/api/conversation-metadata-store";
 import { displayErrorToast } from "#/utils/custom-toast-handlers";
 import { retrieveAxiosErrorMessage } from "#/utils/retrieve-axios-error-message";
+import { discardWarmLocalConversation } from "#/utils/warm-local-conversation";
 import { I18nKey } from "#/i18n/declaration";
 import { invalidateConversationQueries } from "./conversation-mutation-utils";
 
@@ -95,6 +96,8 @@ export const useSwitchLlmProfile = () => {
         // conversation-start reads the newly activated profile's LLM config
         // instead of the stale encrypted settings.
         SettingsService.invalidateCache();
+        // Drop any Home warm-pool slot created under the previous LLM.
+        discardWarmLocalConversation();
         queryClient.invalidateQueries({
           queryKey: SETTINGS_QUERY_KEYS.personal(),
         });

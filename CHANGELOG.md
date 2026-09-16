@@ -2,6 +2,12 @@
 
 All notable changes to this workspace are listed here.
 
+## [beta v0.10.1] - 2026-09-16
+
+### Added
+
+- Warm-pool one empty local conversation in the app shell so Home Enter navigates instantly; discard the slot when LLM/Agent profile changes.
+
 ## [beta v0.10.0] - 2026-09-16
 
 ### Fixed

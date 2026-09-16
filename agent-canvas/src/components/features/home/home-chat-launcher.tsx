@@ -14,10 +14,16 @@ import type { WorkspaceMode } from "#/api/conversation-metadata-store";
 import { setPendingTaskAttachments } from "#/stores/pending-task-attachments-store";
 import { enqueueHomeTaskPendingMessage } from "#/utils/enqueue-home-task-pending-message";
 import { sendMessageWithAttachments } from "#/utils/send-message-with-attachments";
+import AgentServerConversationService from "#/api/conversation-service/agent-server-conversation-service.api";
+import {
+  claimWarmLocalConversation,
+  peekWarmLocalConversation,
+} from "#/utils/warm-local-conversation";
+import { useWarmLocalConversationActions } from "#/hooks/use-warm-local-conversation-prefetch";
 import { useNavigation } from "#/context/navigation-context";
 import { useIsCreatingConversation } from "#/hooks/use-is-creating-conversation";
-import { Branch, GitRepository } from "#/types/git";
 import { Provider } from "#/types/settings";
+import { Branch, GitRepository } from "#/types/git";
 import { LocalWorkspace } from "#/types/workspace";
 import { I18nKey } from "#/i18n/declaration";
 import {
@@ -58,9 +64,11 @@ export function HomeChatLauncher() {
   const isCreating = isPending || isCreatingElsewhere;
   const { isConfigured: isLlmConfigured, isLoading: isLlmConfigLoading } =
     useLlmConfigured();
-  // Block sending entirely when there's no usable LLM; the banner above the
-  // launcher (rendered by the home route) explains it and offers setup.
   const llmBlocked = !isLlmConfigLoading && !isLlmConfigured;
+
+  // Prefetch runs once in root-layout; Home only claims / rewarms.
+  const { createWarm, rewarm } = useWarmLocalConversationActions();
+
   const { images, files, imagesMarkedUploadAsFile, clearAllFiles } =
     useConversationStore();
   const { handleUpload } = useChatAttachmentUpload();
@@ -69,18 +77,10 @@ export function HomeChatLauncher() {
     ? getWorkspacesUnsupportedMessage(workspacesError, t)
     : null;
 
-  const hasSelection = isLocal
-    ? !!pendingWorkspace
-    : !!pendingRepository && !!pendingBranch;
-
   const handleSubmit = (message: string) => {
     const trimmed = message.trim();
     const hasAttachments = images.length > 0 || files.length > 0;
     if ((!trimmed && !hasAttachments) || isCreating) return;
-
-    // Safety net: the input is disabled when there's no usable LLM, but never
-    // create a conversation that can't run (it would fail with a cryptic
-    // API-key error on the first turn).
     if (llmBlocked) return;
 
     const attachmentSnapshot = {
@@ -88,14 +88,12 @@ export function HomeChatLauncher() {
       files: [...files],
     };
 
-    // Workspace/repo are optional — match the "Start from scratch" flow which
-    // creates a conversation with no working dir and no repo. Build the
-    // payload from whatever is selected.
-    // When attachments are present the first user message is sent afterward
-    // via sendMessageWithAttachments / flushPendingTaskAttachments. Passing
-    // query here would create a duplicate text-only initial_message.
+    // Local text: create empty (warm-pool) then sendMessage after navigate.
+    // Gateway already attaches lean creanova_infra — VMS no longer blocks warm.
+    const deferFirstMessage = isLocal && !hasAttachments && !!trimmed;
     let variables: Parameters<typeof createConversation>[0] = {
-      query: hasAttachments ? undefined : trimmed || undefined,
+      query:
+        hasAttachments || deferFirstMessage ? undefined : trimmed || undefined,
       entryPoint: "home_chat_launcher",
     };
     if (isLocal && pendingWorkspace) {
@@ -114,25 +112,39 @@ export function HomeChatLauncher() {
         },
       };
     }
-
-    // Explicitly-attached plugins are additive on top of any ambient set and
-    // are resolved from git at run time. Omitted entirely when none selected so
-    // nothing attaches unless the user picked it.
     if (selectedPlugins.length > 0) {
       variables = { ...variables, plugins: selectedPlugins };
     }
 
-    // Loading toast gives the user a clear signal that the request is in
-    // flight; dismissed precisely once the mutation resolves.
-    const toastId = toast.loading(
-      t(I18nKey.HOME$CREATING_CONVERSATION),
-      TOAST_OPTIONS,
-    );
+    const canUseWarm =
+      isLocal &&
+      !pendingWorkspace &&
+      selectedPlugins.length === 0 &&
+      !variables.workingDir &&
+      !variables.repository;
+
+    // Skip the loading toast when a warm slot is already READY — Enter should
+    // feel instant. Still toast when we must wait on create / warm in-flight.
+    const warmReady = canUseWarm && peekWarmLocalConversation() !== null;
+    const toastId = warmReady
+      ? null
+      : toast.loading(t(I18nKey.HOME$CREATING_CONVERSATION), TOAST_OPTIONS);
 
     void (async () => {
       try {
-        const data = await createConversation(variables);
-        toast.dismiss(toastId);
+        let data = canUseWarm ? await claimWarmLocalConversation() : null;
+        // Plain local text: never fall through to the heavy mutation (profiles
+        // ensureQueryData + encrypted settings rebuild). Use the same direct
+        // create path as warm-pool.
+        if (!data && canUseWarm) {
+          data = await createWarm();
+        }
+        if (!data) {
+          data = await createConversation(variables);
+        } else {
+          rewarm();
+        }
+        if (toastId) toast.dismiss(toastId);
         try {
           sessionStorage.removeItem(HOME_PROMPT_DRAFT_KEY);
         } catch {
@@ -142,8 +154,6 @@ export function HomeChatLauncher() {
         const isTaskConversation = targetConversationId.startsWith("task-");
 
         if (hasAttachments) {
-          // Cloud sandboxes provision asynchronously; uploads and the first
-          // message must target the runtime URL, not the bundled local server.
           const shouldDeferAttachments = !isLocal || isTaskConversation;
 
           if (shouldDeferAttachments) {
@@ -173,22 +183,41 @@ export function HomeChatLauncher() {
             });
             navigate(`/conversations/${targetConversationId}`);
             return;
-          } else {
-            try {
-              await sendMessageWithAttachments({
-                conversationId: targetConversationId,
-                content: trimmed,
-                images: attachmentSnapshot.images,
-                files: attachmentSnapshot.files,
-                imagesMarkedUploadAsFile,
-                t,
-              });
-              clearAllFiles();
-            } catch (error) {
-              displayErrorToast(error instanceof Error ? error.message : null);
-              return;
-            }
           }
+          try {
+            await sendMessageWithAttachments({
+              conversationId: targetConversationId,
+              content: trimmed,
+              images: attachmentSnapshot.images,
+              files: attachmentSnapshot.files,
+              imagesMarkedUploadAsFile,
+              t,
+            });
+            clearAllFiles();
+          } catch (error) {
+            displayErrorToast(error instanceof Error ? error.message : null);
+            return;
+          }
+        }
+
+        if (deferFirstMessage && trimmed) {
+          await enqueueHomeTaskPendingMessage({
+            conversationId: targetConversationId,
+            text: trimmed,
+            images: [],
+            imagesMarkedUploadAsFile: [],
+          });
+          navigate(`/conversations/${targetConversationId}`);
+          void AgentServerConversationService.sendMessage(
+            targetConversationId,
+            {
+              role: "user",
+              content: [{ type: "text", text: trimmed }],
+            },
+          ).catch((error) => {
+            displayErrorToast(error instanceof Error ? error.message : null);
+          });
+          return;
         }
 
         if (isTaskConversation && trimmed) {
@@ -202,16 +231,12 @@ export function HomeChatLauncher() {
 
         navigate(`/conversations/${targetConversationId}`);
       } catch (error) {
-        toast.dismiss(toastId);
+        if (toastId) toast.dismiss(toastId);
         displayErrorToast(error instanceof Error ? error.message : null);
       }
     })();
   };
 
-  // Without this wrapper a `/model NAME` typed here would become the first
-  // user message of the new conversation. The interceptor activates the
-  // profile globally (null conversationId path) so the next conversation
-  // launches with it.
   const handleSubmitWithModelGuard = useModelInterceptor(null, handleSubmit);
 
   return (
@@ -223,74 +248,83 @@ export function HomeChatLauncher() {
         <HomeHeaderTitle />
       </div>
 
-      <div className="w-full">
-        <CustomChatInput
-          onSubmit={handleSubmitWithModelGuard}
-          onFilesPaste={handleUpload}
-          disabled={isCreating || llmBlocked}
-        />
-      </div>
-
-      <div className="flex items-center justify-start gap-2">
-        {hasSelection ? (
+      <div className="rounded-xl bg-tertiary">
+        {(pendingWorkspace ||
+          (pendingRepository && pendingBranch && pendingProvider)) && (
           <HomeGitControlBarPreview
-            workspace={pendingWorkspace}
-            repository={pendingRepository}
-            branch={pendingBranch}
-            provider={pendingProvider}
-            workspaceMode={workspaceMode}
+            pendingWorkspace={pendingWorkspace}
+            pendingRepository={pendingRepository}
+            pendingBranch={pendingBranch}
+            pendingProvider={pendingProvider}
             backendKind={backend.kind}
-            onRepoClick={() => setIsDialogOpen(true)}
-            onWorkspaceModeChange={setWorkspaceMode}
-          />
-        ) : (
-          <OpenLauncherButton
-            kind={isLocal ? "local" : "cloud"}
-            onClick={() => setIsDialogOpen(true)}
-            disabled={isCreating || Boolean(workspacesUnsupportedMessage)}
-            disabledTooltip={workspacesUnsupportedMessage}
+            workspaceMode={isLocal ? workspaceMode : undefined}
+            onWorkspaceModeChange={isLocal ? setWorkspaceMode : undefined}
+            onClearWorkspace={() => setPendingWorkspace(null)}
+            onClearRepository={() => {
+              setPendingRepository(null);
+              setPendingBranch(null);
+              setPendingProvider(null);
+            }}
           />
         )}
-        <PluginPickerTrigger
-          count={selectedPlugins.length}
-          onClick={() => setIsPluginPickerOpen(true)}
-          disabled={isCreating}
+        <CustomChatInput
+          disabled={llmBlocked}
+          isDisabled={isCreating || llmBlocked}
+          onSubmit={handleSubmitWithModelGuard}
+          draftStorageKey={HOME_PROMPT_DRAFT_KEY}
+          onUpload={handleUpload}
+          startButtons={
+            <>
+              <OpenLauncherButton
+                kind={isLocal ? "local" : "cloud"}
+                onClick={() => setIsDialogOpen(true)}
+                disabled={Boolean(workspacesUnsupportedMessage)}
+                disabledTooltip={workspacesUnsupportedMessage}
+              />
+              {isLocal ? (
+                <PluginPickerTrigger
+                  count={selectedPlugins.length}
+                  onClick={() => setIsPluginPickerOpen(true)}
+                />
+              ) : null}
+            </>
+          }
         />
       </div>
 
       {isLocal ? (
         <OpenWorkspaceDialog
           isOpen={isDialogOpen}
-          onClose={() => setIsDialogOpen(false)}
+          onOpenChange={setIsDialogOpen}
           onConfirm={(workspace) => {
             setPendingWorkspace(workspace);
             setPendingRepository(null);
             setPendingBranch(null);
             setPendingProvider(null);
-            setWorkspaceMode("local_repo");
+            setIsDialogOpen(false);
           }}
         />
       ) : (
         <OpenRepositoryDialog
           isOpen={isDialogOpen}
-          onClose={() => setIsDialogOpen(false)}
+          onOpenChange={setIsDialogOpen}
           onConfirm={({ repository, branch, provider }) => {
             setPendingRepository(repository);
             setPendingBranch(branch);
-            setPendingProvider(provider ?? repository.git_provider);
+            setPendingProvider(provider);
             setPendingWorkspace(null);
-            setWorkspaceMode("local_repo");
+            setIsDialogOpen(false);
           }}
         />
       )}
 
-      {isPluginPickerOpen && (
+      {isLocal && isPluginPickerOpen ? (
         <PluginPickerModal
+          onClose={() => setIsPluginPickerOpen(false)}
           selected={selectedPlugins}
           onChange={setSelectedPlugins}
-          onClose={() => setIsPluginPickerOpen(false)}
         />
-      )}
+      ) : null}
     </div>
   );
 }

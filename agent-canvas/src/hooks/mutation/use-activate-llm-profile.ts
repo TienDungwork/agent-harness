@@ -5,6 +5,7 @@ import {
   LLM_PROFILES_QUERY_KEYS,
   SETTINGS_QUERY_KEYS,
 } from "#/hooks/query/query-keys";
+import { discardWarmLocalConversation } from "#/utils/warm-local-conversation";
 
 export function useActivateLlmProfile() {
   const queryClient = useQueryClient();
@@ -15,6 +16,8 @@ export function useActivateLlmProfile() {
       // Invalidate the SettingsService internal cache so getSettingsForConversation
       // fetches fresh settings with the newly activated profile's LLM config
       SettingsService.invalidateCache();
+      // Home warm-pool was created under the previous active LLM — drop it.
+      discardWarmLocalConversation();
       // Invalidate profiles list to refresh active_profile
       await queryClient.invalidateQueries({
         queryKey: LLM_PROFILES_QUERY_KEYS.all,

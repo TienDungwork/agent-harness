@@ -3,6 +3,7 @@ import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import toast from "react-hot-toast";
+import type { ReactNode } from "react";
 
 import { HomeChatLauncher } from "#/components/features/home/home-chat-launcher";
 import AgentServerConversationService from "#/api/conversation-service/agent-server-conversation-service.api";
@@ -18,6 +19,14 @@ const mockUseLlmConfigured = vi.fn();
 
 let mockImages: File[] = [];
 let mockFiles: File[] = [];
+
+vi.mock("#/utils/warm-local-conversation", () => ({
+  ensureWarmLocalConversation: () => undefined,
+  claimWarmLocalConversation: async () => null,
+  peekWarmLocalConversation: () => null,
+  discardWarmLocalConversation: () => undefined,
+  resetWarmLocalConversationForTests: () => undefined,
+}));
 
 vi.mock("#/utils/send-message-with-attachments", () => ({
   sendMessageWithAttachments: (...args: unknown[]) =>
@@ -68,6 +77,20 @@ vi.mock("#/hooks/use-llm-configured", () => ({
   useLlmConfigured: () => mockUseLlmConfigured(),
 }));
 
+vi.mock("#/hooks/query/use-llm-profiles", () => ({
+  useLlmProfiles: () => ({
+    data: { profiles: [], active_profile: null },
+    isLoading: false,
+  }),
+}));
+
+vi.mock("#/hooks/query/use-agent-profiles", () => ({
+  useAgentProfiles: () => ({
+    data: { profiles: [], active_agent_profile_id: null },
+    isLoading: false,
+  }),
+}));
+
 vi.mock("#/hooks/use-is-creating-conversation", () => ({
   useIsCreatingConversation: () => false,
 }));
@@ -86,18 +109,23 @@ vi.mock("#/components/features/chat/custom-chat-input", () => ({
   CustomChatInput: ({
     onSubmit,
     disabled,
+    startButtons,
   }: {
     onSubmit: (msg: string) => void;
     disabled?: boolean;
+    startButtons?: ReactNode;
   }) => (
-    <button
-      type="button"
-      data-testid="stub-chat-submit"
-      disabled={disabled}
-      onClick={() => onSubmit("hello world")}
-    >
-      stub submit
-    </button>
+    <div>
+      {startButtons}
+      <button
+        type="button"
+        data-testid="stub-chat-submit"
+        disabled={disabled}
+        onClick={() => onSubmit("hello world")}
+      >
+        stub submit
+      </button>
+    </div>
   ),
 }));
 
@@ -107,11 +135,11 @@ vi.mock("#/components/features/chat/custom-chat-input", () => ({
 vi.mock("#/components/features/home/open-workspace-dialog", () => ({
   OpenWorkspaceDialog: ({
     isOpen,
-    onClose,
+    onOpenChange,
     onConfirm,
   }: {
     isOpen: boolean;
-    onClose: () => void;
+    onOpenChange: (open: boolean) => void;
     onConfirm: (w: { id: string; name: string; path: string }) => void;
   }) =>
     isOpen ? (
@@ -120,7 +148,7 @@ vi.mock("#/components/features/home/open-workspace-dialog", () => ({
         data-testid="stub-workspace-dialog-confirm"
         onClick={() => {
           onConfirm({ id: "/p/app", name: "app", path: "/p/app" });
-          onClose();
+          onOpenChange(false);
         }}
       >
         confirm
@@ -131,11 +159,11 @@ vi.mock("#/components/features/home/open-workspace-dialog", () => ({
 vi.mock("#/components/features/home/open-repository-dialog", () => ({
   OpenRepositoryDialog: ({
     isOpen,
-    onClose,
+    onOpenChange,
     onConfirm,
   }: {
     isOpen: boolean;
-    onClose: () => void;
+    onOpenChange: (open: boolean) => void;
     onConfirm: (s: {
       repository: {
         id: string;
@@ -162,7 +190,7 @@ vi.mock("#/components/features/home/open-repository-dialog", () => ({
             branch: { name: "main" },
             provider: "github",
           });
-          onClose();
+          onOpenChange(false);
         }}
       >
         confirm
@@ -308,10 +336,16 @@ describe("HomeChatLauncher", () => {
     toast.remove();
   });
 
-  it("creates a conversation with just the typed query and navigates when no workspace is selected", async () => {
+  it("creates a conversation without initial query on local, then sends the message", async () => {
     const createSpy = vi
       .spyOn(AgentServerConversationService, "createConversation")
       .mockResolvedValue(makeConversationResponse());
+    const sendSpy = vi
+      .spyOn(AgentServerConversationService, "sendMessage")
+      .mockResolvedValue({
+        role: "user",
+        content: [{ type: "text", text: "hello world" }],
+      } as never);
 
     renderLauncher();
     const user = userEvent.setup();
@@ -320,7 +354,7 @@ describe("HomeChatLauncher", () => {
 
     await waitFor(() => expect(createSpy).toHaveBeenCalledTimes(1));
     expect(createSpy).toHaveBeenCalledWith(
-      "hello world",
+      undefined,
       undefined,
       undefined,
       null,
@@ -328,10 +362,22 @@ describe("HomeChatLauncher", () => {
       undefined,
       undefined,
       undefined,
+      undefined,
+      undefined,
+      undefined,
+    );
+    await waitFor(() =>
+      expect(enqueueHomeTaskPendingMessage).toHaveBeenCalledWith({
+        conversationId: "conv-abc",
+        text: "hello world",
+        images: [],
+        imagesMarkedUploadAsFile: [],
+      }),
     );
     await waitFor(() =>
       expect(mockNavigate).toHaveBeenCalledWith("/conversations/conv-abc"),
     );
+    await waitFor(() => expect(sendSpy).toHaveBeenCalledTimes(1));
   });
 
   it("disables the chat input and won't create a conversation when no LLM is configured", async () => {
@@ -356,6 +402,10 @@ describe("HomeChatLauncher", () => {
       .mockResolvedValue(
         makeConversationResponse({ app_conversation_id: "conv-ws" }),
       );
+    vi.spyOn(AgentServerConversationService, "sendMessage").mockResolvedValue({
+      role: "user",
+      content: [{ type: "text", text: "hello world" }],
+    } as never);
 
     renderLauncher();
     const user = userEvent.setup();
@@ -368,7 +418,7 @@ describe("HomeChatLauncher", () => {
 
     await waitFor(() => expect(createSpy).toHaveBeenCalledTimes(1));
     expect(createSpy).toHaveBeenCalledWith(
-      "hello world",
+      undefined,
       undefined,
       undefined,
       null,
@@ -388,6 +438,10 @@ describe("HomeChatLauncher", () => {
       .mockResolvedValue(
         makeConversationResponse({ app_conversation_id: "conv-wt" }),
       );
+    vi.spyOn(AgentServerConversationService, "sendMessage").mockResolvedValue({
+      role: "user",
+      content: [{ type: "text", text: "hello world" }],
+    } as never);
 
     renderLauncher();
     const user = userEvent.setup();
@@ -408,7 +462,7 @@ describe("HomeChatLauncher", () => {
 
     await waitFor(() => expect(createSpy).toHaveBeenCalledTimes(1));
     expect(createSpy).toHaveBeenCalledWith(
-      "hello world",
+      undefined,
       undefined,
       undefined,
       null,
@@ -494,6 +548,9 @@ describe("HomeChatLauncher", () => {
       undefined,
       undefined,
       null,
+      undefined,
+      undefined,
+      undefined,
       undefined,
       undefined,
       undefined,
@@ -596,10 +653,29 @@ describe("HomeChatLauncher", () => {
     );
   });
 
+  it("keeps the plugin picker closed until opened and closes it after Done", async () => {
+    renderLauncher();
+    const user = userEvent.setup();
+
+    expect(screen.queryByTestId("stub-plugin-pick")).not.toBeInTheDocument();
+
+    await user.click(screen.getByTestId("open-plugin-picker"));
+    expect(await screen.findByTestId("stub-plugin-pick")).toBeInTheDocument();
+
+    await user.click(screen.getByTestId("stub-plugin-pick"));
+    await waitFor(() =>
+      expect(screen.queryByTestId("stub-plugin-pick")).not.toBeInTheDocument(),
+    );
+  });
+
   it("attaches the picked plugins to the created conversation", async () => {
     const createSpy = vi
       .spyOn(AgentServerConversationService, "createConversation")
       .mockResolvedValue(makeConversationResponse());
+    vi.spyOn(AgentServerConversationService, "sendMessage").mockResolvedValue({
+      role: "user",
+      content: [{ type: "text", text: "hello world" }],
+    } as never);
 
     renderLauncher();
     const user = userEvent.setup();
@@ -610,7 +686,7 @@ describe("HomeChatLauncher", () => {
 
     await waitFor(() => expect(createSpy).toHaveBeenCalledTimes(1));
     expect(createSpy).toHaveBeenCalledWith(
-      "hello world",
+      undefined,
       undefined,
       [{ source: "github:o/a", ref: null, repo_path: null }],
       null,

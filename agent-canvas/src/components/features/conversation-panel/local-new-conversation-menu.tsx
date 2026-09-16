@@ -4,6 +4,11 @@ import { useTranslation } from "react-i18next";
 import { useCreateConversation } from "#/hooks/mutation/use-create-conversation";
 import { useNavigation } from "#/context/navigation-context";
 import { useIsCreatingConversation } from "#/hooks/use-is-creating-conversation";
+import { claimWarmLocalConversation } from "#/utils/warm-local-conversation";
+import {
+  createWarmLocalConversationResponse,
+  rewarmLocalConversation,
+} from "#/utils/create-warm-local-conversation";
 import {
   useAddWorkspaces,
   useAddWorkspaceParents,
@@ -120,6 +125,32 @@ export function LocalNewConversationMenu({
 
   const launch = (workingDir?: string) => {
     if (isCreating) return;
+    // No-workspace launches claim the warm slot (same as Home Enter) so the
+    // sidebar path is not a second slow create.
+    if (!workingDir) {
+      void (async () => {
+        try {
+          const data =
+            (await claimWarmLocalConversation()) ??
+            (await createWarmLocalConversationResponse());
+          rewarmLocalConversation();
+          setOpen(false);
+          navigate(`/conversations/${data.conversation_id}`);
+        } catch {
+          // Fall back to the mutation path if warm/direct create fails.
+          createConversation(
+            { workingDir, entryPoint: "sidebar_local_menu" },
+            {
+              onSuccess: (data) => {
+                setOpen(false);
+                navigate(`/conversations/${data.conversation_id}`);
+              },
+            },
+          );
+        }
+      })();
+      return;
+    }
     createConversation(
       { workingDir, entryPoint: "sidebar_local_menu" },
       {

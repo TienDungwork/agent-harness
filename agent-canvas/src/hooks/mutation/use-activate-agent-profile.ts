@@ -7,6 +7,7 @@ import {
   AGENT_PROFILES_QUERY_KEYS,
   SETTINGS_QUERY_KEYS,
 } from "#/hooks/query/query-keys";
+import { discardWarmLocalConversation } from "#/utils/warm-local-conversation";
 
 /**
  * Shared key so any picker instance can observe an in-flight activation via
@@ -56,6 +57,9 @@ export function useActivateAgentProfile() {
     },
     onSuccess: async () => {
       SettingsService.invalidateCache();
+      // Activation is pointer-only but changes which LLM launches; drop any
+      // Home warm slot that was created under the previous launch profile.
+      discardWarmLocalConversation();
       await queryClient.invalidateQueries({
         queryKey: AGENT_PROFILES_QUERY_KEYS.all,
       });
