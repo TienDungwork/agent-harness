@@ -1,0 +1,193 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>agent_ATIN — Trợ lý Giám sát & Thống kê VMS KCN Hưng Phú</title>
+  <link rel="stylesheet" href="style.css">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+</head>
+<body>
+  <div class="app-layout">
+    <!-- Sidebar -->
+    <aside class="sidebar" id="sidebar">
+      <div class="sidebar-header">
+        <div class="brand">
+          <div class="brand-icon">AI</div>
+          <div class="brand-text">
+            <h2>agent_ATIN</h2>
+            <span class="badge-vms">VMS Analytics</span>
+          </div>
+        </div>
+        <button class="btn-new-chat" id="btn-new-chat" title="Tạo đoạn chat mới">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14M5 12h14"/></svg>
+          <span>Đoạn chat mới</span>
+        </button>
+      </div>
+
+      <div class="sidebar-section-title">8 Domain Sự Kiện VMS</div>
+      <div class="quick-domains">
+        <div class="domain-tag" data-query="Hôm nay có bao nhiêu lượt xe vào?">🚗 Phương tiện (ITS)</div>
+        <div class="domain-tag" data-query="Khung thời gian nào xảy ra xâm nhập khu vực nhiều nhất hôm nay?">🚧 Vùng cấm (Fence)</div>
+        <div class="domain-tag" data-query="Hôm nay có bao nhiêu lượt nhận diện khuôn mặt?">👤 Khuôn mặt (Face)</div>
+        <div class="domain-tag" data-query="Hôm nay có vụ ẩu đả nào không?">⚠️ Ẩu đả (Fight)</div>
+        <div class="domain-tag" data-query="Hôm nay có cảnh báo đám đông ở khu vực nào không?">👥 Đám đông (Crowd)</div>
+        <div class="domain-tag" data-query="Hôm nay có phát hiện leo trèo không?">🧗 Leo trèo (Intrusion)</div>
+        <div class="domain-tag" data-query="Hôm nay có cảnh báo cháy hoặc khói không?">🔥 Cháy khói (Fire)</div>
+        <div class="domain-tag" data-query="Mực nước hôm nay có vượt ngưỡng cảnh báo không?">💧 Mực nước (Water)</div>
+      </div>
+
+      <div class="sidebar-footer">
+        <div class="model-pill" id="btn-open-settings" title="Nhấn để đổi cấu hình Model">
+          <div class="model-indicator"></div>
+          <span id="sidebar-model-label">OpenAI (gpt-4o-mini)</span>
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/></svg>
+        </div>
+      </div>
+    </aside>
+
+    <!-- Main Content Area -->
+    <main class="chat-main">
+      <header class="topbar">
+        <div class="topbar-left">
+          <button class="btn-toggle-sidebar" id="btn-toggle-sidebar" title="Đóng/Mở menu">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 12h18M3 6h18M3 18h18"/></svg>
+          </button>
+          <div class="chat-title">
+            <h1>Trợ lý Giám sát Sự kiện Camera AI</h1>
+            <span class="sub-title">Khu công nghiệp Hưng Phú</span>
+          </div>
+        </div>
+        <div class="topbar-right">
+          <div class="status-badge" id="system-status-badge">
+            <span class="status-dot"></span>
+            <span id="system-status-text">Đang kết nối</span>
+          </div>
+        </div>
+      </header>
+
+      <!-- Messages Container -->
+      <div class="chat-viewport" id="chat-viewport">
+        <!-- Welcome Screen -->
+        <div class="welcome-container" id="welcome-screen">
+          <div class="welcome-badge">agent_ATIN v3</div>
+          <h2 class="welcome-heading">Hỏi đáp & Thống kê Camera AI</h2>
+          <p class="welcome-desc">Đặt câu hỏi bằng tiếng Việt tự nhiên để truy xuất số liệu thống kê thời gian thực từ 8 domain camera AI VMS.</p>
+
+          <div class="suggestions-grid">
+            <button class="suggestion-card" data-query="Hôm nay có bao nhiêu lượt xe vào, phân loại theo xe máy và ô tô?">
+              <span class="card-icon">🚗</span>
+              <div class="card-content">
+                <strong>Lưu lượng xe hôm nay</strong>
+                <p>Thống kê số lượng lượt xe ra vào phân loại theo chủng loại.</p>
+              </div>
+            </button>
+
+            <button class="suggestion-card" data-query="Khung thời gian nào xảy ra xâm nhập vùng cấm nhiều nhất hôm nay?">
+              <span class="card-icon">🚧</span>
+              <div class="card-content">
+                <strong>Xâm nhập vùng cấm</strong>
+                <p>Khung giờ có số lượng sự kiện vượt hàng rào ảo cao nhất.</p>
+              </div>
+            </button>
+
+            <button class="suggestion-card" data-query="Hôm nay có vụ ẩu đả hoặc cảnh báo đám đông nào không?">
+              <span class="card-icon">⚠️</span>
+              <div class="card-content">
+                <strong>Bất thường an ninh</strong>
+                <p>Kiểm tra các sự kiện ẩu đả, đám đông hoặc leo trèo hôm nay.</p>
+              </div>
+            </button>
+
+            <button class="suggestion-card" data-query="Mực nước hôm nay có vượt ngưỡng cảnh báo ngập không?">
+              <span class="card-icon">💧</span>
+              <div class="card-content">
+                <strong>Giám sát mực nước</strong>
+                <p>Xem số liệu đo mức nước ngập úng và cảnh báo an toàn hạ tầng.</p>
+              </div>
+            </button>
+          </div>
+        </div>
+
+        <!-- Chat messages list -->
+        <div class="messages-list" id="messages-list"></div>
+      </div>
+
+      <!-- Input Area -->
+      <div class="input-container">
+        <div class="input-wrapper">
+          <textarea
+            id="question-input"
+            placeholder="Hỏi về số liệu xe ra/vào, vùng cấm, ẩu đả, khuôn mặt, cháy khói, mực nước..."
+            rows="1"
+          ></textarea>
+          <button id="btn-send" class="btn-send" title="Gửi câu hỏi (Enter)">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M22 2L11 13M22 2l-7 20-4-9-9-4 20-7z"/></svg>
+          </button>
+        </div>
+        <div class="input-footer">
+          <span>Hệ thống truy vấn trực tiếp từ 5 cơ sở dữ liệu Postgres Read-Only an toàn.</span>
+        </div>
+      </div>
+    </main>
+  </div>
+
+  <!-- Settings Drawer / Modal -->
+  <div class="modal-backdrop" id="settings-modal">
+    <div class="modal-card">
+      <div class="modal-header">
+        <h3>Cài đặt Cấu hình Model & API</h3>
+        <button class="btn-close-modal" id="btn-close-settings">&times;</button>
+      </div>
+      <div class="modal-body">
+        <div class="form-group">
+          <label class="form-label">Chọn LLM Backend</label>
+          <div class="radio-group">
+            <label class="radio-card">
+              <input type="radio" name="model_provider" value="openai" checked id="radio-openai">
+              <div class="radio-info">
+                <strong>OpenAI Cloud</strong>
+                <span>gpt-4o-mini (Cloud API)</span>
+              </div>
+            </label>
+            <label class="radio-card">
+              <input type="radio" name="model_provider" value="self_hosted" id="radio-self-hosted">
+              <div class="radio-info">
+                <strong>Model Tự Host (Local)</strong>
+                <span>qwen3-4b (vLLM / Local Endpoint)</span>
+              </div>
+            </label>
+          </div>
+        </div>
+
+        <div class="form-group" id="self-hosted-details">
+          <label class="form-label">Thông tin Endpoint Tự Host</label>
+          <div class="info-box">
+            <div><strong>Base URL:</strong> <code>http://192.168.1.196:18083/v1</code></div>
+            <div><strong>Model Name:</strong> <code>qwen3-4b</code></div>
+            <div><strong>Endpoint:</strong> <code>http://192.168.1.196:18083/v1/chat/completions</code></div>
+          </div>
+        </div>
+
+        <div class="form-group">
+          <label class="form-label" for="input-api-url">API Base URL (Backend)</label>
+          <input type="text" class="form-input" id="input-api-url" placeholder="http://localhost:8000" value="">
+          <small class="form-hint">Để trống để tự động sử dụng máy chủ Backend hiện tại (/api hoặc /ask).</small>
+        </div>
+
+        <div class="form-group">
+          <button class="btn-secondary" id="btn-check-health">Kiểm tra kết nối Backend</button>
+          <div id="health-result" class="health-result"></div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn-primary" id="btn-save-settings">Lưu Cấu Hình</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>

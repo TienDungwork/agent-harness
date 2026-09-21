@@ -1,0 +1,247 @@
+name: kcn-hungphu-agent
+
+services:
+  # ── FRONTEND: Giao diện Claude-inspired ─────────────────────────────────────
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: kcn_hungphu_frontend
+    restart: unless-stopped
+    ports:
+      - "${FRONTEND_PORT:-8080}:80"
+    depends_on:
+      - ai_backend
+    networks:
+      - kcn_network
+
+  # ── AI_BACKEND: FastAPI API Gateway + ReAct Agent + DB Tools ─────────────────
+  ai_backend:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    container_name: kcn_hungphu_backend
+    restart: unless-stopped
+    ports:
+      - "${BACKEND_PORT:-8000}:8000"
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      PORT: 8000
+      LANGFUSE_HOST: http://langfuse-web:3000
+      LANGFUSE_BASE_URL: http://langfuse-web:3000
+      LANGFUSE_PUBLIC_KEY: ${LANGFUSE_PUBLIC_KEY:-pk-lf-0c271516-d371-4a03-9ea6-0a9c22f131c2}
+      LANGFUSE_SECRET_KEY: ${LANGFUSE_SECRET_KEY:-sk-lf-cda213a6-b0a0-4e61-9df5-ca38c0d280c3}
+      MONITORING_ENABLED: ${MONITORING_ENABLED:-true}
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    networks:
+      - kcn_network
+
+  # ── LANGFUSE WEB UI & API ───────────────────────────────────────────────────
+  langfuse-web:
+    image: docker.langfuse.com/langfuse/langfuse:4
+    container_name: kcn_hungphu_langfuse_web
+    restart: always
+    depends_on:
+      langfuse-postgres:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      clickhouse:
+        condition: service_healthy
+    ports:
+      - "3000:3000"
+    env_file:
+      - path: ./langfuse/.env
+        required: false
+    environment:
+      NEXTAUTH_URL: ${NEXTAUTH_URL:-http://localhost:3000}
+      DATABASE_URL: ${DATABASE_URL:-postgresql://postgres:${POSTGRES_PASSWORD:-fQCCtm_TzLrZ1zJWYoIPbKUXwlA96P3a}@langfuse-postgres:5432/postgres}
+      SALT: ${SALT:-f52dcc4e2539bb721293288f279d851209be7c36a406124fbb06432637f7cd8b}
+      ENCRYPTION_KEY: ${ENCRYPTION_KEY:-c250badea34dc5fab11146b368f6f8d20c8f11f4d1ec5401c3131e551c889d16}
+      NEXTAUTH_SECRET: ${NEXTAUTH_SECRET:-f87b07e08c536f7ced856a8f18a93f56592c8aecd840cfec7b0952aa052f57e0}
+      TELEMETRY_ENABLED: "false"
+      LANGFUSE_INIT_ORG_ID: ${LANGFUSE_INIT_ORG_ID:-c042fcdd-721b-4e24-91c9-b87ff52966b5}
+      LANGFUSE_INIT_ORG_NAME: ${LANGFUSE_INIT_ORG_NAME:-agent_ATIN}
+      LANGFUSE_INIT_PROJECT_ID: ${LANGFUSE_INIT_PROJECT_ID:-a510ed1c-3afc-43c8-b9e3-1fc9c36f235d}
+      LANGFUSE_INIT_PROJECT_NAME: ${LANGFUSE_INIT_PROJECT_NAME:-agent_ATIN}
+      LANGFUSE_INIT_PROJECT_PUBLIC_KEY: ${LANGFUSE_INIT_PROJECT_PUBLIC_KEY:-pk-lf-0c271516-d371-4a03-9ea6-0a9c22f131c2}
+      LANGFUSE_INIT_PROJECT_SECRET_KEY: ${LANGFUSE_INIT_PROJECT_SECRET_KEY:-sk-lf-cda213a6-b0a0-4e61-9df5-ca38c0d280c3}
+      LANGFUSE_INIT_USER_EMAIL: ${LANGFUSE_INIT_USER_EMAIL:-admin@agent-atin.local}
+      LANGFUSE_INIT_USER_NAME: ${LANGFUSE_INIT_USER_NAME:-agent_ATIN admin}
+      LANGFUSE_INIT_USER_PASSWORD: ${LANGFUSE_INIT_USER_PASSWORD:-Atin@123#}
+      CLICKHOUSE_MIGRATION_URL: clickhouse://clickhouse:9000
+      CLICKHOUSE_URL: http://clickhouse:8123
+      CLICKHOUSE_USER: clickhouse
+      CLICKHOUSE_PASSWORD: ${CLICKHOUSE_PASSWORD:-uCiJCTSwSrQzLtChER9JuWaXKRLUKWWc}
+      CLICKHOUSE_CLUSTER_ENABLED: "false"
+      CLICKHOUSE_CLUSTER_NAME: default
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      REDIS_AUTH: ${REDIS_AUTH:-alIb75M8gWr6pIEhgRGcbup2GdiEDaDC}
+      LANGFUSE_S3_EVENT_UPLOAD_BUCKET: langfuse
+      LANGFUSE_S3_EVENT_UPLOAD_REGION: ${LANGFUSE_S3_EVENT_UPLOAD_REGION:-auto}
+      LANGFUSE_S3_EVENT_UPLOAD_ACCESS_KEY_ID: minio
+      LANGFUSE_S3_EVENT_UPLOAD_SECRET_ACCESS_KEY: ${MINIO_ROOT_PASSWORD:-Nmq1XFz0yhl3xf36e2-zs7-Df3J13IB9}
+      LANGFUSE_S3_EVENT_UPLOAD_ENDPOINT: http://minio:9000
+      LANGFUSE_S3_EVENT_UPLOAD_FORCE_PATH_STYLE: "true"
+      LANGFUSE_S3_MEDIA_UPLOAD_ENDPOINT: http://localhost:9190
+      LANGFUSE_S3_MEDIA_UPLOAD_INTERNAL_ENDPOINT: http://minio:9000
+      LANGFUSE_S3_MEDIA_UPLOAD_REGION: ${LANGFUSE_S3_MEDIA_UPLOAD_REGION:-auto}
+      LANGFUSE_S3_MEDIA_UPLOAD_ACCESS_KEY_ID: minio
+      LANGFUSE_S3_MEDIA_UPLOAD_SECRET_ACCESS_KEY: ${MINIO_ROOT_PASSWORD:-Nmq1XFz0yhl3xf36e2-zs7-Df3J13IB9}
+      LANGFUSE_S3_MEDIA_UPLOAD_BUCKET: langfuse
+      LANGFUSE_S3_MEDIA_UPLOAD_FORCE_PATH_STYLE: "true"
+    networks:
+      - kcn_network
+
+  # ── LANGFUSE WORKER ────────────────────────────────────────────────────────
+  langfuse-worker:
+    image: docker.langfuse.com/langfuse/langfuse-worker:4
+    container_name: kcn_hungphu_langfuse_worker
+    restart: always
+    depends_on:
+      langfuse-postgres:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      clickhouse:
+        condition: service_healthy
+    env_file:
+      - path: ./langfuse/.env
+        required: false
+    environment:
+      NEXTAUTH_URL: ${NEXTAUTH_URL:-http://localhost:3000}
+      DATABASE_URL: ${DATABASE_URL:-postgresql://postgres:${POSTGRES_PASSWORD:-fQCCtm_TzLrZ1zJWYoIPbKUXwlA96P3a}@langfuse-postgres:5432/postgres}
+      SALT: ${SALT:-f52dcc4e2539bb721293288f279d851209be7c36a406124fbb06432637f7cd8b}
+      ENCRYPTION_KEY: ${ENCRYPTION_KEY:-c250badea34dc5fab11146b368f6f8d20c8f11f4d1ec5401c3131e551c889d16}
+      CLICKHOUSE_MIGRATION_URL: clickhouse://clickhouse:9000
+      CLICKHOUSE_URL: http://clickhouse:8123
+      CLICKHOUSE_USER: clickhouse
+      CLICKHOUSE_PASSWORD: ${CLICKHOUSE_PASSWORD:-uCiJCTSwSrQzLtChER9JuWaXKRLUKWWc}
+      CLICKHOUSE_CLUSTER_ENABLED: "false"
+      CLICKHOUSE_CLUSTER_NAME: default
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      REDIS_AUTH: ${REDIS_AUTH:-alIb75M8gWr6pIEhgRGcbup2GdiEDaDC}
+      LANGFUSE_S3_EVENT_UPLOAD_BUCKET: langfuse
+      LANGFUSE_S3_EVENT_UPLOAD_REGION: ${LANGFUSE_S3_EVENT_UPLOAD_REGION:-auto}
+      LANGFUSE_S3_EVENT_UPLOAD_ACCESS_KEY_ID: minio
+      LANGFUSE_S3_EVENT_UPLOAD_SECRET_ACCESS_KEY: ${MINIO_ROOT_PASSWORD:-Nmq1XFz0yhl3xf36e2-zs7-Df3J13IB9}
+      LANGFUSE_S3_EVENT_UPLOAD_ENDPOINT: http://minio:9000
+      LANGFUSE_S3_EVENT_UPLOAD_FORCE_PATH_STYLE: "true"
+      LANGFUSE_S3_MEDIA_UPLOAD_BUCKET: langfuse
+      LANGFUSE_S3_MEDIA_UPLOAD_REGION: ${LANGFUSE_S3_MEDIA_UPLOAD_REGION:-auto}
+      LANGFUSE_S3_MEDIA_UPLOAD_ACCESS_KEY_ID: minio
+      LANGFUSE_S3_MEDIA_UPLOAD_SECRET_ACCESS_KEY: ${MINIO_ROOT_PASSWORD:-Nmq1XFz0yhl3xf36e2-zs7-Df3J13IB9}
+      LANGFUSE_S3_MEDIA_UPLOAD_ENDPOINT: http://minio:9000
+      LANGFUSE_S3_MEDIA_UPLOAD_FORCE_PATH_STYLE: "true"
+    networks:
+      - kcn_network
+
+  # ── CLICKHOUSE FOR LANGFUSE ─────────────────────────────────────────────────
+  clickhouse:
+    image: docker.io/clickhouse/clickhouse-server:25.12
+    container_name: kcn_hungphu_clickhouse
+    restart: always
+    user: "101:101"
+    environment:
+      CLICKHOUSE_DB: default
+      CLICKHOUSE_USER: clickhouse
+      CLICKHOUSE_PASSWORD: ${CLICKHOUSE_PASSWORD:-uCiJCTSwSrQzLtChER9JuWaXKRLUKWWc}
+    volumes:
+      - langfuse_clickhouse_data:/var/lib/clickhouse
+      - langfuse_clickhouse_logs:/var/log/clickhouse-server
+    healthcheck:
+      test: wget --no-verbose --tries=1 --spider http://localhost:8123/ping || exit 1
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 1s
+    networks:
+      - kcn_network
+
+  # ── MINIO FOR LANGFUSE BLOB STORAGE ─────────────────────────────────────────
+  minio:
+    image: cgr.dev/chainguard/minio
+    container_name: kcn_hungphu_minio
+    restart: always
+    entrypoint: sh
+    command: -c 'mkdir -p /data/langfuse && minio server --address ":9000" --console-address ":9001" /data'
+    environment:
+      MINIO_ROOT_USER: minio
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-Nmq1XFz0yhl3xf36e2-zs7-Df3J13IB9}
+    ports:
+      - "9190:9000"
+    volumes:
+      - langfuse_minio_data:/data
+    healthcheck:
+      test: ["CMD", "mc", "ready", "local"]
+      interval: 2s
+      timeout: 5s
+      retries: 5
+      start_period: 1s
+    networks:
+      - kcn_network
+
+  # ── REDIS FOR LANGFUSE CACHING & QUEUE ──────────────────────────────────────
+  redis:
+    image: docker.io/redis:7
+    container_name: kcn_hungphu_redis
+    restart: always
+    command: >
+      --requirepass ${REDIS_AUTH:-alIb75M8gWr6pIEhgRGcbup2GdiEDaDC}
+      --maxmemory-policy noeviction
+    volumes:
+      - langfuse_redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "-a", "${REDIS_AUTH:-alIb75M8gWr6pIEhgRGcbup2GdiEDaDC}", "ping"]
+      interval: 3s
+      timeout: 5s
+      retries: 10
+    networks:
+      - kcn_network
+
+  # ── POSTGRES FOR LANGFUSE METADATA ──────────────────────────────────────────
+  langfuse-postgres:
+    image: docker.io/postgres:17
+    container_name: kcn_hungphu_langfuse_postgres
+    restart: always
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-fQCCtm_TzLrZ1zJWYoIPbKUXwlA96P3a}
+      POSTGRES_DB: postgres
+      TZ: UTC
+      PGTZ: UTC
+    volumes:
+      - langfuse_postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 3s
+      timeout: 3s
+      retries: 10
+    networks:
+      - kcn_network
+
+networks:
+  kcn_network:
+    name: kcn_hungphu_network
+    driver: bridge
+
+volumes:
+  langfuse_postgres_data:
+    driver: local
+  langfuse_clickhouse_data:
+    driver: local
+  langfuse_clickhouse_logs:
+    driver: local
+  langfuse_minio_data:
+    driver: local
+  langfuse_redis_data:
+    driver: local

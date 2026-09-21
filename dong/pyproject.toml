@@ -1,0 +1,8 @@
+[project]
+name = "agent-atin"
+version = "0.1.0"
+description = "Chatbot thống kê xe ra/vào & xâm nhập khu vực (MVP, spec-driven)"
+requires-python = ">=3.11"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
