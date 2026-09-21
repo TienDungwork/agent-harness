@@ -1,3 +1,732 @@
+## Review (Cursor) — Langfuse trace feature vs product-spec / test-plan
+
+### Pass
+- product-spec §6 / acceptance #6: trace có output + latency; `MONITORING_ENABLED=false` → no-op.
+- Phase 5: một trace/request qua `/api/chat`, `/ask`, **`/api/agent/stream`** (UI).
+- Nested span input đúng node (`chon_tool` / `chay_tool` / `dien_giai`) — `test_react_nodes_trace_step_input_not_question`.
+- Langfuse tách `langfuse/docker-compose.yml`; backend Docker `LANGFUSE_HOST=host.docker.internal:3000`.
+- `pytest` trace + API: 52 passed (gồm `test_api_agent_stream_passes_trace_parent_span`).
+
+### Fail (đã fix trong review)
+- SSE + `trace_answer`: `ContextVar.reset` ném `ValueError` cross-thread → span không `end()`/flush — sửa `tracing.py`.
+- Stream tests crash khi `.env` bật monitoring — thêm `monkeypatch` tắt monitoring trong smoke tests.
+- `test_trace_answer_and_trace_step_with_langfuse`: assert `model_name` sai backend — patch `llm_backend=openai`.
+
+### Missing (ngoài scope feature này)
+- Live verify Langfuse UI sau mỗi deploy (manual).
+- Token aggregation cross-thread trong stream (worker thread LLM không cộng vào ContextVar cha) — chấp nhận MVP.
+- Phase 10 demo checklist README.
+
+## 2026-09-21 (Fix trace Langfuse — UI stream + LANGFUSE_HOST Docker)
+
+### Fixed
+- `/api/agent/stream` (UI mặc định) bọc `trace_answer` + truyền `parent_span` xuống graph — trước đó chỉ `/api/chat` và `/ask` có trace.
+- `docker-compose.yml`: `LANGFUSE_HOST` cố định `http://host.docker.internal:3000` (không lấy `localhost` từ `.env`).
+
+## 2026-09-21 (Tách Langfuse ra langfuse/docker-compose.yml)
+
+### Changed
+- Xóa toàn bộ service Langfuse khỏi `docker-compose.yml` gốc (chỉ còn `frontend` + `ai_backend`).
+- `langfuse/docker-compose.yml`: stack self-hosted gọn (web, worker, postgres, clickhouse, minio, redis).
+- `ai_backend` Docker trỏ `LANGFUSE_HOST=http://host.docker.internal:3000` (Langfuse expose cổng host).
+- `scripts/setup-langfuse.sh`: up Langfuse trước, rồi dong app.
+- `langfuse/README.md`, tests, README cập nhật theo cấu trúc mới.
+
+## 2026-09-21 (Setup Langfuse one-shot — dong + user + keys sẵn trong .env)
+
+### Added
+- `scripts/setup-langfuse.sh`: một lệnh khởi động dong + Langfuse; `--reset` xóa volume và init lại user mặc định.
+
+### Changed
+- `docker-compose.yml`: `LANGFUSE_MIGRATION_V4_WRITE_MODE=dual` (Langfuse v4 + SDK 4.x); healthcheck `langfuse-web`; `ai_backend` chờ Langfuse (optional); default `MONITORING_ENABLED=true` khi có profile observability.
+- `langfuse/.env.example`, `.env.example`: API keys + user mặc định khớp project `agent_ATIN`.
+- `README.md`: hướng dẫn `./scripts/setup-langfuse.sh`.
+
+### Manual test steps
+1. `cd agent-harness/dong && ./scripts/setup-langfuse.sh --reset`
+2. Đăng nhập http://localhost:3000 — `admin@agent-atin.local` / `Atin@123#`
+3. Gửi câu hỏi qua http://localhost:3001 → Langfuse → Traces thấy span `chat` + nested spans.
+
+## 2026-09-21 (Fix Langfuse nested span input — đúng context từng node)
+
+### Fixed
+- `src/agent/react.py`: span `chon_tool` ghi input = messages gửi LLM (system + hội thoại), không còn lặp `question` gốc; span `chay_tool` ghi input = tóm tắt `tool_calls` (tên + args).
+- `src/agent/graph.py`: span `dien_giai` ghi input = tóm tắt kết quả tool (`tools`, `row_count`, `columns`), không còn lặp câu hỏi user.
+- `tests/test_trace_cache.py`: thêm `test_react_nodes_trace_step_input_not_question`.
+
+### Manual test steps
+1. Bật `MONITORING_ENABLED=true`, gửi 1 câu hỏi qua UI hoặc `/api/ask`.
+2. Mở Langfuse → trace vừa tạo → kiểm tra nested spans:
+   - `chon_tool`: input là danh sách messages (có system prompt + user).
+   - `chay_tool`: input là `[{"name": "...", "args": {...}}]`.
+   - `dien_giai`: input là `{"tools": [...], "queries": [...]}` — không phải câu hỏi gốc.
+
+## 2026-09-21 (Docker Compose production demo — không .venv)
+
+### Changed
+- `Dockerfile`: bỏ `backend/` (đã xóa), thêm `docs/vms/`, user `appuser`, uvicorn `--proxy-headers`.
+- `.dockerignore`: loại `.venv`, tests, specs khỏi build context.
+- `docker-compose.yml`: mặc định chỉ `frontend` + `ai_backend`; Langfuse stack → profile `observability`; healthcheck + `depends_on`; `MONITORING_ENABLED=false` mặc định.
+- `frontend/nginx.conf`: proxy SSE `/api/` (tắt buffering, timeout 300s).
+- `.env.example`, `README.md`: hướng dẫn `docker compose up --build -d`.
+
+### Manual test steps
+1. `cd agent-harness/dong && cp .env.example .env` — chỉnh `LLM_*`.
+2. `docker compose up --build -d`
+3. `curl -s http://localhost:8000/api/health` → JSON ok.
+4. Mở http://localhost:8080, gửi câu tiếng Việt, graph chạy bên phải.
+5. `docker compose down`
+
+## Review Phase 9 Item 3 (Cursor) — Phụ thuộc LAN 196 Ollama, CH/PG read-only
+- **Pass:** README §7 khớp product-spec — Ollama 196:11434 + `qwen3-16k-nothink:latest`; PG read-only (`agent_readonly`, 5 DB từ `.env.example`); CH read-only + fallback PG (đúng `src/db/queries.py`); bảng tổng hợp 5 cột; tiến độ Phase 9 hoàn tất; Phase 9 checklist 3/3 `[x]`; Phase 10 giữ `[ ]`.
+- **Fail fixed:** anchor markdown §7→§6.1 dễ gãy → đổi thành “Mục 6.1 phía trên”.
+- **Missing (Phase 10):** checklist demo 5 phút, LAN URL ngoài máy, link golden-30 cho reviewer.
+
+## 2026-09-21 (Phase 9: Ghi phụ thuộc LAN máy 196 Ollama, CH/PG read-only trong README)
+
+### Changed
+- `README.md`:
+  - Cập nhật dòng trạng thái tiến độ ở đầu file: `Phase 9 hoàn tất (Local run instructions: run env, ping/pytest/eval, phụ thuộc LAN). Chuẩn bị: Phase 10 (Demo setup).`
+  - Bổ sung mục `### 7. Phụ thuộc mạng LAN`:
+    - **7.1. Ollama máy 196 (Bắt buộc cho live LLM):** URL mặc định `http://192.168.1.196:11434/v1`, model `qwen3-16k-nothink:latest`, yêu cầu máy chạy agent kết nối mạng LAN tới máy 196 (không phải localhost trừ khi Ollama chạy local), lệnh kiểm tra kết nối (ping CLI §6.1, HTTP ping), ghi rõ khi không có 196: chỉ chạy `pytest` offline, câu hỏi how-to có thể hoạt động nếu cấu hình LLM ở máy chủ khác qua ghi đè `LLM_BASE_URL`.
+    - **7.2. Postgres read-only (Cần cho câu hỏi số liệu / eval đầy đủ):** Role `agent_readonly` hoặc tương đương chỉ cấp quyền `SELECT`, tuyệt đối cấm ghi (`INSERT`/`UPDATE`/`DELETE`/`DROP`); liệt kê các biến môi trường chính (`DB_HOST`, `DB_PORT`, `DB_USER`, `DB_PASSWORD`, `DB_NAME_ITS`, `DB_NAME_FENCE`, `DB_NAME_FACE`, `DB_NAME_FIRE`, `DB_NAME_ANOMALY`); phân định mức độ phụ thuộc: tuỳ chọn cho câu hỏi how-to, bắt buộc cho stat tools và golden eval.
+    - **7.3. ClickHouse read-only (Tùy chọn, lưu lượng xe...):** Các biến môi trường `CH_HOST`, `CH_PORT`, `CH_USER`, `CH_PASSWORD`, `CH_DATABASE`; quyền chỉ đọc; ưu tiên truy vấn trước Postgres theo product-spec (fallback sang PG nếu thiếu CH).
+    - **7.4. Bảng tổng hợp phụ thuộc mạng LAN (Summary Table):** Bảng súc tích với 5 cột chuẩn (`Dịch vụ (Service)` | `Host mặc định` | `Cổng (Port)` | `Yêu cầu cho (Required for)` | `Ghi chú chỉ đọc (Read-only note)`).
+- `specs/implementation-plan.md`:
+  - Đánh dấu hoàn thành `[x]` duy nhất cho checklist item `Ghi phụ thuộc LAN: máy 196 Ollama, CH/PG read-only.` trong Phase 9. Giữ nguyên tất cả các checkbox của Phase 10 là `[ ]`.
+
+### Manual Test Steps (Kiểm tra kết nối LAN và tính độc lập / gián đoạn khi thiếu PG/CH)
+1. **Kiểm tra khả năng tiếp cận mạng LAN máy 196 (Ollama LAN reachability):**
+   - Kiểm tra HTTP trực tiếp tới Ollama daemon máy 196:
+     ```bash
+     curl -s --connect-timeout 3 http://192.168.1.196:11434/api/version
+     ```
+     *Kết quả kỳ vọng:* Phản hồi JSON chứa phiên bản Ollama (ví dụ `{"version":"0.33.0"}`).
+   - Kiểm tra qua client Python của agent (yêu cầu file `.env` đã cấu hình `LLM_*`):
+     ```bash
+     cd agent-harness/dong
+     python3 -c "from src.llm import ping; print(ping())"
+     ```
+     *Kết quả kỳ vọng:* In ra `OK`.
+   - **Khi không có kết nối tới máy 196:**
+     - Bộ kiểm thử offline `python3 -m pytest -q` vẫn hoạt động hoàn toàn bình thường (136 passed) nhờ mock LLM client.
+     - Live agent có thể hoạt động nếu ghi đè biến `LLM_BASE_URL` trỏ tới endpoint LLM tương thích OpenAI ở máy chủ khác.
+
+2. **Kiểm tra những gì chạy được và những gì bị gián đoạn khi thiếu Postgres/ClickHouse (What breaks without PG/CH):**
+   - **Trường hợp biến kết nối `.env` để trống (`DB_HOST`, `CH_HOST`):**
+     - *Nhánh tài liệu how-to / quy trình VMS:* Hoạt động độc lập hoàn toàn từ file markdown local (ví dụ câu hỏi: *"Cách thêm camera vào hệ thống VMS?"* trả lời đầy đủ quy trình và mermaid diagram, không gọi tool số liệu hay DB).
+     - *Nhánh an toàn (Guardrails):* Chặn prompt injection (HTTP 400) và từ chối câu hỏi ngoài phạm vi (HTTP 200, row_count=0) hoạt động không cần DB.
+     - *Nhánh số liệu thống kê (Stat tools):* Khi hỏi câu hỏi về số liệu (ví dụ: *"Hôm nay có bao nhiêu xe vào?"*), hệ thống không thể truy vấn DB thật, trả về thông báo lỗi tiếng Việt ("Lỗi kết nối cơ sở dữ liệu...", HTTP 503 hoặc fallback an toàn), guardrail đảm bảo không bịa số.
+     - *Đánh giá Golden 30 câu:* Chạy `python eval/run.py` live sẽ fail các câu hỏi slice `lookup`/`comparison` cần dữ liệu từ 5 database VMS.
+     - *ClickHouse fallback:* Khi cấu hình Postgres hợp lệ nhưng để trống ClickHouse, tool đếm xe tự động fallback truy vấn sang Postgres (`DB_NAME_ITS`) trong suốt.
+
+3. **Kiểm tra test suite và cấu trúc codebase:**
+   ```bash
+   cd agent-harness/dong
+   python3 -m pytest -q                  # kỳ vọng: 136 passed
+   find tests -name 'test_*.py' | wc -l   # kỳ vọng: 7 (< 10)
+   test ! -d backend                     # kỳ vọng: exit code 0
+   ```
+
+## Review Phase 9 Item 2 (Cursor) — ping / pytest / eval
+- **Pass:** README §6 khớp `test-plan.md` — ping CLI + `curl /api/llm/ping` (kỳ vọng `OK` đúng `src/llm.py`); `pytest -q` + đếm file + `test ! -d backend`; `eval/run.py` + `--judge`, cảnh báo không `PYTEST_CURRENT_TEST`, link Golden 30; checkbox [x].
+- **Fail:** không.
+- **Missing (checkbox tiếp theo):** mục phụ thuộc LAN 196 + CH/PG read-only trong README.
+- **Verified:** `pytest -q` → 136 passed; 7 file test; `eval/run.py --help` có `--judge`/`--offline`.
+
+## 2026-09-21 (Phase 9: Lệnh ping LLM, pytest, eval trong README)
+
+### Changed
+- `README.md`:
+  - Thêm mục `### 6. Kiểm thử & đánh giá (Testing & Evaluation)` đồng bộ với `specs/test-plan.md`.
+  - Mục 6.1 (Ping LLM live): Hướng dẫn kiểm tra kết nối qua Python CLI (`python -c "from src.llm import ping; print(ping())"`) và qua HTTP API (`curl -s http://localhost:8000/api/llm/ping`), yêu cầu `.env` và máy chủ Ollama 196 trong LAN.
+  - Mục 6.2 (pytest offline): Hướng dẫn chạy test suite offline (`pytest -q`, đếm file test `< 10`, xác nhận không còn thư mục `backend/`), mock LLM, không cần kết nối mạng.
+  - Mục 6.3 (Eval golden 30 live): Hướng dẫn chạy eval trên dataset v2 (`python eval/run.py` và `python eval/run.py --judge`), ghi chú không set `PYTEST_CURRENT_TEST`, thời gian chạy 15–30+ phút, báo cáo xuất ra `eval/results/golden-30.md`, dẫn link tới `specs/test-plan.md#golden-30-phase-8`.
+- `specs/implementation-plan.md`:
+  - Đánh dấu hoàn thành `[x]` duy nhất cho checklist item `Lệnh ping LLM, pytest, eval.` trong Phase 9.
+
+### Manual Test Steps (Kiểm tra lệnh ping LLM, pytest và cấu hình eval)
+1. **Kiểm tra ping LLM qua Python CLI (Live, yêu cầu .env và LAN 196):**
+   ```bash
+   cd agent-harness/dong
+   python3 -c "from src.llm import ping; print(ping())"
+   ```
+   *Kết quả kỳ vọng:* In ra `OK`.
+
+2. **Kiểm tra ping LLM qua HTTP API:**
+   - Đảm bảo uvicorn backend đang chạy (`uvicorn src.main:app --port 8000`).
+   - Chạy lệnh curl:
+     ```bash
+     curl -s http://localhost:8000/api/llm/ping
+     ```
+   *Kết quả kỳ vọng:* JSON phản hồi `{"status":"OK"}`.
+
+3. **Kiểm tra pytest và cấu trúc kiểm thử (Offline):**
+   ```bash
+   cd agent-harness/dong
+   pytest -q
+   find tests -name 'test_*.py' | wc -l
+   test ! -d backend
+   ```
+   *Kết quả kỳ vọng:* Tất cả bài test pass (136 passed), số file test là 7 (< 10), và lệnh `test ! -d backend` thành công (exit code 0).
+
+4. **Kiểm tra cú pháp lệnh eval:**
+   ```bash
+   cd agent-harness/dong
+   python3 eval/run.py --help
+   ```
+   *Kết quả kỳ vọng:* Hiển thị thông tin trợ giúp, xác nhận các cờ `--judge`, `--offline`, `--dataset`. Xác nhận không đặt `PYTEST_CURRENT_TEST` khi chạy live và đường dẫn kết quả tại `eval/results/golden-30.md`.
+
+## Review Phase 9 Item 1 (Cursor) — README local run
+- **Pass:** README có venv + `pip install -r requirements.txt`, `.env` tối thiểu `LLM_*`, uvicorn `:8000`, frontend `:8080`, bảng URL, bước E2E; checkbox [x]; manual steps trong change-log; khớp `requirements.txt` và 7 file test.
+- **Fail fixed:** nhãn nút UI — đổi "Lưu cài đặt" → **Lưu Cấu Hình**; ghi rõ API Base URL bắt buộc khi FE/API khác cổng.
+- **Missing (checkbox Phase 9 tiếp theo):** lệnh ping LLM / pytest / eval; mục phụ thuộc LAN 196 + CH/PG.
+
+## 2026-09-21 (Phase 9: Hướng dẫn chạy local trong README)
+
+### Changed
+- `README.md`:
+  - Cập nhật dòng trạng thái tiến độ: Phase 8 đã xong, Phase 9 đang thực hiện.
+  - Thay thế phần "Phase 1–3 xong" và "Chạy tạm (code cũ)" bằng hướng dẫn chạy local chuẩn cho v4.
+  - Bổ sung các bước chuẩn bị môi trường: virtualenv Python, lệnh cài đặt `pip install -r requirements.txt`.
+  - Hướng dẫn cấu hình `.env` từ `.env.example`, liệt kê các biến môi trường tối thiểu để hỏi một câu (`LLM_BASE_URL`, `LLM_MODEL`, `LLM_API_KEY`), giải thích các biến DB/CH là tuỳ chọn cho câu hỏi how-to.
+  - Hướng dẫn khởi động API Backend (`uvicorn src.main:app --host 0.0.0.0 --port 8000 --reload`) và Frontend tĩnh (`python3 -m http.server 8080`).
+  - Bảng tổng hợp cổng & URL: Backend API (`http://localhost:8000`), Docs (`http://localhost:8000/docs`), Frontend UI (`http://localhost:8080`).
+  - Hướng dẫn cấu hình UI: mở Settings đặt API Base URL thành `http://localhost:8000` (theo mặc định của `frontend/app.js`) và gửi câu hỏi tiếng Việt để kiểm tra luồng end-to-end.
+- `specs/implementation-plan.md`: Đánh dấu `[x]` cho mục checklist README trong Phase 9.
+
+### Manual Test Steps (Hướng dẫn kiểm thử chạy local cho người mới)
+1. Mở terminal, chuyển đến thư mục dự án:
+   ```bash
+   cd agent-harness/dong
+   ```
+2. Khởi tạo môi trường ảo và cài đặt dependencies:
+   ```bash
+   python3 -m venv .venv
+   source .venv/bin/activate
+   pip install -r requirements.txt
+   ```
+3. Tạo file `.env` từ `.env.example`:
+   ```bash
+   cp .env.example .env
+   ```
+   Kiểm tra các biến `LLM_*` trỏ đến endpoint Ollama đang hoạt động (mặc định: `http://192.168.1.196:11434/v1`). Nếu chưa có DB/CH, có thể để trống để thử nghiệm nhánh how-to / tài liệu.
+4. Chạy Backend API (terminal 1):
+   ```bash
+   uvicorn src.main:app --host 0.0.0.0 --port 8000 --reload
+   ```
+   Kiểm tra `http://localhost:8000/docs` trên trình duyệt để thấy giao diện Swagger UI.
+5. Phục vụ Frontend tĩnh (terminal 2):
+   ```bash
+   cd agent-harness/dong/frontend
+   python3 -m http.server 8080
+   ```
+6. Mở trình duyệt tại `http://localhost:8080`:
+   - Bấm biểu tượng Model ở góc dưới bên trái để mở modal Cài đặt.
+   - Nhập `http://localhost:8000` vào ô API Base URL, bấm **Kiểm tra kết nối Backend** (báo thành công) và bấm **Lưu Cấu Hình**.
+   - Nhập một câu hỏi tiếng Việt vào khung chat (ví dụ: *"Cách thêm camera vào hệ thống VMS?"*) và gửi.
+   - Kiểm tra: câu trả lời hiển thị ở cột chat và live graph hiển thị các node chạy nối tiếp ở cột phải.
+
+## Review Phase 8 Live Re-run (Cursor)
+- **Pass:** golden-30 `mode: live`, 30 dòng, cột judge có điểm thật; pytest 136 pass; checklist Phase 8 [x]; injection/OOS 3/3; product-spec không bắt 30/30 lần đầu.
+- **Fail (chất lượng agent, không chặn Phase 8):** lookup 12/18 — v008 thiếu `0`; v009–v011 không gọi tool anomaly/fire; v015/v017 thiếu must_include docs; comparison 4/6 — v023/v024 thiếu URL/devices + tool fire.
+- **Missing:** không (Phase 9–10 chưa làm).
+
+## 2026-09-21 (Phase 8: Eval Live Re-run)
+
+### Evaluation Results
+- **Mode**: live (with --judge)
+- **Pass/Fail Totals**: 22/30 pass
+  - `comparison`: 4/6 pass
+  - `injection`: 3/3 pass
+  - `lookup`: 12/18 pass
+  - `out_of_scope`: 3/3 pass
+- Verified `golden-30.md` output includes judge column with real scores and `mode: live`.
+
+## 2026-09-21 (Eval live product — không offline mặc định)
+
+### Changed
+- `eval/run.py`: mặc định **live** — xóa `PYTEST_CURRENT_TEST`, set `AGENT_EVAL_LIVE=1`, preflight ping LLM; `--offline` chỉ cho mock CI.
+- `src/llm.py`: `use_offline_tools()` trả `False` khi `AGENT_EVAL_LIVE` — intent/react/answer/judge gọi LLM thật trong eval.
+- `golden-30.md`: thêm dòng `mode: live|offline` trong header.
+- `specs/test-plan.md`: ghi rõ eval live, không `PYTEST_CURRENT_TEST`.
+
+## Review Phase 8 Judge
+- Pass: eval/judge.py 1-5 (bám nguồn, tiếng Việt, không bịa số); `--judge`; cột judge trong golden-30; offline skip; pytest xanh; không RAGAS
+- Fail fixed: judge nhận evidence thật từ pipeline (không dùng _evidence_text); truyền `expected` từ YAML; score 0 không bị clamp thành 1
+- Missing: live `--judge` trên 30 câu (user chạy khi LLM 196 sẵn sàng)
+
+## 2026-09-21 (Phase 8: Judge nhẹ 1-5)
+
+### Added
+- `eval/judge.py` với dataclass `JudgeScore` để chấm điểm 1-5 theo 3 tiêu chí (bám nguồn, tiếng Việt, không bịa số).
+- Gọi LLM qua `invoke_text` (Ollama qwen) và parse trả về JSON. Xử lý fallback (offline/parse error).
+- Thêm cờ `--judge` trong `eval/run.py` để bật chế độ chấm điểm (mặc định tắt cho nhanh).
+- Lưu kết quả chấm điểm vào cột `judge` của báo cáo `eval/results/golden-30.md`.
+
+### Changed
+- Cập nhật dataclass `CaseEvalResult` và bảng markdown có thêm cột `judge`.
+- Bật offline mode cho judge trong `use_offline_tools()`.
+
+### Fixed
+- Cập nhật và bổ sung bài test `test_golden_30_report_writes_30_rows` và `test_judge_offline_returns_skipped` trong `tests/test_readonly.py` để verify.
+
+## Review Phase 8 golden-30.md
+- Pass: bảng đủ cột id/slice/pass/fail/latency_ms/tool/note; 30 dòng/case; latency đo per case; ghi sau mỗi lần `eval/run.py`; pytest offline xanh; gitignore cho phép track file
+- Fail: (none)
+- Missing: file `eval/results/golden-30.md` chỉ xuất hiện sau khi chạy live `python eval/run.py` (cần .env LLM/DB); judge vẫn [ ]
+
+## 2026-09-21 (Phase 8: Ghi eval/results/golden-30.md)
+
+### Added
+- `CaseEvalResult`, `write_golden_30()` trong `eval/run.py`: đo `latency_ms` mỗi case, ghi bảng markdown `id | slice | pass/fail | latency_ms | tool | note`.
+- Test offline `test_golden_30_report_writes_30_rows` trong `tests/test_readonly.py`.
+- `.gitignore`: cho phép track `eval/results/golden-30.md`.
+
+### Changed
+- `eval/run.py`: sau mỗi lần chạy dataset, luôn ghi `eval/results/golden-30.md` (flag `--output` tuỳ chọn).
+- Đánh dấu [x] checklist golden-30 trong `specs/implementation-plan.md`.
+
+## Review Phase 8 Chạy v2.yaml
+- Pass: dataset 30 + 18/6/3/3; runner prints per-slice; live 22/30 (injection/OOS 3/3); structure unit test; tool_empty aligned via guardrails
+- Fail fixed: cwd-safe yaml path; `_is_tool_empty` moved to `src/guardrails.py` (eval no longer imports FastAPI main); test imports updated
+- Missing: golden-30.md, judge (leave [ ])
+
+## 2026-09-21 (Phase 8: Chạy eval/datasets/agent_stat/v2.yaml)
+
+### Added/Changed
+- Fixed `eval/run.py` to import `_is_tool_empty` from `src.guardrails` and pass into `check_output`.
+- Added unit test `test_v2_yaml_structure` in `tests/test_readonly.py` to assert the dataset size (30 cases) and slice counts (18/6/3/3).
+- Ran evaluation pipeline `python eval/run.py` on the `v2.yaml` dataset.
+
+### Evaluation Results
+- **What ran**: `python eval/run.py` (v2.yaml)
+- **Pass/Fail Totals**: 22/30 pass
+  - `comparison`: 4/6 pass
+  - `injection`: 3/3 pass
+  - `lookup`: 12/18 pass
+  - `out_of_scope`: 3/3 pass
+
+## Review Phase 8 Guardrail output
+- Pass: 
+- Fail fixed: docs None + string rows + delete patches
+- Missing: golden-30, judge, eval run — leave [ ]
+
+## 2026-09-21 (Phase 8: Guardrail output - không bịa số khi tool rỗng/0)
+
+### Added
+- `EMPTY_TOOL_REPLY` ("Không có dữ liệu khớp câu hỏi trong khoảng thời gian/điều kiện đã cho.") vào `src/guardrails.py`.
+- 2 test cases mới trong `tests/test_guardrails.py` kiểm tra hành vi chặn bịa số liệu khi tool trả về 0 row hoặc rỗng.
+- Helper `_is_tool_empty` trong `src/main.py` để xác định nếu kết quả query từ tool thực sự rỗng (không có dòng nào hoặc tất cả các cell chứa giá trị số đều bằng 0).
+
+### Changed
+- Cập nhật hàm `check_output` trong `src/guardrails.py`: thêm keyword-only argument `tool_empty`. Nếu `tool_empty=True` và có `unverified` numbers trong câu trả lời (LLM bịa số), thay thế toàn bộ câu trả lời bằng `EMPTY_TOOL_REPLY` và issue lỗi `fabricated_numbers_on_empty_tool` thay vì chỉ dán thêm disclaimer.
+- Sửa `ask`, `chat`, và `stream_agent` trong `src/main.py` để tính toán `tool_empty` và truyền vào `check_output`.
+
+### Fixed
+- Test mock trong `tests/test_trace_cache.py`: cập nhật mock `QueryResult` để có dữ liệu thực tế (rows) nhằm pass qua logic guardrail mới.
+
+## Review Phase 8 Sync
+- Pass: injection 400 UI/API, OOS Vietnamese, LLM/DB/CH formatted on stream
+- Fail fixed: thread errors
+- Missing: output number guardrail, golden-30, judge
+
+## 2026-09-21 (Phase 8: Validation, error states, Eval 30 câu - Thông báo lỗi tiếng Việt)
+
+### Added
+- Cập nhật hàm `_format_error_message` trong `src/main.py` để hỗ trợ thông báo lỗi tiếng Việt cụ thể cho các lỗi kết nối ClickHouse ("clickhouse", "ch timeout").
+- Thêm test case `test_format_error_message_clickhouse_error` và `test_api_agent_stream_handles_exception` trong `tests/test_api.py`.
+
+### Changed
+- Sửa đổi exception handler của `stream_agent` trong `src/main.py` để sử dụng `_format_error_message` trả về thông báo lỗi tiếng Việt chi tiết (ví dụ LLM down, DB/CH timeout) thay vì thông báo chung.
+- Sửa đổi `frontend/app.js` tại `handleSendMessage` để phân tích JSON lỗi (trường `detail` hoặc `reason`) khi phản hồi luồng không thành công (!res.ok) nhằm hiển thị lý do từ chối (400) và chi tiết lỗi hệ thống (503).
+- Đánh dấu hoàn thành [x] cho checklist "Thông báo lỗi tiếng Việt: LLM down, DB/CH timeout, ngoài phạm vi, injection 400." trong `specs/implementation-plan.md`.
+
+## 2026-09-21 (Phase 7: Connect UI to data - API Base URL)
+
+### Changed
+- `frontend/index.html`: Cập nhật placeholder và hint cho API Base URL trong settings modal cho đúng backend `src`.
+- `frontend/app.js`: Thêm kiểm tra validation đơn giản (bắt buộc http:// hoặc https://) khi lưu và kiểm tra sức khỏe trong `checkSystemHealthInModal` và `saveSettings`. Hàm `checkSystemHealthInModal` sử dụng giá trị đang nhập ở input để kiểm tra trực tiếp.
+- `tests/test_ui_graph.py`: Thêm test case `test_frontend_settings_api_url_wiring` để kiểm tra việc sử dụng API Base URL và endpoint wiring.
+- `specs/implementation-plan.md`: Đánh dấu hoàn thành toàn bộ Phase 7.
+
+## Review Phase 7 Sync
+- Pass: empty=same-origin; set URL routes stream+health to src backend; validate; test wiring; Phase 7 complete
+- Fail fixed: clarified LLM model endpoint vs API base URL in settings modal
+- Missing: Phase 8 validation/eval (do not implement)
+
+## 2026-09-21 (Phase 7: Connect UI to data - Sync Stream)
+
+### Changed
+- `frontend/app.js`: Sửa đổi `handleSendMessage` để chỉ gọi một endpoint `/api/agent/stream` duy nhất cho cả quá trình chạy graph và nhận câu trả lời cuối cùng, bỏ gọi `/api/chat` trên nhánh thành công, đúng yêu cầu đồng bộ.
+- `src/main.py`: Cập nhật `stream_agent` xử lý event `__final_result__` từ `run_agent_stream`, gọi hàm `check_output` và lưu cache tương tự như `/api/chat`, sau đó phát ra node `__answer__` cho frontend. Thêm xử lý `__answer__` cho các trường hợp guardrail và cache.
+- `src/agent/graph.py`: Sửa đổi `run_agent_stream` để lấy kết quả từ `ctx.run` và đẩy vào queue dưới dạng `__final_result__` để `stream_agent` có thể lấy ra và xử lý.
+- `specs/implementation-plan.md`: Đánh dấu hoàn thành cho mục "Đồng bộ: bắt đầu stream graph cùng request hỏi."
+
+## 2026-09-21 (Review Phase 7 "Hiển thị câu trả lời agent ở cột chat" fix)
+
+### Review vs acceptance criteria
+- **Pass:** Display agent answer bubble, markdown parsing, /ask detail mapping, welcome text updated.
+- **Fail fixed:** `appendMessage` showed empty tool accordion when `detail.row_count` was 0. Fixed to show only for non-empty tool/tools_used, `row_count` > 0, or non-empty `columns`.
+- **Missing:** stream sync, API base URL — leave [ ].
+
+---
+
+## 2026-09-21 (Phase 7: Display agent answer in chat column)
+
+### Added
+- Updated `frontend/app.js` to map `columns` and `row_count` into `detail` fallback for `/ask` responses.
+- Fixed the detail check in `frontend/app.js` to correctly identify `row_count` from the backend to show the tool accordion.
+- Removed Phase 2 "mock" reference from the welcome copy in `frontend/index.html`.
+- Updated checklist in `specs/implementation-plan.md` to check "Hiển thị câu trả lời agent ở cột chat.".
+
+## 2026-09-21 (Review Phase 7 "real /api/chat send")
+
+### Review vs acceptance criteria
+- **Pass:** send POSTs real `/api/chat`; no fabricated Phase 2 mock reply; abort on new send; `pytest` green.
+- **Fail fixed:** Test assertions for Phase 2 mock were weak and replaced with strict checks. Unused mock functions and variables in `frontend/app.js` were deleted.
+- **Missing:** Phase 7 display-answer checkbox polish, stream sync checkbox, API base URL checkbox (these checkboxes are left unchecked for now as requested).
+
+---
+
+## 2026-09-21 (Phase 7: Connect UI to data)
+
+### Changed
+- Updated `frontend/app.js` `handleSendMessage` to use the real API endpoints (`/api/chat` with fallback to `/ask`) instead of the mock Phase 2 graph flow.
+- Wired up the `AbortController` from the stream setup to the POST fetch calls so that cancelling a request aborts the in-flight network call correctly.
+- Replaced the Phase 2 "mock graph" error message with a clear Vietnamese error message (⚠️ **Lỗi kết nối**: Không thể kết nối tới backend/API. Vui lòng kiểm tra lại hệ thống.)
+
+
+Review: Pass / Fail fixed / Missing (Phase 7 connect UI).
+
+## 2026-09-21 (Phase 6: Live graph UI - Reset graph)
+
+### Added
+- Thêm logic gọi `resetGraph()` vào `handleSendMessage()` trong `frontend/app.js` để reset lại trạng thái graph trước khi gửi câu hỏi mới.
+- Mở rộng hàm `resetGraph()` để xử lý việc abort stream (AbortController), đặt lại placeholder và xóa nội dung IO, thay vì lặp lại code inline trong `handleSendMessage()`.
+
+### Changed
+- Cập nhật test `test_ui_graph.py` để verify rằng `resetGraph()` được gọi khi gửi tin nhắn mới.
+- Đánh dấu hoàn thành bước "Reset graph khi gửi câu mới" trong `specs/implementation-plan.md` (Hoàn thành toàn bộ Phase 6).
+
+Review:
+- Pass: also ignore stale /api/chat results after reset.
+- Pass: hover+click done shows input/output; running ignored; ~2KB truncate; SSE path safe; tests assert wiring
+- Fail fixed: stale I/O state cleared on new question
+- Missing: Reset graph checkbox (leave [ ])
+
+## 2026-09-21 (Phase 6: UI I/O hover/click for done nodes)
+
+### Changed
+- Cập nhật `frontend/app.js` (`showNodeIo`, `upsertGraphNode`):
+  - Hiển thị I/O của node khi click hoặc hover vào các node ở trạng thái `done`.
+  - Node đang `running` sẽ bỏ qua, không hiện I/O trống.
+  - Xử lý an toàn `JSON.stringify(n.input ?? null)` để tránh sập UI khi event SSE thiếu trường.
+  - Cắt ngắn đoạn văn bản I/O xuống mức ~2KB (`IO_MAX_CHARS=2000`) và cập nhật lại câu chú thích cho hợp lý.
+  - Fix việc refresh tự động khung hiển thị nếu node đang được chọn khi vừa chuyển sang `done`.
+- Đánh dấu hoàn thành checklist item "Hover hoặc click node **done** → hiện input và output" trong `specs/implementation-plan.md` Phase 6.
+- Bổ sung test cases trong `tests/test_ui_graph.py` để verify các hành vi `showNodeIo`, `click`, `mouseenter`, `IO_MAX_CHARS` và guard `status !== 'done'` trên client.
+
+## Review Phase 6: Vẽ node lần lượt
+
+### Review
+- Pass: nodes draw running→done in #graph-nodes from SSE; half-panel layout unchanged; clear DOM per new stream for fresh draw
+- Fail fixed: restored placeholder text on stream start so panel is not blank; skipped malformed events without node_id/status.
+- Missing (do NOT implement): dedicated hover/click I/O checkbox polish if any gap; reset graph checkbox
+
+## 2026-09-21 (Phase 6: Live graph UI - vẽ node lần lượt)
+
+### Changed
+- `frontend/app.js`: Cập nhật logic xử lý SSE stream. Gọi hàm `upsertGraphNode` cho mỗi sự kiện nhận được từ stream để vẽ các node lần lượt (running → done) vào giao diện.
+- `frontend/app.js`: Xóa nội dung hiển thị trong `#graph-nodes` khi bắt đầu một stream mới để đảm bảo sơ đồ vẽ lại từ đầu.
+- `specs/implementation-plan.md`: Đánh dấu hoàn thành [x] cho mục "Vẽ node lần lượt (running → done) trong khung ~50% phải." trong Phase 6.
+- `tests/test_ui_graph.py`: Cập nhật test `test_frontend_app_js_stream` để kiểm tra `app.js` có thực sự gọi `upsertGraphNode` khi phân tích dữ liệu SSE hay không.
+
+## Review Phase 6: FE subscribe SSE
+
+### Review
+- Pass: frontend/app.js syntax valid; updates #graph-placeholder; handles non-OK; panel hint updated.
+- Fail fixed: Invalid JS syntax (`...${...}`), used non-existent `.graph-content`.
+- Missing (do NOT implement): draw nodes, hover I/O, reset — leave [ ].
+
+## Phase 6: Subscribe SSE in FE
+
+- Added `streamAbortController` and `streamEventsCount` to frontend state in `frontend/app.js`.
+- Replaced `runMockGraph(question)` with actual SSE fetch subscription via `POST /api/agent/stream`.
+- Added logic to parse each `data: {...}` line as JSON and increment a lightweight placeholder status text with the event count in the graph panel.
+- Added test in `tests/test_ui_graph.py` to ensure `app.js` reads stream and does not use `runMockGraph` on send.
+
+## Review Phase 5: Emit running→done
+
+### Review
+- Pass: true running before work; done after with input/output; classify/docs/out/react wrapped; SSE unchanged; timing test; Phase 5 all [x]
+- Fail fixed: run_agent_stream background thread exception handling; _wrap_node error/missing event emission; test_api timing thread teardown
+- Missing (do NOT implement): FE EventSource (Phase 6), golden-30
+
+### Phase 5 - Emit sự kiện node running -> done
+
+- Sửa đổi `src/agent/graph.py` để wrap các node (`classify`, `docs`, `out`, `react`) nhằm gửi sự kiện `running` ngay trước khi node bắt đầu thực thi và gửi sự kiện `done` (kèm theo input/output) sau khi node hoàn thành.
+- Cập nhật `run_agent_stream` sử dụng `contextvars.ContextVar`, một hàng đợi (`queue.Queue`), và một luồng nền (`threading.Thread`) để lấy liên tục tiến trình cập nhật từ đồ thị.
+- Bổ sung test `test_api_agent_stream_running_before_done_timing` trong `tests/test_api.py` để xác nhận thứ tự gửi sự kiện với một node chậm mô phỏng.
+
+## Review Phase 5: SSE endpoint only
+
+### Review
+- Pass: SSE endpoint text/event-stream; event keys node_id/status/input?/output?; check_input before stream; truncate ~2KB; curl/smoke ≥2 data lines; emit checkbox still [ ]
+- Fail fixed: pass stream_mode="updates" explicitly in run_agent_stream; move mid-file imports up in src/main.py; add prompt injection blocked test for /api/agent/stream
+- Missing (do NOT implement): true mid-flight emit from inside each node (next checkbox); FE EventSource; golden-30
+
+## 2026-09-21 (Phase 5: Endpoint stream SSE)
+
+### Added
+- Thêm `run_agent_stream` trong `src/agent/graph.py` để yield sự kiện (`running` / `done`) từ `_build_graph().stream(...)`.
+- Thêm endpoint `POST /api/agent/stream` trong `src/main.py` dùng `StreamingResponse` trả về SSE event theo format `data: {...}\n\n`. Hỗ trợ guardrail `in_scope` và cache mock stream.
+- Thêm test `test_api_agent_stream_smoke` vào `tests/test_api.py` để kiểm tra streaming response, định dạng `text/event-stream` và luồng sự kiện.
+
+### Changed
+- Cập nhật checklist trong `specs/implementation-plan.md` đánh dấu hoàn thành mục Endpoint stream SSE.
+
+## 2026-09-21 (Review Phase 5: Cache only)
+
+### Review
+- Pass: exact key after redact_pii; TTL; hit skips LLM/run_agent; INFO "cache hit"; out_of_scope/errors not stored; chat+ask wired; pytest green; checkbox [x]
+- Fail fixed: tests depended on short-answer guardrail fallback; missing disable-cache assert
+- Missing (do NOT implement): SSE, emit running→done, UI live graph, golden-30
+
+## 2026-09-21 (Phase 5: Exact Match Cache)
+
+### Added
+- Thêm `CACHE_ENABLED` (mặc định `true`) và `CACHE_TTL_S` (mặc định `60`) vào cấu hình trong `src/config.py` và `.env.example`.
+- Triển khai in-memory cache thread-safe (dùng `threading.Lock`) trong `src/main.py` để lưu kết quả trả lời của các câu hỏi giống hệt nhau (sau bước redact PII).
+- Tích hợp kiểm tra cache hit trước khi chạy LLM agent trong cả hai endpoint `/api/chat` và `/ask`.
+- Log "cache hit" ở mức INFO khi truy xuất thành công từ cache.
+- Bổ sung 2 unit test vào `tests/test_trace_cache.py`:
+  - Kiểm tra lần gọi thứ hai cùng một câu hỏi sẽ bỏ qua `run_agent`.
+  - Kiểm tra câu hỏi bị trễ quá TTL sẽ không sử dụng cache cũ và gọi lại `run_agent`.
+
+### Changed
+- Cập nhật các hàm test trong `tests/test_api.py` có can thiệp exception để xoá cache trước khi test, đảm bảo exception mock được gọi thay vì trả cache.
+- Đánh dấu hoàn tất "Cache exact câu trùng" trong `specs/implementation-plan.md`.
+
+### Testing
+- Chạy toàn bộ test bằng `python3 -m pytest -q` pass hoàn toàn.
+
+### Not done
+- Phase 5: Stream sự kiện (SSE), emit `running->done`.
+
+## 2026-09-21 (Phase 5: Trace Request Tokens)
+
+### Added
+- Tích hợp đếm token (prompt, completion, total) cho toàn bộ LLM calls trong một request trace.
+- Thêm biến `contextvars.ContextVar` trong `src/monitoring/tracing.py` để tích lũy sum token.
+- Cập nhật hàm `invoke_with_tools` và `invoke_text` trong `src/llm.py` để trích xuất token qua `extract_token_usage` và gọi `add_request_tokens` lưu vào context hiện tại.
+- Lượt gọi `trace_answer` ở vòng ngoài cùng lúc kết thúc sẽ cộng dồn số liệu từ biến context vào trace cha trên Langfuse.
+
+### Changed
+- Đảm bảo `invoke_text` vẫn giữ đúng kiểu trả về `str`.
+- Đảm bảo khi `MONITORING_ENABLED=false`, toàn bộ luồng đếm token biến thành no-op (không lỗi, không crash) nhờ default `None` của context variable.
+
+### Testing
+- Chạy `pytest -q tests/` cho kết quả `114 passed`, không hỏng test cũ (`test_trace_cache.py`). Lượt update token cộng dồn tương thích hoàn toàn.
+
+---
+
+## Review
+- Pass: one trace per /ask|/api/chat; input+output+latency; token sum via ContextVar; MONITORING off = no-op; pytest still green
+- Fail fixed: missing unit assert for token sum on parent
+- Missing (do NOT implement): cache TTL, SSE, emit running→done, UI graph live, golden-30
+- Pass: LLM ping, intent branches, docs no stats tools, keyword docs, reply_vi short-circuit, DELETE still blocked on Postgres, pytest 114, checkboxes [x]
+- Fail fixed: CH write guard; events append
+- Missing (do NOT implement): Phase 5 SSE/cache, Phase 6–8 UI/golden file, live ping 196
+
+# Phase 4 - Core backend / data logic (2026-09-21)
+- `src/llm.py`: Thêm cấu hình LLM_API_KEY, timeout, và hàm `ping()` kiểm tra kết nối LLM 196. Thêm xử lý lỗi try-except cho `invoke_with_tools` và `invoke_text` trả về lỗi tiếng Việt.
+- `src/main.py`: Thêm API endpoint `GET /api/llm/ping`.
+- `src/config.py`: Đọc cấu hình ClickHouse (`CH_*`) và LLM (`LLM_API_KEY`).
+- `src/agent/intent.py`: Thêm logic phân loại intent (query_data, how_to, troubleshoot, concept, out_of_scope).
+- `src/agent/docs.py`: Thêm hàm lấy tài liệu từ `docs/vms/` để xử lý nhóm intent how-to/troubleshoot.
+- `src/agent/graph.py`: Thiết lập StateGraph với 4 node (classify, react, docs, out). Thêm thông tin node_id và input/output vào properties `events` của `AgentState` chuẩn bị cho stream.
+- `src/db/clickhouse.py`: Cấu hình client gọi truy vấn ClickHouse qua HTTP.
+- `src/db/queries.py`: Thêm cơ chế ClickHouse fallback vào tool `count_vehicle_flow`.
+- `src/agent/tools.py`: Thêm biến `reply_vi` vào `QueryResult`.
+- `src/agent/answer.py`: Xử lý trả về thẳng nếu tool cung cấp `reply_vi` nhằm không paraphrase số liệu.
+- `docs/vms/`: Copy tài liệu VMS cơ bản và cấu trúc walkthrough + thiết lập thêm hướng dẫn truy cập camera AIOC.
+
+## 2026-09-21 (Fix Phase 3 Regression)
+
+### Review vs acceptance criteria (Phase 3 Regression)
+- **AC#1 (Không còn thư mục backend):** Đã kiểm tra `test ! -d backend`, xác nhận thư mục `backend/` đã vắng mặt.
+- **AC#2 (Dưới 10 file tests, pytest -q pass offline):**
+  - Số lượng test file hiện tại: `7` (đạt tiêu chí `< 10`).
+  - Lệnh `pytest -q` trước đây báo lỗi `SyntaxError: from __future__ import annotations` do việc merge/gộp file sinh ra nhiều cấu trúc docstring và import trùng lặp không hợp lệ ở giữa file.
+  - Lệnh `pytest -q` cũng báo lỗi 2 test của Docker config (thuộc Phase 7) vì sai đường dẫn `Dockerfile` do `backend/` đã bị xoá.
+
+### Fixed
+- Dọn dẹp toàn bộ 7 file `tests/test_*.py`:
+  - Chỉ giữ lại duy nhất 1 câu lệnh `from __future__ import annotations` ở dòng đầu tiên (hoặc ngay sau module docstring đầu tiên).
+  - Loại bỏ các module docstrings lơ lửng (`"""..."""`) nằm rải rác giữa file sinh ra do quá trình gộp file.
+- Sửa các đường dẫn assert trong `tests/test_api.py` liên quan tới kiểm tra `Dockerfile` từ `backend/Dockerfile` thành `Dockerfile` (nằm ở thư mục gốc, phù hợp với kiến trúc vắng mặt `backend/`).
+- **Kết quả:** Lệnh `pytest -q tests/` đã thu thập thành công 115 test và vượt qua toàn bộ 100% (pass offline test) với exit code 0.
+## 2026-09-21 (Phase 3: Gộp backend vào src)
+
+### Changed
+- Gộp hoàn toàn thư mục `backend/` vào `src/`. Logic chạy API FastAPI (router, endpoint chat/ask, error handling) được chuyển từ `backend/main.py` sang `src/main.py`.
+- Gom tất cả các cấu hình (`config.py`), công cụ AI (`llm.py`), tracing (`monitoring/tracing.py`), agent/tools (`agent/`, `tools.py`), prompts (`prompts.py`) vào bên trong `src/` thành thư mục thống nhất, loại bỏ các file bị lặp hoặc file re-export trung gian.
+- Gộp các file unit/integration test trong `tests/` từ 14 file xuống còn 7 file (`test_api.py`, `test_guardrails.py`, `test_intent.py`, `test_llm.py`, `test_readonly.py`, `test_trace_cache.py`, `test_ui_graph.py`) giúp dễ quản lý. Chạy `pytest -q` hoàn thành.
+- Cập nhật đường dẫn file `Dockerfile` ra root và điều chỉnh cấu hình `docker-compose.yml` để build từ `Dockerfile` root, dùng entrypoint `src.main:app`.
+- Đánh dấu các hạng mục Phase 3 đã xong trong `specs/implementation-plan.md`.
+
+### Removed
+- Xóa hoàn toàn thư mục `backend/` vì đã không còn được sử dụng ở bất kỳ đâu.
+
+---
+
+## 2026-09-21 (Phase 2 review vs product-spec / test-plan)
+
+### Review (chỉ phạm vi Phase 2 / AC#7 + UI graph smoke)
+
+| Tiêu chí | Kết quả |
+|----------|---------|
+| Layout chat \| graph ~50% (workspace) | Pass |
+| Placeholder “Chờ sự kiện node” | Pass |
+| Node hiện lần lượt khi gửi | Pass (mock) |
+| Click node done → I/O | Pass |
+| Hover node done → I/O (test-plan) | **Fail → đã fix** |
+| Câu mới / chat mới reset graph | **Fail (timer mock còn chạy) → đã fix** |
+| Cắt I/O ~2KB (product live graph) | **Thiếu → đã thêm truncate** |
+| SSE thật, backend, AC#1–6, #8 | Missing (đúng — phase sau) |
+
+### Changed
+- `frontend/app.js` — `mouseenter` hiện I/O; hủy timer + `graphRunId` khi `resetGraph`; truncate I/O 2KB.
+- `frontend/index.html` — copy panel I/O nhắc hover.
+
+### Not done
+- Phase 3+ vẫn `[ ]`.
+
+---
+
+## 2026-09-21 (Phase 2 — Core UI)
+
+### Changed
+- `frontend/index.html` — workspace chat | graph ~50/50; panel I/O node.
+- `frontend/style.css` — layout `.workspace`, `.graph-panel`, node states.
+- `frontend/app.js` — mock graph lần lượt khi gửi; click node done → input/output; reset khi chat mới.
+- `specs/implementation-plan.md` — Phase 2 `[x]`.
+
+### Verified
+- Người dùng: `cd frontend && python3 -m http.server 8080` → mở http://localhost:8080 — thấy 2 cột; gửi câu → node mock; bấm node → I/O.
+
+### Not done
+- Phase 3+ (gộp backend, logic, SSE thật).
+
+---
+
+## 2026-09-21 (Phase 1 — Project setup)
+
+### Added
+- `eval/results/.gitkeep` — chỗ ghi `golden-30.md` (Phase 8); nội dung results bị ignore.
+
+### Changed
+- `.env.example` — `LLM_BASE_URL` / `LLM_MODEL` / `LLM_API_KEY` mặc định Ollama 196 (`qwen3-16k-nothink:latest`); giữ Postgres read-only; thêm placeholder `CH_*`; đồng bộ `MODEL_*` với 11434.
+- `README.md` — cấu trúc mục tiêu v4, setup, lệnh chạy tạm.
+- `dong/.gitignore` — `.env`, `eval/results/*` (giữ `.gitkeep`).
+- `src/main.py` — docstring: entry dự kiến `uvicorn src.main:app` (vẫn re-export `backend` đến Phase 3).
+- `specs/implementation-plan.md` — Phase 1 checklist `[x]`.
+
+### Verified
+- Người dùng: `cp .env.example .env` rồi so khóa LLM_*; không yêu cầu business feature.
+
+### Not done
+- Phase 2+ (UI, gộp backend, logic, graph stream, eval).
+
+---
+
+## 2026-09-21 (Spec v4 — AGENTS.md theo SDD bước rules)
+
+### Changed
+- `AGENTS.md`: 7 quy tắc SDD (đọc spec, một phase, đơn giản, không lib thừa, không đổi kiến trúc ngoài spec, change-log, hướng dẫn test).
+
+### Not done
+- Chưa code app.
+
+---
+
+## 2026-09-21 (Spec v4 — implementation plan 10 phase)
+
+### Changed
+- `specs/implementation-plan.md`: viết lại Phase 1–10 (setup, UI, gộp src, backend logic, stream, live graph, nối UI, eval, local run, demo).
+- Đồng bộ `README.md`, `AGENTS.md` với số phase mới.
+
+### Not done
+- Chưa code. Mọi checklist vẫn `[ ]`.
+
+---
+
+## 2026-09-21 (Spec v4 — product spec SDD bước 2 + live graph)
+
+### Changed
+- `specs/product-spec.md`: rõ 6 mục bắt buộc; giữ gộp `backend/`→`src/`, test < 10, live graph nửa màn hình + I/O node.
+
+### Not done
+- Chưa code.
+
+---
+
+## 2026-09-21 (Spec v4 — live graph UI nửa màn hình)
+
+### Changed
+- Product: khung graph ≈ 50% rộng, vẽ node realtime, hover/click hiện input/output.
+- Implementation: Phase 5 stream node; Phase 6 UI; eval → Phase 7.
+- Cập nhật README, AGENTS, test-plan.
+
+### Not done
+- Chưa code. Phase 0–7 vẫn `[ ]`.
+
+---
+
+## 2026-09-21 (Spec v4 — product spec SDD bước 2, kèm gộp backend)
+
+### Changed
+- `specs/product-spec.md`: rõ 6 mục (app goal, target users, core user flow, in/out of scope, acceptance) + gộp `backend/`→`src/`, test < 10 file.
+
+### Not done
+- Chưa code.
+
+---
+
+## 2026-09-21 (Spec v4 — gộp backend vào src, gom test)
+
+### Changed
+- Spec thêm Phase 0: gộp `backend/` vào `src/`, xóa hàm trùng, `tests/` dưới 10 file (hiện 14).
+- Cập nhật `README.md`, `AGENTS.md`, `product-spec.md`, `implementation-plan.md`, `test-plan.md`.
+
+### Not done
+- Chưa sửa code. Phase 0–6 vẫn `[ ]`.
+
+---
+
+## 2026-09-21 (Spec v4 — product spec theo khung SDD bước 2)
+
+### Changed
+- `specs/product-spec.md`: tách rõ app goal, target users, core user flow, features in/out of scope, acceptance criteria.
+
+### Not done
+- Vẫn chưa code.
+
+---
+
+## 2026-09-21 (Spec v4 — chưa code)
+
+### Added
+- Viết lại hướng MVP: `README.md`, `AGENTS.md`, `specs/product-spec.md`, `specs/implementation-plan.md`, `specs/test-plan.md`.
+- LLM Ollama `192.168.1.196:11434` (`qwen3-16k-nothink`), ClickHouse/Postgres chỉ đọc, nhánh how-to VMS kiểu `duy`, trace + cache exact, eval 30 câu → `eval/results/golden-30.md`.
+- Style tham chiếu: `llm-engineer-demo` (module mỏng, judge/trace đơn giản).
+
+### Not done
+- Không sửa app code. Phase 1–6 trong implementation-plan vẫn `[ ]`.
+
+---
+
 ## 2026-09-21 (Dataset v2.1 — AIOC howto + vẽ sơ đồ, giữ 30 case / 18-6-3-3)
 
 ### Changed

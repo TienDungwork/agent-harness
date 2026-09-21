@@ -12,6 +12,7 @@ Cơ chế Fail-safe & No-op:
 
 from __future__ import annotations
 
+import contextvars
 import logging
 import time
 from collections.abc import Iterator
@@ -21,6 +22,16 @@ from typing import Any
 from src.config import settings
 
 logger = logging.getLogger(__name__)
+
+_request_tokens = contextvars.ContextVar("request_tokens", default=None)
+
+def add_request_tokens(usage: dict[str, int]):
+    """Cộng dồn token vào request hiện tại."""
+    tokens = _request_tokens.get()
+    if tokens is not None and isinstance(usage, dict):
+        tokens["prompt_tokens"] += usage.get("prompt_tokens", 0)
+        tokens["completion_tokens"] += usage.get("completion_tokens", 0)
+        tokens["total_tokens"] += usage.get("total_tokens", 0)
 
 
 def _get_langfuse():
@@ -102,6 +113,9 @@ def trace_answer(name: str, question: str, metadata: dict[str, Any] | None = Non
     start = time.perf_counter()
     box: dict[str, Any] = {}
     meta = dict(metadata or {})
+    
+    token_counter = {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0}
+    token_var_token = _request_tokens.set(token_counter)
 
     try:
         langfuse = _get_langfuse()
@@ -123,6 +137,16 @@ def trace_answer(name: str, question: str, metadata: dict[str, Any] | None = Non
                 logger.warning("Lỗi cập nhật Langfuse ERROR span: %s", update_exc)
         raise
     finally:
+        if "usage" not in box:
+            box["usage"] = {}
+        box["usage"]["prompt_tokens"] = box["usage"].get("prompt_tokens", 0) + token_counter["prompt_tokens"]
+        box["usage"]["completion_tokens"] = box["usage"].get("completion_tokens", 0) + token_counter["completion_tokens"]
+        box["usage"]["total_tokens"] = box["usage"].get("total_tokens", 0) + token_counter["total_tokens"]
+        try:
+            _request_tokens.reset(token_var_token)
+        except ValueError:
+            pass  # SSE chạy qua threadpool — context khác, vẫn phải end span
+
         if span is not None:
             try:
                 latency_s = time.perf_counter() - start

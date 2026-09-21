@@ -19,6 +19,7 @@ class Settings(BaseSettings):
     llm_model: str = Field(default="gpt-4o-mini", alias="LLM_MODEL")
     llm_temperature: float = Field(default=0.2, alias="LLM_TEMPERATURE")
     llm_max_retries: int = Field(default=3, alias="LLM_MAX_RETRIES")
+    llm_api_key: str = Field(default="", alias="LLM_API_KEY")
 
     # Cấu hình model tự host (khi LLM_BACKEND=self_hosted)
     model_base_url: str = Field(default="http://192.168.1.196:18083/v1", alias="MODEL_BASE_URL")
@@ -43,6 +44,13 @@ class Settings(BaseSettings):
     db_query_timeout_s: float = Field(default=5.0, alias="DB_QUERY_TIMEOUT_S")
     db_max_rows: int = Field(default=200, alias="DB_MAX_ROWS")
 
+    # ── ClickHouse analytics (READ-ONLY) ───────────────────────────────────────────
+    ch_host: str = Field(default="", alias="CH_HOST")
+    ch_port: int = Field(default=8123, alias="CH_PORT")
+    ch_user: str = Field(default="", alias="CH_USER")
+    ch_password: str = Field(default="", alias="CH_PASSWORD")
+    ch_database: str = Field(default="", alias="CH_DATABASE")
+
     # ── Guardrails ───────────────────────────────────────────────────────────
     guardrails_min_answer_len: int = Field(default=5, alias="GUARDRAILS_MIN_ANSWER_LEN")
     guardrails_max_answer_len: int = Field(default=2000, alias="GUARDRAILS_MAX_ANSWER_LEN")
@@ -52,6 +60,10 @@ class Settings(BaseSettings):
     langfuse_public_key: str = Field(default="", alias="LANGFUSE_PUBLIC_KEY")
     langfuse_secret_key: str = Field(default="", alias="LANGFUSE_SECRET_KEY")
     langfuse_host: str = Field(default="http://localhost:3000", alias="LANGFUSE_HOST")
+
+    # ── Cache ────────────────────────────────────────────────────────────────
+    cache_enabled: bool = Field(default=True, alias="CACHE_ENABLED")
+    cache_ttl_s: int = Field(default=60, alias="CACHE_TTL_S")
 
     @property
     def api_keys(self) -> list[str]:

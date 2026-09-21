@@ -88,6 +88,40 @@ def count_vehicle_flow(
         ORDER BY so_luot DESC
         LIMIT {settings.db_max_rows};
     """
+    
+    if getattr(settings, 'ch_host', None):
+        try:
+            from src.db.clickhouse import clickhouse_query
+            ch_clauses = ["event_time >= {date_from:String}", "event_time < {date_to:String}"]
+            if settings.db_organization_id:
+                ch_clauses.append(f"organization_id = {settings.db_organization_id}")
+            ch_params = {"date_from": date_from, "date_to": date_to}
+            if direction:
+                ch_clauses.append("direction = {direction:String}")
+                ch_params["direction"] = direction.strip().upper()
+            if vehicle_type:
+                ch_clauses.append("vehicle_type = {vehicle_type:String}")
+                ch_params["vehicle_type"] = vehicle_type.strip().upper()
+            if "manufacturer" in group_cols:
+                ch_clauses.append("manufacturer IS NOT NULL")
+            ch_sql = f"""
+                SELECT {select_cols}, count(*) AS so_luot
+                FROM plate_event
+                WHERE {" AND ".join(ch_clauses)}
+                GROUP BY {select_cols}
+                ORDER BY so_luot DESC
+                LIMIT {settings.db_max_rows};
+            """
+            ch_data = clickhouse_query(ch_sql, ch_params)
+            rows = [[row[c] for c in group_cols] + [row["so_luot"]] for row in ch_data]
+            return {
+                "columns": [*group_cols, "so_luot"],
+                "rows": rows,
+                "row_count": len(rows),
+            }
+        except Exception:
+            pass # fallback to Postgres if Clickhouse fails
+
     with get_connection(settings.db_name_its) as conn, conn.cursor() as cur:
         cur.execute(sql, params)
         rows = cur.fetchall()

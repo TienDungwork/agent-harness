@@ -1,7 +1,13 @@
 __pycache__/
 *.pyc
 .env
+langfuse/.env
 .venv/
 venv/
 *.sqlite3
 .pytest_cache/
+
+# Eval outputs (giữ thư mục bằng .gitkeep)
+eval/results/*
+!eval/results/.gitkeep
+!eval/results/golden-30.md

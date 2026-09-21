@@ -12,6 +12,9 @@
     apiBaseUrl: localStorage.getItem('agent_api_base_url') || '',
     isGenerating: false,
     messages: [],
+    graphNodes: {},
+    streamAbortController: null,
+    streamEventsCount: 0,
   };
 
   // DOM Elements
@@ -36,6 +39,10 @@
     inputApiUrl: document.getElementById('input-api-url'),
     btnCheckHealth: document.getElementById('btn-check-health'),
     healthResult: document.getElementById('health-result'),
+    graphPlaceholder: document.getElementById('graph-placeholder'),
+    graphNodes: document.getElementById('graph-nodes'),
+    graphIoEmpty: document.getElementById('graph-io-empty'),
+    graphIoBody: document.getElementById('graph-io-body'),
   };
 
   // Initialize
@@ -112,7 +119,79 @@
     el.welcomeScreen.style.display = 'block';
     el.questionInput.value = '';
     adjustTextareaHeight();
+    resetGraph();
     el.questionInput.focus();
+  }
+
+  // ==========================================================================
+  // Graph Logic (Phase 5+)
+  // ==========================================================================
+  const IO_MAX_CHARS = 2000;
+  let graphRunId = 0;
+
+  function truncateIoText(text) {
+    if (text.length <= IO_MAX_CHARS) return text;
+    return text.slice(0, IO_MAX_CHARS) + '\n… (đã cắt ~2KB)';
+  }
+
+  function resetGraph() {
+    graphRunId += 1;
+    if (state.streamAbortController) {
+      state.streamAbortController.abort();
+    }
+    state.streamAbortController = new AbortController();
+    state.streamEventsCount = 0;
+    state.graphNodes = {};
+    if (el.graphNodes) el.graphNodes.innerHTML = '';
+    if (el.graphPlaceholder) {
+      el.graphPlaceholder.classList.remove('hidden');
+      el.graphPlaceholder.textContent = 'Chờ sự kiện node...';
+    }
+    if (el.graphIoEmpty) el.graphIoEmpty.hidden = false;
+    if (el.graphIoBody) {
+      el.graphIoBody.hidden = true;
+      el.graphIoBody.textContent = '';
+    }
+  }
+
+  function showNodeIo(nodeId) {
+    const n = state.graphNodes[nodeId];
+    if (!n || n.status !== 'done') return;
+    document.querySelectorAll('.graph-node').forEach(node => {
+      node.classList.toggle('selected', node.dataset.nodeId === nodeId);
+    });
+    el.graphIoEmpty.hidden = true;
+    el.graphIoBody.hidden = false;
+    const raw =
+      'input:\n' + JSON.stringify(n.input ?? null, null, 2) +
+      '\n\noutput:\n' + JSON.stringify(n.output ?? null, null, 2);
+    el.graphIoBody.textContent = truncateIoText(raw);
+  }
+
+  function upsertGraphNode(nodeId, status, input, output) {
+    if (el.graphPlaceholder) el.graphPlaceholder.classList.add('hidden');
+    state.graphNodes[nodeId] = { status, input, output };
+    let card = el.graphNodes.querySelector(`[data-node-id="${nodeId}"]`);
+    if (!card) {
+      card = document.createElement('button');
+      card.type = 'button';
+      card.className = 'graph-node';
+      card.dataset.nodeId = nodeId;
+      card.innerHTML =
+        '<div class="graph-node-id"></div><div class="graph-node-status"></div>';
+      card.addEventListener('click', () => showNodeIo(nodeId));
+      card.addEventListener('mouseenter', () => showNodeIo(nodeId));
+      el.graphNodes.appendChild(card);
+    }
+    card.classList.remove('running', 'done');
+    card.classList.add(status);
+    card.querySelector('.graph-node-id').textContent = nodeId;
+    card.querySelector('.graph-node-status').textContent =
+      status === 'running' ? 'đang chạy…' : 'xong — trỏ hoặc bấm để xem I/O';
+      
+    if (status === 'done' && card.classList.contains('selected')) {
+      showNodeIo(nodeId);
+    }
   }
 
   // ==========================================================================
@@ -199,8 +278,17 @@
     const contentDiv = document.createElement('div');
     contentDiv.className = 'message-content';
 
-    // Tool Execution Accordion if detail is present
-    if (detail && (detail.tool || detail.tools_used || detail.rows_count !== undefined)) {
+    let hasRealMetadata = false;
+    if (detail) {
+      const hasToolStr = typeof detail.tool === 'string' && detail.tool.trim() !== '';
+      const hasToolsArr = Array.isArray(detail.tools_used) && detail.tools_used.length > 0;
+      const hasRowCount = (typeof detail.row_count === 'number' && detail.row_count > 0) || (typeof detail.rows_count === 'number' && detail.rows_count > 0);
+      const hasCols = Array.isArray(detail.columns) && detail.columns.length > 0;
+      hasRealMetadata = hasToolStr || hasToolsArr || hasRowCount || hasCols;
+    }
+
+    // Tool Execution Accordion if detail has real metadata
+    if (hasRealMetadata) {
       const accordion = document.createElement('details');
       accordion.className = 'tool-accordion';
       
@@ -280,7 +368,7 @@
 
   async function handleSendMessage() {
     const question = el.questionInput.value.trim();
-    if (!question || state.isGenerating) return;
+    if (!question) return;
 
     state.isGenerating = true;
     el.btnSend.disabled = true;
@@ -289,51 +377,93 @@
 
     appendMessage('user', question);
     showThinkingIndicator();
+    
+    // Subscribe to SSE
+    resetGraph();
+    const currentRunId = graphRunId;
 
-    try {
-      // Try /api/chat or fallback to /ask
-      const url = getApiEndpoint('/api/chat');
-      const payload = {
-        question: question,
-        model_provider: state.activeModel,
-      };
+    fetch(getApiEndpoint('/api/agent/stream'), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ question: question, model_provider: state.activeModel }),
+      signal: state.streamAbortController.signal
+    }).then(async (res) => {
+      if (currentRunId !== graphRunId) return;
 
-      let response;
-      try {
-        response = await fetch(url, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(payload),
-        });
-      } catch (err) {
-        // Fallback to /ask endpoint for backward compatibility
-        const fallbackUrl = getApiEndpoint('/ask');
-        response = await fetch(fallbackUrl, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ question: question }),
-        });
+      if (!res.ok) {
+        let errText = '⚠️ **Lỗi kết nối**: Không thể kết nối tới backend/API. Vui lòng kiểm tra lại hệ thống.';
+        try {
+          const errData = await res.json();
+          if (res.status === 400 && (errData.detail || errData.reason)) {
+            errText = errData.detail || errData.reason;
+          } else if (errData.detail) {
+            errText = errData.detail;
+          }
+        } catch (e) {}
+        const errObj = new Error(errText);
+        errObj.isCustomMsg = true;
+        throw errObj;
       }
+      if (!res.body) return;
+      const reader = res.body.getReader();
+      const decoder = new TextDecoder('utf-8');
+      let buffer = '';
+      let hasAnswer = false;
+      while (true) {
+        const { value, done } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split('\n');
+        buffer = lines.pop(); // keep the incomplete line in buffer
+        for (const line of lines) {
+          if (line.startsWith('data: ')) {
+            const dataStr = line.slice(6).trim();
+            if (!dataStr || dataStr === '[DONE]') continue;
+            try {
+              const event = JSON.parse(dataStr);
+              if (!event.node_id || !event.status) continue;
+              
+              if (event.node_id === '__answer__') {
+                if (currentRunId !== graphRunId) return;
+                hasAnswer = true;
+                removeThinkingIndicator();
+                appendMessage('assistant', event.output || 'Không có câu trả lời.', event.detail);
+                continue;
+              }
 
-      removeThinkingIndicator();
-
-      if (!response.ok) {
-        const errorData = await response.json().catch(() => ({ detail: 'Lỗi máy chủ' }));
-        appendMessage('assistant', `⚠️ **Lỗi**: ${errorData.detail || 'Không thể lấy dữ liệu từ máy chủ.'}`);
-      } else {
-        const data = await response.json();
-        const answer = data.answer || 'Không có câu trả lời.';
-        const detail = data.detail || (data.tool ? { tool: data.tool } : null);
-        appendMessage('assistant', answer, detail);
+              upsertGraphNode(event.node_id, event.status, event.input, event.output);
+              state.streamEventsCount++;
+            } catch (e) {
+              console.error("Parse SSE data error", e);
+            }
+          }
+        }
       }
-    } catch (error) {
+      if (!hasAnswer && currentRunId === graphRunId) {
+        removeThinkingIndicator();
+        appendMessage('assistant', 'Xin lỗi, đã xảy ra lỗi trong quá trình xử lý (stream ended early).');
+      }
+    }).catch(err => {
+      if (currentRunId !== graphRunId || err.name === 'AbortError') return;
+      
       removeThinkingIndicator();
-      appendMessage('assistant', `⚠️ **Lỗi kết nối**: Không thể kết nối tới Backend tại \`${getApiEndpoint('/')}\`. Vui lòng kiểm tra lại cấu hình API.`);
-    } finally {
-      state.isGenerating = false;
-      el.btnSend.disabled = false;
-      el.questionInput.focus();
-    }
+      const placeholder = document.getElementById('graph-placeholder');
+      if (placeholder) {
+        placeholder.classList.remove('hidden');
+        placeholder.textContent = 'Lỗi Stream SSE';
+      }
+      const msg = err.isCustomMsg ? err.message : '⚠️ **Lỗi kết nối**: Không thể kết nối tới backend/API. Vui lòng kiểm tra lại hệ thống.';
+      appendMessage(
+        'assistant',
+        msg
+      );
+    }).finally(() => {
+      if (currentRunId === graphRunId) {
+        state.isGenerating = false;
+        el.btnSend.disabled = false;
+        el.questionInput.focus();
+      }
+    });
   }
 
   async function checkSystemHealth() {
@@ -364,11 +494,20 @@
   }
 
   async function checkSystemHealthInModal() {
+    const apiUrlInput = el.inputApiUrl.value.trim();
+    if (apiUrlInput && !apiUrlInput.startsWith('http://') && !apiUrlInput.startsWith('https://')) {
+      el.healthResult.innerHTML = `❌ <strong>Lỗi:</strong> URL phải bắt đầu bằng http:// hoặc https://`;
+      el.healthResult.style.color = '#ef4444';
+      return;
+    }
+
     el.healthResult.textContent = 'Đang kiểm tra kết nối...';
     el.healthResult.style.color = 'var(--text-secondary)';
 
     try {
-      const url = getApiEndpoint('/api/health');
+      const base = apiUrlInput.replace(/\/+$/, '');
+      const path = '/api/health';
+      const url = base ? `${base}${path}` : path;
       const res = await fetch(url);
       if (res.ok) {
         const data = await res.json();
@@ -378,7 +517,7 @@
         throw new Error();
       }
     } catch {
-      el.healthResult.innerHTML = `❌ <strong>Không thể kết nối</strong> tới Backend. Hãy chắc chắn Uvicorn/Docker đang chạy trên cổng 8000.`;
+      el.healthResult.innerHTML = `❌ <strong>Không thể kết nối</strong> tới Backend. Hãy chắc chắn Uvicorn/FastAPI đang chạy.`;
       el.healthResult.style.color = '#ef4444';
     }
   }
@@ -399,6 +538,12 @@
   function saveSettings() {
     const selectedProvider = el.radioSelfHosted.checked ? 'self_hosted' : 'openai';
     const apiUrl = el.inputApiUrl.value.trim();
+
+    if (apiUrl && !apiUrl.startsWith('http://') && !apiUrl.startsWith('https://')) {
+      el.healthResult.innerHTML = `❌ <strong>Lỗi:</strong> URL phải bắt đầu bằng http:// hoặc https://`;
+      el.healthResult.style.color = '#ef4444';
+      return;
+    }
 
     state.activeModel = selectedProvider;
     state.apiBaseUrl = apiUrl;

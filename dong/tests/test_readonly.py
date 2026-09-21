@@ -176,3 +176,135 @@ def test_get_connection_chan_dbname_ngoai_whitelist():
     with pytest.raises(ValueError, match="không hợp lệ"):
         with get_connection("vms_db"):
             pass
+
+
+import json
+import pytest
+
+from src.agent.tools import (
+    TOOLS,
+    count_anomaly_events,
+    count_face_events,
+    count_fire_smoke_events,
+    count_vehicle_flow,
+    get_db_schema,
+    list_khu_vuc,
+    run_sql_readonly,
+    trace_plate,
+    zone_intrusion_by_hour,
+)
+from src.config import settings
+
+
+def test_tools_count_and_naming():
+    """Kiểm tra có đủ 9 công cụ (8 domain + schema/sql fallback)."""
+    assert len(TOOLS) == 9
+    names = {t.name for t in TOOLS}
+    expected = {
+        "get_db_schema",
+        "list_khu_vuc",
+        "count_vehicle_flow",
+        "trace_plate",
+        "zone_intrusion_by_hour",
+        "count_face_events",
+        "count_fire_smoke_events",
+        "count_anomaly_events",
+        "run_sql_readonly",
+    }
+    assert names == expected
+
+
+def test_get_db_schema_returns_docstring_info():
+    """Kiểm tra get_db_schema mô tả chính xác 8 domain."""
+    schema_info = get_db_schema.invoke({})
+    assert "its.plate_event" in schema_info
+    assert "virtual_fence.zone_event" in schema_info
+
+
+def test_count_vehicle_flow_validation():
+    """Kiểm tra validation tham số count_vehicle_flow."""
+    if not settings.db_configured:
+        res = json.loads(count_vehicle_flow.invoke({
+            "date_from": "2026-09-01 00:00:00",
+            "date_to": "2026-09-02 00:00:00",
+            "direction": "INVALID_DIR",
+        }))
+        assert "error" in res
+
+
+def test_count_anomaly_events_whitelist_validation():
+    """Kiểm tra 4 event_type hợp lệ của count_anomaly_events."""
+    valid_events = ["FIGHT_DETECTION", "CROWD_DETECTION", "INTRUSION_DETECTION", "WATER_LEVEL_DETECTION"]
+    for evt in valid_events:
+        res = json.loads(count_anomaly_events.invoke({
+            "date_from": "2026-09-01 00:00:00",
+            "date_to": "2026-09-02 00:00:00",
+            "event_type": evt,
+        }))
+        assert res.get("tool") == "count_anomaly_events"
+
+
+def test_count_fire_smoke_events_entity_type_validation():
+    """Kiểm tra validation entity_type cho count_fire_smoke_events."""
+    res = json.loads(count_fire_smoke_events.invoke({
+        "date_from": "2026-09-01 00:00:00",
+        "date_to": "2026-09-02 00:00:00",
+        "entity_type": "FIRE",
+    }))
+    assert res.get("tool") == "count_fire_smoke_events"
+
+
+def test_v2_yaml_structure():
+    """Kiểm tra dataset v2.yaml có đủ 30 cases và phân bổ đúng 18/6/3/3."""
+    import yaml
+    from collections import Counter
+    from pathlib import Path
+
+    yaml_path = Path(__file__).resolve().parent.parent / "eval/datasets/agent_stat/v2.yaml"
+    assert yaml_path.exists(), "Không tìm thấy v2.yaml"
+    
+    with open(yaml_path, encoding="utf-8") as f:
+        data = yaml.safe_load(f)
+        
+    cases = data.get("cases", [])
+    assert len(cases) == 30, f"Cần 30 cases, nhưng có {len(cases)}"
+    
+    counts = Counter(c["slice"]["type"] for c in cases)
+    assert counts["lookup"] == 18
+    assert counts["comparison"] == 6
+    assert counts["out_of_scope"] == 3
+    assert counts["injection"] == 3
+
+
+def test_golden_30_report_writes_30_rows(tmp_path):
+    """Kiểm tra write_golden_30 ghi đủ 30 dòng id/slice/pass/latency/tool/note."""
+    from eval.run import CaseEvalResult, write_golden_30
+
+    rows = [
+        CaseEvalResult(
+            case_id=f"agent_stat_v2_{i:03d}",
+            slice_type="lookup",
+            status="pass" if i % 2 else "fail",
+            latency_ms=100 + i,
+            tool="count_vehicle_flow" if i % 2 else "-",
+            note="" if i % 2 else "thiếu must_include_tool",
+            judge="4/5 — ok" if i % 2 else "",
+        )
+        for i in range(1, 31)
+    ]
+    out = tmp_path / "golden-30.md"
+    write_golden_30(rows, dataset="agent_stat", version="2.1", total_pass=15, output_path=out)
+
+    text = out.read_text(encoding="utf-8")
+    assert "| id | slice | pass/fail | latency_ms | tool | note | judge |" in text
+    assert text.count("| agent_stat_v2_") == 30
+    assert "15/30 pass" in text
+    assert "4/5 — ok" in text
+
+def test_judge_offline_returns_skipped():
+    """Kiểm tra judge_answer trả về 0 khi chạy offline (use_offline_tools)."""
+    from eval.judge import judge_answer
+    res = judge_answer("Hỏi", "Đáp")
+    assert res.score == 0
+    assert "skipped" in res.reason
+

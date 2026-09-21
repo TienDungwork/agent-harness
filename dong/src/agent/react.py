@@ -49,11 +49,27 @@ def _tool_call_summary(tool_calls: list) -> list[dict]:
     return out
 
 
+def _trace_messages_input(messages: list) -> list[dict]:
+    """Rút gọn messages gửi LLM cho Langfuse input."""
+    out: list[dict] = []
+    for m in messages:
+        if isinstance(m, dict):
+            role = m.get("role", "message")
+            content = m.get("content", "")
+        else:
+            role = getattr(m, "type", None) or "message"
+            content = getattr(m, "content", "")
+        out.append({"role": role, "content": str(content)[:2000]})
+    return out
+
+
 def agent_node(state: dict, *, tools: list, system_prompt, offline_call) -> dict:
     from langchain_core.messages import AIMessage
 
     span = state.get("_trace_span")
-    with trace_step(span, "chon_tool", input=state.get("question") or "") as t:
+    prompt_text = system_prompt() if callable(system_prompt) else system_prompt
+    messages = [{"role": "system", "content": prompt_text}] + list(state.get("messages") or [])
+    with trace_step(span, "chon_tool", input=_trace_messages_input(messages)) as t:
         last = (state.get("messages") or [None])[-1]
         if use_offline_tools():
             if _is_tool_result(last):
@@ -70,10 +86,6 @@ def agent_node(state: dict, *, tools: list, system_prompt, offline_call) -> dict
                 ]
             }
 
-        # system_prompt có thể là string tĩnh hoặc callable (đánh giá lại mỗi lượt —
-        # cần khi prompt tiêm giờ hiện tại, xem src/agent/graph.py).
-        prompt_text = system_prompt() if callable(system_prompt) else system_prompt
-        messages = [{"role": "system", "content": prompt_text}] + list(state.get("messages") or [])
         try:
             response = invoke_with_tools(messages, tools)
         except Exception as exc:
@@ -141,7 +153,9 @@ def parse_tool_output(raw: str, cls):
 def _tools_node(state: dict, *, tools: list) -> dict:
     """ToolNode có nested span `chay_tool` — chỉ ghi tên tool, không dump rows."""
     span = state.get("_trace_span")
-    with trace_step(span, "chay_tool", input=state.get("question") or "") as t:
+    last = (state.get("messages") or [None])[-1]
+    step_input = _tool_call_summary(getattr(last, "tool_calls", None) or [])
+    with trace_step(span, "chay_tool", input=step_input) as t:
         result = ToolNode(tools).invoke(state)
         names = [
             getattr(m, "name", None)

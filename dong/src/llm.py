@@ -77,6 +77,8 @@ def _pool() -> _RotatingKeyPool:
 
 def use_offline_tools(backend_override: str | None = None) -> bool:
     """Không key (khi backend=openai) hoặc đang pytest: agent giả 1 tool_call."""
+    if os.environ.get("AGENT_EVAL_LIVE", "").lower() in ("1", "true", "yes"):
+        return False
     if bool(os.environ.get("PYTEST_CURRENT_TEST")):
         return True
     backend_name = (backend_override or settings.llm_backend).strip().lower()
@@ -105,7 +107,7 @@ def base_llm(
         base_url = settings.llm_base_url or None
         model = model_override or settings.llm_model or "gpt-4o-mini"
     else:  # ollama
-        api_key = backend.dummy_key
+        api_key = settings.llm_api_key or backend.dummy_key
         base_url = settings.llm_base_url or backend.default_base_url
         model = model_override or settings.llm_model or "qwen2.5:3b-instruct-q4_K_M"
 
@@ -116,6 +118,7 @@ def base_llm(
         "temperature": temperature,
         "api_key": api_key,
         "max_retries": settings.llm_max_retries,
+        "request_timeout": 15.0,  # Thêm timeout
     }
     if base_url:
         kwargs["base_url"] = base_url
@@ -128,10 +131,17 @@ def invoke_with_tools(
     model_override: str | None = None,
     backend_override: str | None = None,
 ):
+    from src.monitoring.tracing import extract_token_usage, add_request_tokens
     llm = base_llm(model_override=model_override, backend_override=backend_override)
     if tools:
         llm = llm.bind_tools(tools)
-    return llm.invoke(messages)
+    try:
+        response = llm.invoke(messages)
+        usage = extract_token_usage(response)
+        add_request_tokens(usage)
+        return response
+    except Exception as e:
+        raise RuntimeError(f"Lỗi kết nối tới LLM: Không thể sinh phản hồi. Chi tiết: {e}")
 
 
 def invoke_text(
@@ -141,10 +151,31 @@ def invoke_text(
     backend_override: str | None = None,
 ) -> str:
     """Lời gọi LLM đơn giản không tool — dùng cho bước Answer (diễn giải số liệu)."""
+    from src.monitoring.tracing import extract_token_usage, add_request_tokens
     llm = base_llm(model_override=model_override, backend_override=backend_override)
-    response = llm.invoke([
-        {"role": "system", "content": system_prompt},
-        {"role": "user", "content": user_prompt},
-    ])
-    return str(response.content or "")
+    try:
+        response = llm.invoke([
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": user_prompt},
+        ])
+        usage = extract_token_usage(response)
+        add_request_tokens(usage)
+        return str(response.content or "")
+    except Exception as e:
+        raise RuntimeError(f"Lỗi kết nối tới LLM: Không thể sinh phản hồi. Chi tiết: {e}")
+
+import urllib.request
+def ping() -> str:
+    """Kiểm tra LLM server có sẵn sàng không."""
+    base_url = settings.llm_base_url or "http://192.168.1.196:11434/v1"
+    url = f"{base_url}/models"
+    try:
+        req = urllib.request.Request(url, method="GET")
+        req.add_header("Authorization", f"Bearer {settings.llm_api_key or 'ollama'}")
+        with urllib.request.urlopen(req, timeout=3.0) as response:
+            if response.status == 200:
+                return "OK"
+            raise RuntimeError(f"HTTP {response.status}")
+    except Exception as e:
+        raise RuntimeError(f"Lỗi kết nối tới LLM tại {url}: {e}")
 

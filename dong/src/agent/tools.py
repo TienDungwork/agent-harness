@@ -32,6 +32,7 @@ class QueryResult(BaseModel):
     rows: list[list] = []
     row_count: int = 0
     error: str = ""
+    reply_vi: str = ""
 
 
 def _not_configured(tool_name: str) -> str:

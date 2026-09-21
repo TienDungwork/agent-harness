@@ -48,7 +48,8 @@
       </div>
     </aside>
 
-    <!-- Main Content Area -->
+    <!-- Main workspace: chat ~50% | live graph ~50% (Phase 2) -->
+    <div class="workspace">
     <main class="chat-main">
       <header class="topbar">
         <div class="topbar-left">
@@ -72,9 +73,9 @@
       <div class="chat-viewport" id="chat-viewport">
         <!-- Welcome Screen -->
         <div class="welcome-container" id="welcome-screen">
-          <div class="welcome-badge">agent_ATIN v3</div>
+          <div class="welcome-badge">agent_ATIN v4</div>
           <h2 class="welcome-heading">Hỏi đáp & Thống kê Camera AI</h2>
-          <p class="welcome-desc">Đặt câu hỏi bằng tiếng Việt tự nhiên để truy xuất số liệu thống kê thời gian thực từ 8 domain camera AI VMS.</p>
+          <p class="welcome-desc">Đặt câu hỏi bằng tiếng Việt. Cột phải hiện luồng graph trực tiếp.</p>
 
           <div class="suggestions-grid">
             <button class="suggestion-card" data-query="Hôm nay có bao nhiêu lượt xe vào, phân loại theo xe máy và ô tô?">
@@ -132,6 +133,23 @@
         </div>
       </div>
     </main>
+
+    <aside class="graph-panel" id="graph-panel" aria-label="Live agent graph">
+      <div class="graph-panel-header">
+        <h2>Luồng agent</h2>
+        <span class="graph-panel-hint">~50% màn hình · Phase 6 SSE</span>
+      </div>
+      <div class="graph-canvas" id="graph-canvas">
+        <p class="graph-placeholder" id="graph-placeholder">Chờ sự kiện node</p>
+        <div class="graph-nodes" id="graph-nodes"></div>
+      </div>
+      <div class="graph-io" id="graph-io">
+        <div class="graph-io-title">Input / Output node</div>
+        <div class="graph-io-empty" id="graph-io-empty">Trỏ hoặc chọn một node đã chạy để xem input và output.</div>
+        <pre class="graph-io-body" id="graph-io-body" hidden></pre>
+      </div>
+    </aside>
+    </div>
   </div>
 
   <!-- Settings Drawer / Modal -->
@@ -163,18 +181,19 @@
         </div>
 
         <div class="form-group" id="self-hosted-details">
-          <label class="form-label">Thông tin Endpoint Tự Host</label>
+          <label class="form-label">Thông tin Endpoint Tự Host (LLM Model)</label>
           <div class="info-box">
             <div><strong>Base URL:</strong> <code>http://192.168.1.196:18083/v1</code></div>
             <div><strong>Model Name:</strong> <code>qwen3-4b</code></div>
             <div><strong>Endpoint:</strong> <code>http://192.168.1.196:18083/v1/chat/completions</code></div>
+            <small class="form-hint" style="display: block; margin-top: 8px;"><em>Lưu ý: Đây là địa chỉ của mô hình LLM, KHÔNG dán địa chỉ này vào ô API Base URL bên dưới.</em></small>
           </div>
         </div>
 
         <div class="form-group">
           <label class="form-label" for="input-api-url">API Base URL (Backend)</label>
           <input type="text" class="form-input" id="input-api-url" placeholder="http://localhost:8000" value="">
-          <small class="form-hint">Để trống để tự động sử dụng máy chủ Backend hiện tại (/api hoặc /ask).</small>
+          <small class="form-hint">Để trống để tự động sử dụng máy chủ hiện tại. Nếu cấu hình, đây là backend FastAPI (src.main:app).</small>
         </div>
 
         <div class="form-group">

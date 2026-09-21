@@ -46,6 +46,10 @@ def build_answer(question: str, queries: list, template_answer: str) -> str:
     """`queries`: list[QueryResult] đã lấy được (không rỗng). `template_answer`:
     câu trả lời template đã dựng sẵn (từ src/agent/graph.py) — dùng làm
     fallback khi tắt LLM, offline, hoặc lời gọi LLM lỗi."""
+    reply_vi_list = [q.reply_vi for q in queries if getattr(q, 'reply_vi', '')]
+    if reply_vi_list:
+        return "\n".join(reply_vi_list)
+
     if not settings.answer_use_llm:
         return _with_seat_limit_note(question, queries, template_answer)
 

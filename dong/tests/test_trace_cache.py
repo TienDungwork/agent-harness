@@ -2,9 +2,14 @@
 
 from __future__ import annotations
 
+from contextlib import contextmanager
 from unittest.mock import MagicMock, patch
 import pytest
-from langchain_core.messages import AIMessage
+from langchain_core.messages import AIMessage, ToolMessage
+
+from src.agent.graph import _pack
+from src.agent.react import _tools_node, agent_node
+from src.agent.tools import QueryResult
 
 from src.monitoring.tracing import (
     extract_token_usage,
@@ -12,7 +17,7 @@ from src.monitoring.tracing import (
     trace_step,
     trace_stream,
 )
-from backend.monitoring.tracing import (
+from src.monitoring.tracing import (
     extract_token_usage as be_extract_token_usage,
     trace_answer as be_trace_answer,
     trace_step as be_trace_step,
@@ -62,6 +67,7 @@ def test_tracing_no_op_when_disabled(monkeypatch):
 
 def test_trace_answer_and_trace_step_with_langfuse(monkeypatch):
     monkeypatch.setattr("src.monitoring.tracing.settings.monitoring_enabled", True)
+    monkeypatch.setattr("src.monitoring.tracing.settings.llm_backend", "openai")
     monkeypatch.setattr("src.monitoring.tracing.settings.llm_model", "gpt-4o-mini")
     monkeypatch.setattr("src.monitoring.tracing.settings.llm_temperature", 0.0)
 
@@ -215,6 +221,79 @@ def test_full_pipeline_trace_step_tree(monkeypatch):
     mock_langfuse.flush.assert_called_once()
 
 
+def test_react_nodes_trace_step_input_not_question(monkeypatch):
+    """Mỗi nested span phải ghi input đúng ngữ cảnh node, không lặp question gốc."""
+    captured: list[tuple[str, object]] = []
+
+    @contextmanager
+    def _capture(parent_span, name, input=None, metadata=None):
+        captured.append((name, input))
+        yield {}
+
+    monkeypatch.setattr("src.agent.react.trace_step", _capture)
+    monkeypatch.setattr("src.agent.graph.trace_step", _capture)
+    monkeypatch.setattr("src.llm.use_offline_tools", lambda: True)
+
+    question = "Hôm nay có bao nhiêu xe vào?"
+    parent_span = MagicMock()
+    state = {
+        "question": question,
+        "messages": [{"role": "user", "content": question}],
+        "_trace_span": parent_span,
+    }
+
+    def offline_call(_state):
+        return "count_vehicle_flow", {"direction": "IN"}
+
+    agent_node(state, tools=[], system_prompt="system prompt", offline_call=offline_call)
+    chon_name, chon_input = captured[-1]
+    assert chon_name == "chon_tool"
+    assert chon_input != question
+    assert chon_input[0]["role"] == "system"
+    assert chon_input[-1]["content"] == question
+
+    state_tools = {
+        "question": question,
+        "messages": [
+            AIMessage(
+                content="",
+                tool_calls=[
+                    {"name": "count_vehicle_flow", "args": {"direction": "IN"}, "id": "1", "type": "tool_call"}
+                ],
+            )
+        ],
+        "_trace_span": parent_span,
+    }
+    with patch("src.agent.react.ToolNode") as mock_tool_node:
+        mock_tool_node.return_value.invoke.return_value = {
+            "messages": [ToolMessage(content="{}", name="count_vehicle_flow", tool_call_id="1")]
+        }
+        _tools_node(state_tools, tools=[])
+    chay_name, chay_input = captured[-1]
+    assert chay_name == "chay_tool"
+    assert chay_input == [{"name": "count_vehicle_flow", "args": {"direction": "IN"}}]
+
+    query_json = QueryResult(
+        tool="count_vehicle_flow", columns=["cnt"], rows=[[10]], row_count=1
+    ).model_dump_json()
+    state_pack = {
+        "question": question,
+        "messages": [
+            AIMessage(content="", tool_calls=[{"name": "count_vehicle_flow", "args": {}, "id": "1"}]),
+            ToolMessage(content=query_json, name="count_vehicle_flow", tool_call_id="1"),
+            AIMessage(content="ok"),
+        ],
+        "_trace_span": parent_span,
+    }
+    with patch("src.agent.graph.build_answer", return_value="10 xe"):
+        _pack(state_pack)
+    dien_name, dien_input = captured[-1]
+    assert dien_name == "dien_giai"
+    assert dien_input != question
+    assert dien_input["tools"] == ["count_vehicle_flow"]
+    assert dien_input["queries"][0]["row_count"] == 1
+
+
 def test_trace_answer_with_self_hosted_metadata(monkeypatch):
     monkeypatch.setattr("src.monitoring.tracing.settings.monitoring_enabled", True)
     monkeypatch.setattr("src.monitoring.tracing.settings.llm_backend", "self_hosted")
@@ -288,4 +367,108 @@ def test_backend_monitoring_reexport():
     assert be_trace_answer is trace_answer
     assert be_trace_step is trace_step
 
+
+def test_trace_answer_token_sum_via_contextvar(monkeypatch):
+    monkeypatch.setattr("src.monitoring.tracing.settings.monitoring_enabled", True)
+
+    mock_langfuse = MagicMock()
+    mock_span = MagicMock()
+    mock_langfuse.start_observation.return_value = mock_span
+
+    with patch("src.monitoring.tracing._get_langfuse", return_value=mock_langfuse):
+        from src.monitoring.tracing import add_request_tokens
+        with trace_answer("chat", "test sum tokens") as t:
+            # Mô phỏng gọi LLM 2 lần
+            add_request_tokens({"prompt_tokens": 10, "completion_tokens": 5, "total_tokens": 15})
+            add_request_tokens({"prompt_tokens": 20, "completion_tokens": 10, "total_tokens": 30})
+
+            t["output"] = {"answer": "done"}
+
+    update_kwargs = mock_span.update.call_args[1]
+    assert update_kwargs["metadata"]["prompt_tokens"] == 30
+    assert update_kwargs["metadata"]["completion_tokens"] == 15
+    assert update_kwargs["metadata"]["total_tokens"] == 45
+    assert update_kwargs["usage_details"] == {"input": 30, "output": 15, "total": 45}
+
+
+from src.main import _cache, chat, ChatRequest
+
+def test_cache_miss_then_hit_skips_run_agent(monkeypatch):
+    from src.agent.graph import Agent_Output
+    from src.agent.tools import QueryResult
+
+    mock_run_agent = MagicMock()
+    valid_answer = "Hôm nay có tổng cộng 100 chiếc xe các loại vào cổng KCN."
+    dummy_out = Agent_Output(question="Thống kê xe hôm nay", answer=valid_answer, query=QueryResult(tool="t", columns=["total"], rows=[[100]], row_count=1))
+    mock_run_agent.return_value = dummy_out
+    monkeypatch.setattr("src.main.run_agent", mock_run_agent)
+    monkeypatch.setattr("src.main.settings.cache_enabled", True)
+    monkeypatch.setattr("src.main.settings.cache_ttl_s", 60)
+    
+    # clear cache
+    _cache.clear()
+
+    # miss
+    resp1 = chat(ChatRequest(question="Thống kê xe hôm nay"))
+    assert mock_run_agent.call_count == 1
+    assert valid_answer in resp1.answer
+
+    # hit
+    resp2 = chat(ChatRequest(question="Thống kê xe hôm nay"))
+    assert mock_run_agent.call_count == 1 # still 1
+    assert valid_answer in resp2.answer
+
+def test_cache_expired_entry_misses(monkeypatch):
+    from src.agent.graph import Agent_Output
+    from src.agent.tools import QueryResult
+
+    mock_run_agent = MagicMock()
+    valid_answer = "Hôm nay có tổng cộng 100 chiếc xe các loại vào cổng KCN."
+    dummy_out = Agent_Output(question="Thống kê xe hôm nay", answer=valid_answer, query=QueryResult(tool="t", columns=["total"], rows=[[100]], row_count=1))
+    mock_run_agent.return_value = dummy_out
+    monkeypatch.setattr("src.main.run_agent", mock_run_agent)
+    monkeypatch.setattr("src.main.settings.cache_enabled", True)
+    monkeypatch.setattr("src.main.settings.cache_ttl_s", 60)
+    
+    # clear cache
+    _cache.clear()
+
+    # miss 1
+    resp1 = chat(ChatRequest(question="Thống kê xe hôm nay"))
+    assert mock_run_agent.call_count == 1
+    assert valid_answer in resp1.answer
+
+    # expire cache manually
+    key = list(_cache.keys())[0]
+    _cache[key]["expire_at"] = 0
+
+    # miss 2
+    resp2 = chat(ChatRequest(question="Thống kê xe hôm nay"))
+    assert mock_run_agent.call_count == 2
+    assert valid_answer in resp2.answer
+
+def test_cache_disabled(monkeypatch):
+    from src.agent.graph import Agent_Output
+    from src.agent.tools import QueryResult
+
+    mock_run_agent = MagicMock()
+    valid_answer = "Hôm nay có tổng cộng 100 chiếc xe các loại vào cổng KCN."
+    dummy_out = Agent_Output(question="Thống kê xe hôm nay", answer=valid_answer, query=QueryResult(tool="t", columns=["total"], rows=[[100]], row_count=1))
+    mock_run_agent.return_value = dummy_out
+    monkeypatch.setattr("src.main.run_agent", mock_run_agent)
+    monkeypatch.setattr("src.main.settings.cache_enabled", False)
+    monkeypatch.setattr("src.main.settings.cache_ttl_s", 60)
+    
+    # clear cache
+    _cache.clear()
+
+    # first call
+    resp1 = chat(ChatRequest(question="Thống kê xe hôm nay"))
+    assert mock_run_agent.call_count == 1
+    assert valid_answer in resp1.answer
+
+    # second call, should not hit cache
+    resp2 = chat(ChatRequest(question="Thống kê xe hôm nay"))
+    assert mock_run_agent.call_count == 2
+    assert valid_answer in resp2.answer
 

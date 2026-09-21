@@ -191,6 +191,7 @@ OUT_OF_SCOPE_REPLY = (
 
 _FALLBACK = "Xin lỗi, tôi chưa đủ dữ liệu đáng tin để trả lời. Hãy hỏi lại rõ hơn."
 _DISCLAIMER = " (Lưu ý: số liệu chưa xác minh được với dữ liệu tool trả về.)"
+EMPTY_TOOL_REPLY = "Không có dữ liệu khớp câu hỏi trong khoảng thời gian/điều kiện đã cho."
 
 
 class GuardrailViolation(Exception):
@@ -243,7 +244,7 @@ def check_input(text: str) -> None:
         raise GuardrailViolation("unsafe_content", {"pattern_match": True})
 
 
-def check_output(answer: str, evidence: list[str]) -> OutputCheckResult:
+def check_output(answer: str, evidence: list[str], *, tool_empty: bool = False) -> OutputCheckResult:
     """Đối chiếu số liệu thật từ evidence để chống hallucination,
     che giấu PII và giới hạn độ dài câu trả lời.
     """
@@ -268,8 +269,12 @@ def check_output(answer: str, evidence: list[str]) -> OutputCheckResult:
     unverified = [n for n in numbers if n not in normalized_context]
 
     if unverified:
-        issues.append("unverified_numbers")
-        text = text.rstrip() + _DISCLAIMER
+        if tool_empty:
+            issues.append("fabricated_numbers_on_empty_tool")
+            text = EMPTY_TOOL_REPLY
+        else:
+            issues.append("unverified_numbers")
+            text = text.rstrip() + _DISCLAIMER
 
     redacted = redact_pii(text)
     if redacted != text:
@@ -282,3 +287,40 @@ def check_output(answer: str, evidence: list[str]) -> OutputCheckResult:
         text = text[:max_len].rstrip() + "…"
 
     return OutputCheckResult(valid=len(issues) == 0, issues=issues, answer=text)
+
+def _is_tool_empty(query: Any) -> bool:
+    if query is None:
+        return False
+        
+    if getattr(query, "row_count", None) == 0:
+        return True
+        
+    rows = getattr(query, "rows", None)
+    if rows is not None and len(rows) == 0:
+        return True
+        
+    if rows:
+        has_numeric = False
+        all_numeric_zero = True
+        
+        for row in rows:
+            for cell in row:
+                if isinstance(cell, (int, float)):
+                    has_numeric = True
+                    if cell != 0:
+                        all_numeric_zero = False
+                elif isinstance(cell, str):
+                    try:
+                        val = float(cell)
+                        has_numeric = True
+                        if val != 0:
+                            all_numeric_zero = False
+                    except ValueError:
+                        pass
+                        
+        if has_numeric and all_numeric_zero:
+            return True
+            
+        return False
+        
+    return False

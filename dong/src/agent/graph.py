@@ -20,6 +20,9 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from functools import lru_cache
 from typing import Annotated, Any, TypedDict
+import contextvars
+import queue
+import threading
 
 from langgraph.graph.message import add_messages
 from pydantic import BaseModel
@@ -45,8 +48,12 @@ class Agent_Output(BaseModel):
     detail: str = ""
 
 
+import operator
+
 class AgentState(TypedDict, total=False):
     question: str
+    intent: str
+    events: Annotated[list[dict], operator.add]
     result: Agent_Output
     messages: Annotated[list, add_messages]
     _trace_span: Any
@@ -104,9 +111,16 @@ def _template_answer(queries: list[QueryResult]) -> str:
 
 def _pack(state: AgentState) -> dict:
     question = str(state.get("question") or "")
-    with trace_step(state.get("_trace_span"), "dien_giai", input=question) as t:
-        raw_list = all_tool_json(state, _TOOL_NAMES)
-        queries = [q for raw in raw_list if (q := parse_tool_output(raw, QueryResult)) is not None]
+    raw_list = all_tool_json(state, _TOOL_NAMES)
+    queries = [q for raw in raw_list if (q := parse_tool_output(raw, QueryResult)) is not None]
+    step_input = {
+        "tools": [q.tool for q in queries],
+        "queries": [
+            {"tool": q.tool, "row_count": q.row_count, "columns": q.columns}
+            for q in queries
+        ],
+    }
+    with trace_step(state.get("_trace_span"), "dien_giai", input=step_input) as t:
         if not queries:
             result = Agent_Output(
                 question=question,
@@ -130,23 +144,107 @@ def _pack(state: AgentState) -> dict:
         return {"result": result}
 
 
-@lru_cache(maxsize=1)
-def _build_graph():
-    graph = build_react_subgraph(
+from src.agent.intent import classify_intent
+from src.agent.docs import handle_docs_intent
+
+def classify_node(state: AgentState) -> dict:
+    q = state.get("question", "")
+    intent = classify_intent(q)
+    return {"intent": intent, "events": [{"node_id": "classify_intent", "input": q, "output": intent}]}
+
+def docs_node(state: AgentState) -> dict:
+    q = state.get("question", "")
+    ans = handle_docs_intent(q)
+    result = Agent_Output(question=q, answer=ans, detail="docs")
+    return {"result": result, "events": [{"node_id": "docs_node", "input": q, "output": ans[:200]}]}
+
+def out_of_scope_node(state: AgentState) -> dict:
+    from src.guardrails import OUT_OF_SCOPE_REPLY
+    q = state.get("question", "")
+    result = Agent_Output(question=q, answer=OUT_OF_SCOPE_REPLY, detail="out_of_scope")
+    return {"result": result, "events": [{"node_id": "out_of_scope_node", "input": q, "output": OUT_OF_SCOPE_REPLY[:200]}]}
+
+def call_react_node(state: AgentState) -> dict:
+    res = build_react_subgraph(
         AgentState,
         tools=TOOLS,
         system_prompt=_system_prompt,
         offline_call=_offline,
         seed_fn=_seed,
         pack_fn=_pack,
-    )
-    return graph.compile()
+    ).compile().invoke(state)
+    ans = ""
+    if res.get("result"):
+        ans = getattr(res.get("result"), "answer", "")
+    return {"result": res.get("result"), "events": [{"node_id": "react_node", "input": state.get("question", ""), "output": ans[:200]}]}
 
+def route_intent(state: AgentState) -> str:
+    intent = state.get("intent", "query_data")
+    if intent in ("how_to", "troubleshoot", "concept"):
+        return "docs"
+    elif intent == "out_of_scope":
+        return "out"
+    return "react"
+
+
+_stream_queue = contextvars.ContextVar("_stream_queue", default=None)
+
+def _wrap_node(node_id: str, func):
+    def wrapper(state: AgentState):
+        q = _stream_queue.get()
+        if q is not None:
+            q.put({"node_id": node_id, "status": "running"})
+        
+        try:
+            res = func(state)
+        except Exception as e:
+            if q is not None:
+                q.put({
+                    "node_id": node_id,
+                    "status": "done",
+                    "output": f"Lỗi hệ thống: {str(e)}"
+                })
+            raise
+        
+        if q is not None:
+            if isinstance(res, dict) and "events" in res and res["events"]:
+                for ev in res["events"]:
+                    q.put({
+                        "node_id": ev.get("node_id", node_id),
+                        "status": "done",
+                        "input": ev.get("input", ""),
+                        "output": ev.get("output", "")
+                    })
+            else:
+                q.put({
+                    "node_id": node_id,
+                    "status": "done",
+                    "input": "",
+                    "output": ""
+                })
+        return res
+    return wrapper
+
+@lru_cache(maxsize=1)
+def _build_graph():
+    from langgraph.graph import StateGraph, START, END
+    graph = StateGraph(AgentState)
+    graph.add_node("classify", _wrap_node("classify_intent", classify_node))
+    graph.add_node("docs", _wrap_node("docs_node", docs_node))
+    graph.add_node("out", _wrap_node("out_of_scope_node", out_of_scope_node))
+    graph.add_node("react", _wrap_node("react_node", call_react_node))
+    
+    graph.add_edge(START, "classify")
+    graph.add_conditional_edges("classify", route_intent, {"docs": "docs", "out": "out", "react": "react"})
+    graph.add_edge("docs", END)
+    graph.add_edge("out", END)
+    graph.add_edge("react", END)
+    return graph.compile()
 
 def run_agent(inp: Agent_Input, parent_span: Any = None) -> Agent_Output:
     """`parent_span`: span cha từ `trace_answer` (main). None = không trace con."""
     question = (inp.question or "").strip()
-    return _build_graph().invoke({"question": question, "_trace_span": parent_span})["result"]
+    return _build_graph().invoke({"question": question, "_trace_span": parent_span, "events": []})["result"]
 
 
 def save_graph_visualization(path: str = "graph.png") -> str:
@@ -208,3 +306,35 @@ if __name__ == "__main__":
     output = save_graph_visualization("graph.png")
     print(f"Graph visualization exported to: {output}")
 
+
+def run_agent_stream(inp: Agent_Input, parent_span: Any = None):
+    """Yield dict events for SSE stream."""
+    question = (inp.question or "").strip()
+    
+    q = queue.Queue()
+    _stream_queue.set(q)
+    ctx = contextvars.copy_context()
+    
+    def target():
+        try:
+            res = ctx.run(_build_graph().invoke, {"question": question, "_trace_span": parent_span, "events": []})
+            if res and "result" in res:
+                q.put({"__final_result__": res["result"]})
+        except Exception as e:
+            from src.main import _format_error_message
+            msg = _format_error_message(e)
+            q.put({"node_id": "error", "status": "done", "output": f"Lỗi hệ thống: {str(e)}"})
+            q.put({"node_id": "__answer__", "status": "error", "output": msg, "detail": {"status": "error"}})
+        finally:
+            q.put(None)
+            
+    t = threading.Thread(target=target)
+    t.start()
+    
+    while True:
+        ev = q.get()
+        if ev is None:
+            break
+        yield ev
+    
+    t.join()
