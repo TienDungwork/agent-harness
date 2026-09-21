@@ -1,0 +1,14 @@
+.env
+.venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+*.egg-info/
+dist/
+build/
+outputs/*
+!outputs/.gitkeep
+infra/searxng/.env
+infra/searxng/core-config/settings.yml

@@ -1,0 +1,99 @@
+schema_version: "1.0.0"
+id: "system.assign-role"
+type: "how_to"
+status: "published"
+locale: "vi"
+version: 1
+title: "Gán vai trò cho người dùng"
+intent: "assign_role"
+aliases:
+  - "gán quyền người dùng"
+  - "phân quyền tài khoản"
+  - "đổi vai trò user"
+module: "system"
+tags:
+  - "vai trò"
+  - "phân quyền"
+  - "người dùng"
+roles:
+  - "Quản trị viên hệ thống"
+  - "Quản trị viên tổ chức"
+features:
+  - "system_management"
+  - "user_management"
+  - "role_management"
+route: "/system?tab=users"
+menu_path:
+  - "Quản Trị Hệ Thống"
+  - "Quản trị người dùng"
+preconditions:
+  - "Đã đăng nhập bằng tài khoản được phép mở Quản Trị Hệ Thống."
+  - "Người dùng đích xuất hiện trong danh sách và không phải tài khoản đang đăng nhập."
+  - "Vai trò cần gán đã tồn tại và nằm trong phạm vi quản trị được phép."
+summary: "Từ tab Quản trị người dùng, mở Phân quyền Người dùng, chọn vai trò cùng phạm vi bắt buộc rồi lưu thay đổi."
+steps:
+  - order: 1
+    say: "Mở Quản Trị Hệ Thống."
+    ui:
+      label: "Quản Trị Hệ Thống"
+      i18n_key: "sidebar.systemManagement"
+      element_id: null
+  - order: 2
+    say: "Chọn tab Quản trị người dùng."
+    ui:
+      label: "Quản trị người dùng"
+      i18n_key: "system.userManagement"
+      element_id: null
+  - order: 3
+    say: "Tại dòng người dùng cần phân quyền, chọn Gán Quyền Chức Năng."
+    ui:
+      label: "Gán Quyền Chức Năng"
+      i18n_key: "system.assignPermissions"
+      element_id: null
+  - order: 4
+    say: "Trong Phân quyền Người dùng, chọn một hoặc nhiều vai trò cần gán."
+    ui:
+      label: "Phân quyền Người dùng"
+      i18n_key: "system.userPermissions"
+      element_id: null
+    fields:
+      - label: "Chọn vai trò"
+        i18n_key: "system.roleSelect"
+        required: true
+  - order: 5
+    say: "Chọn Tổ chức, Cơ sở, Khu vực hoặc Phân vùng khi vai trò yêu cầu phạm vi tương ứng."
+    ui:
+      label: "Vị trí Phân cấp & Phân vùng Quản lý"
+      i18n_key: "system.userHierarchyLocation"
+      element_id: null
+    note: "Vai trò cấp hệ thống không yêu cầu phạm vi phân cấp; các vai trò khác được kiểm tra theo phạm vi của vai trò."
+  - order: 6
+    say: "Chọn Lưu Phân Quyền."
+    ui:
+      label: "Lưu Phân Quyền"
+      i18n_key: "system.savePermissions"
+      element_id: null
+verify: "Giao diện báo đã cập nhật phân quyền thành công và vai trò đã lưu được hiển thị cho người dùng."
+sources:
+  - path: "frontend/src/App.jsx"
+    kind: "route"
+    note: "SystemRoute bảo vệ trang /system bằng canViewSystem."
+  - path: "frontend/src/contexts/UserContext.jsx"
+    kind: "component"
+    note: "Xác minh guard dành cho quản trị viên hệ thống hoặc quản trị viên tổ chức."
+  - path: "frontend/src/pages/System/System.jsx"
+    kind: "component"
+    note: "Query tab=users mở UsersTab và kết nối hành động phân quyền với UserRolesModal."
+  - path: "frontend/src/pages/System/tabs/UsersTab.jsx"
+    kind: "component"
+    note: "Xác minh nút Gán Quyền Chức Năng trên từng người dùng và việc loại tài khoản hiện tại khỏi danh sách."
+  - path: "frontend/src/pages/System/UserRolesModal.jsx"
+    kind: "component"
+    note: "Xác minh chọn nhiều vai trò, phạm vi bắt buộc theo cấp và thao tác Lưu Phân Quyền."
+  - path: "frontend/src/i18n/locales/vi/common.json"
+    kind: "i18n"
+    note: "Nguồn nhãn tiếng Việt của tab, hộp thoại và nút lưu."
+  - path: "frontend/src/pages/System/UserRolesModal.test.jsx"
+    kind: "test"
+    note: "Kiểm tra hiển thị vai trò, validation phạm vi và lưu vai trò theo phạm vi Cơ sở."
+last_verified: "2026-09-16"

@@ -1,0 +1,83 @@
+schema_version: "1.0.0"
+id: "auth.login"
+type: "how_to"
+status: "published"
+locale: "vi"
+version: 1
+title: "Đăng nhập VMS"
+intent: "login"
+aliases:
+  - "đăng nhập hệ thống"
+  - "vào VMS"
+  - "truy cập tài khoản VMS"
+  - "cách đăng nhập"
+module: "auth"
+tags:
+  - "đăng nhập"
+  - "xác thực"
+  - "tài khoản"
+roles:
+  - "Người dùng chưa đăng nhập"
+features:
+  - "authentication"
+route: "/login"
+preconditions:
+  - "Có tài khoản VMS đang được phép sử dụng."
+  - "Đang ở màn hình Đăng nhập."
+summary: "Nhập thông tin tài khoản được cấp và chọn Đăng nhập để truy cập các chức năng VMS theo quyền của bạn."
+steps:
+  - order: 1
+    say: "Nhập Tài khoản."
+    ui:
+      label: "Tài khoản"
+      i18n_key: "login.username"
+      element_id: null
+    fields:
+      - label: "Tài khoản"
+        i18n_key: "login.username"
+        required: true
+  - order: 2
+    say: "Nhập Mật khẩu."
+    ui:
+      label: "Mật khẩu"
+      i18n_key: "login.password"
+      element_id: null
+    fields:
+      - label: "Mật khẩu"
+        i18n_key: "login.password"
+        required: true
+  - order: 3
+    say: "Nếu muốn lưu tên tài khoản trên thiết bị này, chọn Ghi nhớ đăng nhập."
+    ui:
+      label: "Ghi nhớ đăng nhập"
+      i18n_key: "login.rememberMe"
+      element_id: null
+    note: "Tùy chọn này chỉ ghi nhớ tên tài khoản; không lưu mật khẩu."
+  - order: 4
+    say: "Chọn Đăng nhập."
+    ui:
+      label: "Đăng nhập"
+      i18n_key: "login.login"
+      element_id: null
+verify: "Khi thông tin hợp lệ, giao diện báo Đăng nhập thành công và rời màn hình /login để mở trang phù hợp với tài khoản."
+errors:
+  - if: "Bỏ trống Tài khoản hoặc Mật khẩu."
+    then: "Nhập đủ trường được thông báo rồi chọn Đăng nhập lại."
+  - if: "Giao diện báo đăng nhập thất bại hoặc thông tin không hợp lệ."
+    then: "Kiểm tra lại Tài khoản và Mật khẩu được cấp; nếu vẫn không đăng nhập được, liên hệ quản trị viên."
+related:
+  - "operations.view-live-camera"
+sources:
+  - path: "frontend/src/App.jsx"
+    kind: "route"
+    note: "Khai báo route /login và điều hướng tài khoản đã xác thực khỏi màn hình đăng nhập."
+  - path: "frontend/src/pages/Login/Login.jsx"
+    kind: "component"
+    note: "Xác minh các trường Tài khoản, Mật khẩu, tùy chọn Ghi nhớ đăng nhập, nút Đăng nhập, kiểm tra trường trống và điều hướng khi thành công."
+  - path: "frontend/src/i18n/locales/vi/common.json"
+    kind: "i18n"
+    note: "Nguồn nhãn tiếng Việt và thông báo của màn hình đăng nhập."
+  - path: "frontend/tests/e2e/auth/login-profile-workflow.spec.js"
+    kind: "test"
+    note: "Kiểm tra thành phần màn hình, validation trường bắt buộc và đăng nhập hợp lệ rời route /login."
+last_verified: "2026-09-16"

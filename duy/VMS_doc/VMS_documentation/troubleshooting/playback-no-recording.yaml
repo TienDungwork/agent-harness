@@ -1,0 +1,62 @@
+schema_version: "1.0.0"
+id: troubleshooting.playback_no_recording
+type: troubleshooting
+status: published
+locale: vi
+version: 1
+title: "Phát Lại không có bản ghi"
+intent: troubleshoot_playback_no_recording
+aliases:
+  - "không có video playback"
+  - "xem lại không có bản ghi"
+  - "timeline trống"
+  - "không tua lại được camera"
+module: playback
+tags:
+  - playback
+  - recording
+  - timeline
+  - camera
+roles:
+  - authenticated_user
+features:
+  - playback
+route: "/playback"
+preconditions:
+  - "Người dùng có quyền xem camera."
+  - "Feature Phát Lại được bật."
+summary: "Trước tiên hãy chọn đúng camera và ngày có bản ghi; nếu hệ thống vẫn báo không có bản ghi, gửi mã camera cùng khoảng thời gian cụ thể cho quản trị viên."
+symptoms:
+  - "Màn hình hiển thị Không có bản ghi."
+  - "Không có khối thời gian trên timeline."
+  - "Đã chọn camera nhưng video không tải."
+checks:
+  - order: 1
+    if: "Màn hình vẫn yêu cầu chọn camera và ngày."
+    then: "Chọn camera trong danh sách và chọn ngày cần xem."
+    stop_when: "Timeline hiển thị các khoảng có bản ghi."
+  - order: 2
+    if: "Camera đã chọn nhưng ngày hiện tại không có khối bản ghi."
+    then: "Chọn một ngày khác có dấu hiệu Có bản ghi trong lịch."
+    stop_when: "Timeline hiển thị khoảng thời gian có video."
+  - order: 3
+    if: "Timeline có khoảng bản ghi nhưng video chưa phát."
+    then: "Chọn một vị trí nằm bên trong khoảng có bản ghi và bấm Phát."
+    stop_when: "Video bắt đầu phát."
+  - order: 4
+    if: "Vẫn hiển thị Không có bản ghi hoặc lỗi kết nối."
+    then: "Gửi mã camera, ngày, giờ bắt đầu, giờ kết thúc và ảnh lỗi cho quản trị viên kiểm tra dữ liệu ghi hình."
+related:
+  - operations.view_playback
+  - troubleshooting.menu_not_visible
+sources:
+  - path: "frontend/src/pages/Playback/Playback.jsx"
+    kind: component
+    note: "Yêu cầu chọn camera/ngày, hiển thị ngày có bản ghi, timeline, trạng thái không có bản ghi và lỗi video."
+  - path: "frontend/src/pages/Playback/Playback.test.jsx"
+    kind: test
+    note: "Bao phủ hành vi chọn camera, ngày và tải bản ghi."
+  - path: "frontend/src/i18n/locales/vi/common.json"
+    kind: i18n
+    note: "Help checklist yêu cầu gửi mã camera và khoảng thời gian khi báo lỗi VOD/Playback."
+last_verified: "2026-09-16"

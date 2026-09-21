@@ -1,0 +1,54 @@
+schema_version: "1.0.0"
+id: auth.logout
+type: how_to
+status: published
+locale: vi
+version: 1
+title: "Đăng xuất khỏi VMS"
+intent: logout
+aliases:
+  - "đăng xuất tài khoản"
+  - "thoát khỏi VMS"
+  - "kết thúc phiên đăng nhập"
+  - "rời tài khoản hiện tại"
+module: auth
+tags:
+  - logout
+  - authentication
+  - session
+roles:
+  - authenticated_user
+features:
+  - none
+route: null
+preconditions:
+  - "Người dùng đã đăng nhập và menu người dùng đang hiển thị trên thanh trên cùng."
+summary: "Mở menu người dùng, chọn Đăng xuất để kết thúc phiên hiện tại và quay về màn hình đăng nhập."
+steps:
+  - order: 1
+    say: "Trên thanh trên cùng, chọn nút đang hiển thị tên tài khoản để mở menu người dùng."
+    ui:
+      label: "Tên tài khoản hiện tại"
+      i18n_key: null
+      element_id: "user-menu-btn"
+  - order: 2
+    say: "Chọn Đăng xuất."
+    ui:
+      label: "Đăng xuất"
+      i18n_key: "header.logout"
+      element_id: null
+verify: "Phiên đăng nhập được dọn dẹp và giao diện chuyển về màn hình /login."
+sources:
+  - path: "frontend/src/components/layout/UserMenu.jsx"
+    kind: component
+    note: "Xác minh nút mở menu, nhãn Đăng xuất, yêu cầu đăng xuất, sự kiện dọn phiên và điều hướng về /login."
+  - path: "frontend/src/auth/AuthEventListener.jsx"
+    kind: route
+    note: "Xác minh sự kiện không còn được xác thực sẽ xóa dữ liệu phiên và chuyển về /login."
+  - path: "frontend/src/i18n/locales/vi/common.json"
+    kind: i18n
+    note: "Nguồn nhãn tiếng Việt Đăng xuất."
+  - path: "frontend/tests/e2e/auth/login-profile-workflow.spec.js"
+    kind: test
+    note: "TC22 và TC70 xác minh chọn Đăng xuất từ menu người dùng sẽ chuyển về /login."
+last_verified: "2026-09-16"

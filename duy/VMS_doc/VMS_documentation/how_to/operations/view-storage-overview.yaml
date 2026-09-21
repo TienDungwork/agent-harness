@@ -1,0 +1,92 @@
+schema_version: "1.0.0"
+id: "operations.view-storage-overview"
+type: "how_to"
+status: "published"
+locale: "vi"
+version: 1
+title: "Xem tổng quan lưu trữ"
+intent: "view_storage_overview"
+aliases:
+  - "xem dung lượng lưu trữ"
+  - "kiểm tra bộ nhớ VMS"
+  - "xem ổ lưu trữ"
+  - "xem thống kê lưu trữ"
+module: "operations"
+tags:
+  - "lưu trữ"
+  - "dung lượng"
+  - "bản ghi"
+roles:
+  - "Người dùng đã đăng nhập được cấp tính năng lưu trữ"
+features:
+  - "storage"
+route: "/storage?tab=overview"
+menu_path:
+  - "Cấu hình & Thiết bị"
+  - "Quản Lý Lưu Trữ"
+  - "Tổng quan"
+preconditions:
+  - "Đã đăng nhập."
+  - "Tính năng storage được bật cho tổ chức."
+summary: "Mở Quản Lý Lưu Trữ và chọn Tổng quan để xem mức sử dụng ổ đĩa, tóm tắt bản ghi và các biểu đồ lưu trữ hiện có."
+steps:
+  - order: 1
+    say: "Trong nhóm Cấu hình & Thiết bị, mở Quản Lý Lưu Trữ."
+    ui:
+      label: "Quản Lý Lưu Trữ"
+      i18n_key: "sidebar.storageManagement"
+      element_id: null
+  - order: 2
+    say: "Chọn Tổng quan."
+    ui:
+      label: "Tổng quan"
+      i18n_key: "common.overview"
+      element_id: null
+  - order: 3
+    say: "Trong Tổng quan lưu trữ, xem tỷ lệ đã sử dụng, dung lượng đã dùng trên tổng dung lượng và dung lượng còn trống của từng ổ."
+    ui:
+      label: "Tổng quan lưu trữ"
+      i18n_key: "generated.Storage.tongQuanLuuTru"
+      element_id: null
+  - order: 4
+    say: "Xem Tóm tắt bản ghi và Giám sát băng thông để kiểm tra các số liệu, lịch sử ghi hình, dự báo và phân bổ video hiện có."
+    ui:
+      label: "Tóm tắt bản ghi"
+      i18n_key: "generated.Storage.recordingsSummary"
+      element_id: null
+    note: "Tóm tắt bản ghi chỉ xuất hiện khi hệ thống trả về dữ liệu bản ghi."
+  - order: 5
+    say: "Chọn Làm mới khi cần tải lại dữ liệu lưu trữ."
+    ui:
+      label: "Làm mới"
+      i18n_key: "common.refresh"
+      element_id: null
+verify: "Màn hình hiển thị Tổng quan lưu trữ cùng thông tin dung lượng của các ổ; các phần tóm tắt và biểu đồ xuất hiện khi có dữ liệu tương ứng."
+errors:
+  - if: "Không thấy menu Quản Lý Lưu Trữ."
+    then: "Đề nghị quản trị viên kiểm tra tính năng storage của tổ chức."
+  - if: "Màn hình báo không thể tải dữ liệu."
+    then: "Chọn Thử lại hoặc Làm mới; nếu vẫn không tải được, liên hệ quản trị viên."
+sources:
+  - path: "frontend/src/App.jsx"
+    kind: "route"
+    note: "Route /storage được bảo vệ bởi RequireAuth và feature storage."
+  - path: "frontend/src/components/layout/Sidebar.jsx"
+    kind: "component"
+    note: "Khai báo mục Quản Lý Lưu Trữ tại /storage và chỉ hiển thị khi feature storage được bật."
+  - path: "frontend/src/components/layout/Header.jsx"
+    kind: "component"
+    note: "Khai báo tab Tổng quan tại /storage?tab=overview."
+  - path: "frontend/src/pages/Storage/Storage.jsx"
+    kind: "component"
+    note: "Xác minh tab Tổng quan, thông tin ổ đĩa, tóm tắt bản ghi, biểu đồ và thao tác Làm mới."
+  - path: "frontend/src/i18n/locales/vi/common.json"
+    kind: "i18n"
+    note: "Nguồn nhãn Quản Lý Lưu Trữ, Tổng quan, Làm mới và các số liệu dung lượng."
+  - path: "frontend/src/i18n/locales/vi/generated.json"
+    kind: "i18n"
+    note: "Nguồn nhãn Tổng quan lưu trữ, Tóm tắt bản ghi và Giám sát băng thông."
+  - path: "frontend/cypress/e2e/10-system-storage-and-reports.cy.js"
+    kind: "test"
+    note: "Kiểm tra route lưu trữ render, hiển thị trực quan dung lượng và xử lý lỗi API mà không làm trang bị crash."
+last_verified: "2026-09-16"

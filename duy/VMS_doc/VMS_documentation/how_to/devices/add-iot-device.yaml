@@ -1,0 +1,158 @@
+schema_version: "1.0.0"
+id: devices.add_iot_device
+type: how_to
+status: needs_review
+locale: vi
+version: 1
+title: "Thêm thiết bị IoT"
+intent: add_iot_device
+aliases:
+  - "thêm thiết bị IoT"
+  - "tạo cảm biến IoT"
+  - "khai báo thiết bị IoT"
+  - "thêm cảm biến mới"
+module: devices
+tags:
+  - iot
+  - cảm biến
+  - thêm mới
+roles:
+  - authenticated_user
+features:
+  - iot-devices
+route: "/iot-devices"
+menu_path:
+  - "Cấu hình & Thiết bị"
+  - "Quản lý thiết bị IoT"
+preconditions:
+  - "Người dùng đã đăng nhập và feature iot-devices được bật."
+  - "Tổ chức và vị trí phân cấp cần gán đã tồn tại trong phạm vi tài khoản."
+  - "Luồng tạo qua API hợp nhất và API IoT dự phòng cần được xác nhận trên môi trường đang dùng."
+summary: "Mở màn hình Quản lý thiết bị IoT, nhập Tên & Mã thiết bị, Mã thiết bị cùng các thông tin cấu hình cần thiết rồi lưu."
+steps:
+  - order: 1
+    say: "Tại màn hình Quản lý thiết bị IoT, bấm Thêm thiết bị IoT."
+    ui:
+      label: "Thêm thiết bị IoT"
+      i18n_key: "iotDevices.addDevice"
+      element_id: null
+  - order: 2
+    say: "Trong hộp thoại Thêm thiết bị IoT, nhập thông tin thiết bị. Tên & Mã thiết bị và Mã thiết bị là hai trường bắt buộc."
+    ui:
+      label: "Thêm thiết bị IoT"
+      i18n_key: "iotDevices.addDevice"
+      element_id: null
+    fields:
+      - label: "Tên & Mã thiết bị"
+        i18n_key: "iotDevices.table.deviceName"
+        required: true
+        constraints:
+          - "Không được để trống."
+      - label: "Mã thiết bị"
+        i18n_key: "iotDevices.fields.deviceCode"
+        required: true
+        constraints:
+          - "Không được để trống."
+      - label: "Loại thiết bị"
+        i18n_key: "iotDevices.table.type"
+        required: false
+      - label: "Đơn vị quản lý"
+        i18n_key: "iotDevices.fields.organization"
+        required: false
+      - label: "Thông số đo"
+        i18n_key: "iotDevices.sensorConfig.metric"
+        required: false
+        constraints:
+          - "Chỉ hiển thị với loại thiết bị có cấu hình chỉ số đo."
+      - label: "Đơn vị tính"
+        i18n_key: "iotDevices.sensorConfig.unit"
+        required: false
+        constraints:
+          - "Chỉ hiển thị với loại thiết bị có cấu hình chỉ số đo."
+      - label: "Ngưỡng cảnh báo tối thiểu (Min)"
+        i18n_key: "iotDevices.sensorConfig.minThreshold"
+        required: false
+      - label: "Ngưỡng cảnh báo tối đa (Max)"
+        i18n_key: "iotDevices.sensorConfig.maxThreshold"
+        required: false
+      - label: "Cơ sở / Site"
+        i18n_key: "devices.site"
+        required: false
+      - label: "Phân khu / Area"
+        i18n_key: "devices.area"
+        required: false
+      - label: "Phân khu (Zone)"
+        i18n_key: "kcn.zones.treeLocation"
+        required: false
+      - label: "Địa chỉ IP"
+        i18n_key: "iotDevices.drawer.ipAddress"
+        required: false
+      - label: "Địa chỉ MAC"
+        i18n_key: "iotDevices.drawer.macAddress"
+        required: false
+      - label: "Vị trí lắp đặt"
+        i18n_key: "iotDevices.table.location"
+        required: false
+      - label: "GPS Vĩ độ (Lat)"
+        i18n_key: "iotDevices.gpsLat"
+        required: false
+      - label: "GPS Kinh độ (Lng)"
+        i18n_key: "iotDevices.gpsLng"
+        required: false
+      - label: "Sơ đồ 2D (X: 0..1)"
+        i18n_key: "iotDevices.mapX"
+        required: false
+        constraints:
+          - "Nếu nhập, giá trị nằm trong khoảng 0 đến 1."
+      - label: "Sơ đồ 2D (Y: 0..1)"
+        i18n_key: "iotDevices.mapY"
+        required: false
+        constraints:
+          - "Nếu nhập, giá trị nằm trong khoảng 0 đến 1."
+  - order: 3
+    say: "Bấm Lưu. Nếu biểu mẫu báo lỗi, bổ sung trường được đánh dấu rồi gửi lại."
+    ui:
+      label: "Lưu"
+      i18n_key: "common.save"
+      element_id: null
+verify: "Khi API chấp nhận yêu cầu, hộp thoại đóng, thông báo Thêm mới thiết bị IoT thành công xuất hiện và danh sách được tải lại."
+errors:
+  - if: "Biểu mẫu không gửi yêu cầu."
+    then: "Kiểm tra Tên & Mã thiết bị và Mã thiết bị đã được nhập."
+  - if: "Hệ thống báo không thể tạo thiết bị."
+    then: "Giữ nguyên dữ liệu đã nhập và liên hệ quản trị viên để xác nhận API IoT đang được cấu hình cho môi trường."
+sources:
+  - path: "frontend/src/App.jsx"
+    kind: route
+    note: "Khai báo route /iot-devices với RequireAuth và RequireFeature featureKey iot-devices."
+  - path: "frontend/src/components/layout/Sidebar.jsx"
+    kind: component
+    note: "Khai báo mục sidebar /iot-devices trong nhóm Cấu hình & Thiết bị."
+  - path: "frontend/src/pages/IotDevices/IotDevices.jsx"
+    kind: component
+    note: "Hiển thị nút Thêm thiết bị IoT, gọi service tạo, thông báo thành công và tải lại danh sách."
+  - path: "frontend/src/pages/IotDevices/IotDeviceModal.jsx"
+    kind: component
+    note: "Xác minh hộp thoại, các trường, validation bắt buộc và payload gửi khi lưu."
+  - path: "frontend/src/services/iotDeviceService.js"
+    kind: route
+    note: "Luồng tạo thử /devices trước rồi dự phòng sang /iot-devices, vì vậy cần xác nhận nhánh API thực tế của môi trường."
+  - path: "backend/routers/devices.py"
+    kind: route
+    note: "Cung cấp endpoint thiết bị hợp nhất nhưng dùng hợp đồng loại thiết bị riêng."
+  - path: "backend/routers/iot_devices.py"
+    kind: route
+    note: "Cung cấp endpoint tạo IoT dự phòng với các trường của hộp thoại."
+  - path: "frontend/src/i18n/locales/vi/common.json"
+    kind: i18n
+    note: "Cung cấp nhãn sidebar, nút, trường và thông báo tiếng Việt."
+  - path: "frontend/src/i18n/locales/vi/kcn.json"
+    kind: i18n
+    note: "Cung cấp nhãn Phân khu (Zone)."
+  - path: "frontend/src/pages/IotDevices/IotDeviceModal.test.jsx"
+    kind: test
+    note: "Kiểm tra trường bắt buộc, hierarchy, cấu hình metric và payload của hộp thoại; chưa kiểm tra tích hợp API tạo."
+  - path: "frontend/cypress/e2e/09-iot-devices-and-edge.cy.js"
+    kind: test
+    note: "Kiểm tra route và thao tác mở hộp thoại thêm IoT; chưa gửi biểu mẫu."
+last_verified: "2026-09-16"

@@ -1,0 +1,74 @@
+schema_version: "1.0.0"
+id: organization.manage_hierarchy
+type: how_to
+status: published
+locale: vi
+version: 1
+title: "Xem và tra cứu Cây tổ chức"
+intent: view_organization_hierarchy
+aliases:
+  - "xem cây tổ chức"
+  - "tra cứu cấu trúc tổ chức"
+  - "xem phân cấp cơ sở khu vực"
+  - "mở cây sơ đồ tổ chức"
+module: organization
+tags:
+  - "cây tổ chức"
+  - "phân cấp"
+  - "cơ sở"
+  - "khu vực"
+  - "phân vùng"
+roles:
+  - authenticated_user
+features:
+  - none
+route: "/org/hierarchy"
+menu_path:
+  - "Vận hành"
+  - "Cây tổ chức"
+preconditions:
+  - "Người dùng đã đăng nhập."
+  - "Tổ chức đang sử dụng không gian nghiệp vụ KCN; ứng dụng chuyển tổ chức ngoài KCN về Dashboard."
+summary: "Mở Cây tổ chức, mở các nhánh cần xem rồi chọn một cấp để tra cứu quan hệ Tổ chức → Cơ sở → Khu vực → Phân vùng và thông tin chi tiết."
+steps:
+  - order: 1
+    say: "Trong menu Vận hành, chọn Cây tổ chức."
+    ui:
+      label: "Cây tổ chức"
+      i18n_key: "kcn.adminMenu.kcnHierarchy"
+      element_id: null
+  - order: 2
+    say: "Trong Cây sơ đồ tổ chức, chọn Mở tất cả nếu cần hiển thị toàn bộ các cấp đang có."
+    ui:
+      label: "Mở tất cả"
+      i18n_key: "kcn.hierarchy.expandAll"
+      element_id: null
+  - order: 3
+    say: "Chọn Tổ chức, Cơ sở, Khu vực hoặc Phân vùng cần tra cứu trong cây bên trái."
+    ui:
+      label: "Cây sơ đồ tổ chức"
+      i18n_key: "kcn.hierarchy.treeHeader"
+      element_id: null
+  - order: 4
+    say: "Xem tên, loại cấp, Mã, ID và danh sách cấp con trực thuộc trong vùng chi tiết."
+verify: "Cấp đã chọn được hiển thị ở vùng chi tiết cùng Mã, ID và danh sách cấp con trực thuộc."
+sources:
+  - path: "frontend/src/App.jsx"
+    kind: route
+    note: "Khai báo route /org/hierarchy với RequireAuth và HierarchyRoute; tổ chức ngoài nghiệp vụ KCN được chuyển về Dashboard."
+  - path: "frontend/src/components/layout/Sidebar.jsx"
+    kind: component
+    note: "Xác minh nhãn menu Cây tổ chức, route /org/hierarchy và quyền xem cây từ canViewOrgTree."
+  - path: "frontend/src/features/platform/hierarchy/HierarchyPage.jsx"
+    kind: component
+    note: "Component route tái xuất HierarchyPage hiện hành."
+  - path: "frontend/src/features/platform/system/hierarchy/HierarchyPage.jsx"
+    kind: component
+    note: "Xác minh cây phân cấp, Mở tất cả, chọn nút và vùng thông tin chi tiết."
+  - path: "frontend/src/i18n/locales/vi/kcn.json"
+    kind: i18n
+    note: "Xác minh nhãn Cây tổ chức, Cây sơ đồ tổ chức, Mở tất cả và tên các cấp."
+  - path: "frontend/src/contexts/UserContext.test.jsx"
+    kind: test
+    note: "Kiểm tra quyền quản lý nút theo tổ chức và phạm vi tài khoản."
+last_verified: "2026-09-16"
