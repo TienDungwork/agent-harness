@@ -1,0 +1,132 @@
+schema_version: "1.0.0"
+description: "Golden eval hints — table/event_type mappings for agent_stat v2"
+
+cases:
+  agent_stat_v2_008:
+    table: anomaly_event
+    event_type_filter: CROWD_DETECTION
+    expect_zero: true
+    keywords:
+      - "đám đông"
+      - "crowd"
+    description: "Đám đông tổ chức 106 có số liệu bằng 0"
+
+  agent_stat_v2_009:
+    table: anomaly_event
+    event_type_filter: INTRUSION_DETECTION
+    keywords:
+      - "leo trèo"
+      - "hàng rào"
+    description: "Leo trèo hàng rào thuộc anomaly_event thay vì zone_event"
+
+  agent_stat_v2_010:
+    table: fire_smoke_event
+    expect_zero: true
+    keywords:
+      - "cháy"
+      - "khói"
+      - "fire"
+      - "smoke"
+    description: "Cảnh báo cháy hoặc khói tra cứu fire_smoke_event"
+
+  agent_stat_v2_011:
+    table: anomaly_event
+    event_type_filter: WATER_LEVEL_DETECTION
+    keywords:
+      - "mực nước"
+      - "ngập"
+      - "water"
+    description: "Mực nước ngập tra cứu anomaly_event"
+
+  agent_stat_v2_012:
+    domain: docs
+    doc_id: aioc.login_devices
+    route: "/devices"
+    keywords:
+      - "đăng nhập"
+      - "cloud cam"
+      - "aioc.atin.vn"
+    description: "Đăng nhập Cloud Cam AIOC mở trang /devices"
+
+  agent_stat_v2_013:
+    domain: docs
+    doc_id: aioc.manage_camera
+    route: "/devices"
+    keywords:
+      - "quản lý camera"
+      - "devices"
+    description: "Vào menu Cấu hình & Thiết bị > Quản Lý Camera"
+
+  agent_stat_v2_014:
+    domain: docs
+    doc_id: aioc.add_camera
+    route: "/devices"
+    keywords:
+      - "thêm camera"
+      - "camera"
+    description: "Quy trình thêm camera mới trên AIOC devices"
+
+  agent_stat_v2_015:
+    domain: docs
+    doc_id: aioc.camera_status
+    route: "/devices"
+    keywords:
+      - "trực tuyến"
+      - "ngoại tuyến"
+      - "bảo trì"
+    description: "Ý nghĩa và cách đổi trạng thái camera trên AIOC"
+
+  agent_stat_v2_016:
+    domain: docs
+    doc_id: aioc.diagram_login_devices
+    route: "/devices"
+    keywords:
+      - "sơ đồ"
+      - "đăng nhập"
+      - "aioc.atin.vn"
+    description: "Sơ đồ từ đăng nhập đến Quản Lý Camera"
+
+  agent_stat_v2_017:
+    domain: docs
+    doc_id: aioc.diagram_add_camera
+    route: "/devices"
+    keywords:
+      - "sơ đồ"
+      - "quy trình"
+      - "thêm camera"
+    description: "Sơ đồ quy trình thêm camera mới trên AIOC"
+
+  agent_stat_v2_018:
+    domain: docs
+    doc_id: aioc.vms_vs_devices
+    route: "/devices"
+    keywords:
+      - "phân biệt"
+      - "thống kê"
+      - "devices"
+    description: "Sơ đồ phân biệt thống kê VMS vs hướng dẫn AIOC devices"
+
+  agent_stat_v2_023:
+    is_multi: true
+    keywords:
+      - "quản lý camera"
+      - "cháy"
+      - "khói"
+    sub_steps:
+      - domain: docs
+        doc_id: aioc.manage_camera
+        route: "/devices"
+      - domain: query_data
+        table: fire_smoke_event
+    description: "Multi-agent kết hợp howto devices và thống kê cháy khói"
+
+  agent_stat_v2_024:
+    is_multi: false
+    domain: docs
+    doc_id: aioc.vms_vs_devices
+    keywords:
+      - "sơ đồ"
+      - "thêm camera"
+      - "khác gì so với"
+      - "thống kê"
+    description: "Sơ đồ thêm camera và phân biệt thống kê VMS vs hướng dẫn AIOC devices"

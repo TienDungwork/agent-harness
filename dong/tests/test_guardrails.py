@@ -206,14 +206,15 @@ def test_check_output_tool_empty_with_invented_numbers():
     assert "5" not in result.answer
 
 def test_check_output_tool_empty_honest():
-    """tool_empty + honest "không có dữ liệu" (no fake counts) -> kept / no fabricate issue."""
+    """tool_empty + honest không có '0' -> chuẩn hoá về empty_stat_reply."""
     evidence = ["Hôm nay có bao nhiêu lượt xe vào?", "total=0"]
     answer = "Không có dữ liệu lượt xe vào hôm nay."
     result = check_output(answer, evidence, tool_empty=True)
 
-    assert result.valid is True
     assert "fabricated_numbers_on_empty_tool" not in result.issues
-    assert result.answer == "Không có dữ liệu lượt xe vào hôm nay."
+    assert "empty_stat_missing_zero" in result.issues
+    assert "0" in result.answer
+    assert result.answer == EMPTY_TOOL_REPLY
 
 def test_check_output_tool_not_empty_unverified():
     """tool_empty=False + unverified -> still disclaimer path (existing behavior)."""

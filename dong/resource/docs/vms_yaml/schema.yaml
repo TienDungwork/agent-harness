@@ -1,0 +1,313 @@
+schema_version: "1.0.0"
+title: "VMS usage-guide task card schema"
+description: "Quy tắc dữ liệu cho một card hướng dẫn chatbot."
+
+type: object
+additionalProperties: false
+required:
+  - schema_version
+  - id
+  - type
+  - status
+  - locale
+  - version
+  - title
+  - intent
+  - aliases
+  - module
+  - tags
+  - roles
+  - features
+  - route
+  - preconditions
+  - summary
+  - sources
+  - last_verified
+
+properties:
+  schema_version:
+    type: string
+    pattern: '^[0-9]+\.[0-9]+\.[0-9]+$'
+
+  id:
+    type: string
+    pattern: '^[a-z0-9]+(?:[._-][a-z0-9]+)*$'
+
+  type:
+    type: string
+    enum:
+      - how_to
+      - troubleshooting
+      - concept
+
+  status:
+    type: string
+    enum:
+      - published
+      - needs_review
+      - draft
+      - deprecated
+
+  locale:
+    type: string
+    enum:
+      - vi
+
+  version:
+    type: integer
+    minimum: 1
+
+  title:
+    type: string
+    minLength: 3
+    maxLength: 120
+
+  intent:
+    type: string
+    pattern: '^[a-z][a-z0-9]*(?:_[a-z0-9]+)*$'
+
+  aliases:
+    type: array
+    minItems: 3
+    uniqueItems: true
+    items:
+      type: string
+      minLength: 2
+
+  module:
+    type: string
+    pattern: '^[a-z][a-z0-9_-]*$'
+
+  tags:
+    type: array
+    minItems: 1
+    uniqueItems: true
+    items:
+      type: string
+
+  roles:
+    type: array
+    minItems: 1
+    uniqueItems: true
+    items:
+      type: string
+
+  features:
+    type: array
+    minItems: 1
+    uniqueItems: true
+    items:
+      type: string
+
+  route:
+    type:
+      - string
+      - "null"
+    pattern: '^/[^:]*$'
+
+  menu_path:
+    type: array
+    minItems: 1
+    items:
+      type: string
+
+  preconditions:
+    type: array
+    items:
+      type: string
+
+  summary:
+    type: string
+    minLength: 10
+    maxLength: 500
+
+  steps:
+    type: array
+    minItems: 2
+    maxItems: 10
+    items:
+      $ref: "#/definitions/step"
+
+  symptoms:
+    type: array
+    minItems: 1
+    items:
+      type: string
+
+  checks:
+    type: array
+    minItems: 1
+    maxItems: 10
+    items:
+      $ref: "#/definitions/check"
+
+  answer:
+    type: string
+    minLength: 20
+    maxLength: 1500
+
+  verify:
+    type: string
+
+  errors:
+    type: array
+    items:
+      $ref: "#/definitions/error_branch"
+
+  related:
+    type: array
+    uniqueItems: true
+    items:
+      type: string
+      pattern: '^[a-z0-9]+(?:[._-][a-z0-9]+)*$'
+
+  sources:
+    type: array
+    minItems: 1
+    items:
+      $ref: "#/definitions/source"
+
+  last_verified:
+    type: string
+    pattern: '^[0-9]{4}-[0-9]{2}-[0-9]{2}$'
+
+allOf:
+  - if:
+      properties:
+        type:
+          const: how_to
+    then:
+      required:
+        - steps
+        - verify
+  - if:
+      properties:
+        type:
+          const: troubleshooting
+    then:
+      required:
+        - symptoms
+        - checks
+  - if:
+      properties:
+        type:
+          const: concept
+    then:
+      required:
+        - answer
+
+definitions:
+  step:
+    type: object
+    additionalProperties: false
+    required:
+      - order
+      - say
+    properties:
+      order:
+        type: integer
+        minimum: 1
+      say:
+        type: string
+        minLength: 3
+      ui:
+        $ref: "#/definitions/ui_reference"
+      fields:
+        type: array
+        items:
+          $ref: "#/definitions/field"
+      note:
+        type: string
+
+  ui_reference:
+    type: object
+    additionalProperties: false
+    required:
+      - label
+      - i18n_key
+      - element_id
+    properties:
+      label:
+        type: string
+      i18n_key:
+        type:
+          - string
+          - "null"
+      element_id:
+        type:
+          - string
+          - "null"
+
+  field:
+    type: object
+    additionalProperties: false
+    required:
+      - label
+      - i18n_key
+      - required
+    properties:
+      label:
+        type: string
+      i18n_key:
+        type:
+          - string
+          - "null"
+      required:
+        type: boolean
+      example:
+        type: string
+      constraints:
+        type: array
+        items:
+          type: string
+
+  check:
+    type: object
+    additionalProperties: false
+    required:
+      - order
+      - if
+      - then
+    properties:
+      order:
+        type: integer
+        minimum: 1
+      if:
+        type: string
+      then:
+        type: string
+      stop_when:
+        type: string
+
+  error_branch:
+    type: object
+    additionalProperties: false
+    required:
+      - if
+      - then
+    properties:
+      if:
+        type: string
+      then:
+        type: string
+
+  source:
+    type: object
+    additionalProperties: false
+    required:
+      - path
+      - kind
+    properties:
+      path:
+        type: string
+        pattern: '^(?!/)(?!.*://).+$'
+      kind:
+        type: string
+        enum:
+          - route
+          - component
+          - i18n
+          - test
+          - documentation
+      note:
+        type: string

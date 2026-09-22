@@ -12,7 +12,7 @@ import base64
 import io
 import re
 from datetime import date, datetime
-from typing import Any
+from typing import Any, Literal
 
 import matplotlib
 
@@ -20,16 +20,9 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt  # noqa: E402
 
 from src.llm.client import use_offline_tools
-from src.llm.schemas import ChartSpec, StatAnswer
+from src.llm.schemas import ChartSpec, StatAnswer, normalize_chart_type
 from src.llm.structured import invoke_structured
-
-CHART_PLAN_SYSTEM_PROMPT = """Bạn là trợ lý xác định cấu hình biểu đồ (ChartSpec) cho hệ thống VMS KCN Hưng Phú.
-Dựa vào câu hỏi của người dùng và các cột dữ liệu mẫu, hãy chọn cấu hình biểu đồ phù hợp nhất:
-1. `chart_type`: 'bar' (mặc định), 'line' (dữ liệu chuỗi thời gian, ngày, tháng, xu hướng), hoặc 'pie' (tỷ lệ, phần trăm, cơ cấu).
-2. `x_column`: tên cột làm nhãn / trục hoành (category/label).
-3. `y_column`: tên cột làm giá trị số / trục tung (numeric value/metric).
-4. `title_vi`: tiêu đề tiếng Việt ngắn gọn, súc tích cho biểu đồ.
-"""
+from src.prompts import registry
 
 _CHART_KEYWORD_RE = re.compile(
     r"biểu\s*đồ|bieu\s*do|\bchart\b|\bplot\b|vẽ\s*(biểu|đồ|đường|cột|thị)?|"
@@ -115,11 +108,13 @@ def _pick_columns(rows: list[dict[str, Any]]) -> tuple[str, str]:
     return keys[0], keys[0]
 
 
-def _detect_chart_type(question: str) -> str:
+def _detect_chart_type(question: str) -> Literal["bar", "pie", "line"]:
     q = (question or "").lower()
-    if re.search(r"tỷ\s*lệ|cơ\s*cấu|pie|tròn", q):
+    if re.search(r"cột|\bbar\b", q) and not re.search(r"tròn|pie|đường|line|xu\s*hướng|tỷ\s*lệ|cơ\s*cấu", q):
+        return "bar"
+    if re.search(r"tỷ\s*lệ|tỉ\s*lệ|cơ\s*cấu|phần\s*trăm|pie|tròn|bánh", q):
         return "pie"
-    if re.search(r"theo\s*ngày|theo\s*tháng|theo\s*giờ|time|thời\s*gian|đường|line|xu\s*hướng", q):
+    if re.search(r"theo\s*(ngày|tháng|năm|giờ|tuần|time|thời\s*gian)|đường|line|xu\s*hướng|biến\s*động|diễn\s*biến|lịch\s*trình", q):
         return "line"
     return "bar"
 
@@ -177,12 +172,15 @@ def plan_chart(rows: list[dict[str, Any]], question: str) -> ChartSpec:
         f"Dữ liệu mẫu (3 dòng đầu):\n{sample_rows}"
     )
     messages = [
-        {"role": "system", "content": CHART_PLAN_SYSTEM_PROMPT},
+        {"role": "system", "content": registry().render("plan_chart")},
         {"role": "user", "content": user_prompt},
     ]
 
     try:
-        return invoke_structured(messages, ChartSpec)
+        spec = invoke_structured(messages, ChartSpec)
+        if isinstance(spec, ChartSpec):
+            return spec
+        return _offline_plan_chart(rows, question)
     except Exception:
         return _offline_plan_chart(rows, question)
 
@@ -214,7 +212,7 @@ def render_chart(rows: list[dict[str, Any]], spec: ChartSpec) -> str:
     labels = [_format_label(r.get(x_col)) for r in data]
     values = [_to_float(r.get(y_col)) for r in data]
 
-    chart_type = (spec.chart_type or "bar").lower().strip()
+    chart_type = normalize_chart_type(getattr(spec, "chart_type", "bar"))
     color = "#1f5c4f"
 
     plt.rcParams["axes.unicode_minus"] = False
@@ -224,9 +222,10 @@ def render_chart(rows: list[dict[str, Any]], spec: ChartSpec) -> str:
         ax.set_facecolor("#f8fafb")
 
         if chart_type == "pie":
-            total_val = sum(v for v in values if v > 0)
-            if total_val > 0:
-                ax.pie(values, labels=labels, autopct="%1.0f%%", startangle=90, textprops={"fontsize": 8})
+            valid_pairs = [(lbl, v) for lbl, v in zip(labels, values) if v > 0]
+            if valid_pairs:
+                pie_labels, pie_vals = zip(*valid_pairs)
+                ax.pie(pie_vals, labels=pie_labels, autopct="%1.0f%%", startangle=90, textprops={"fontsize": 8})
                 ax.axis("equal")
             else:
                 ax.text(0.5, 0.5, "Không có dữ liệu hợp lệ", ha="center", va="center")

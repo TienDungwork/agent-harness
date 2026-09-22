@@ -36,7 +36,8 @@ class Settings(BaseSettings):
     sql_repair_max: int = Field(default=1, alias="SQL_REPAIR_MAX")
 
     # v5 Docs YAML corpus (duy style)
-    docs_root: str = Field(default="docs/vms_yaml", alias="DOCS_ROOT")
+    docs_root: str = Field(default="resource/docs/vms_yaml", alias="DOCS_ROOT")
+    memory_ttl_seconds: int = Field(default=300, alias="MEMORY_TTL_SECONDS")
 
     # ── Database Nguồn Thống Kê (Postgres, Read-Only) ─────────────────────────
     db_host: str = Field(default="", alias="DB_HOST")
@@ -74,6 +75,14 @@ class Settings(BaseSettings):
     cache_ttl_s: int = Field(default=60, alias="CACHE_TTL_S")
 
     @property
+    def ttl_cache_enabled(self) -> bool:
+        return self.cache_enabled
+
+    @ttl_cache_enabled.setter
+    def ttl_cache_enabled(self, value: bool) -> None:
+        self.cache_enabled = value
+
+    @property
     def api_keys(self) -> list[str]:
         return [k.strip() for k in self.openai_api_keys.split(",") if k.strip()]
 
@@ -100,7 +109,7 @@ class Settings(BaseSettings):
     @property
     def effective_docs_root(self) -> Path:
         """Thư mục chứa tài liệu YAML VMS (index.yaml + cards)."""
-        raw = self.docs_root or "docs/vms_yaml"
+        raw = self.docs_root or "resource/docs/vms_yaml"
         p = Path(raw)
         if not p.is_absolute():
             project_root = Path(__file__).resolve().parent.parent

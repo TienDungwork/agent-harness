@@ -5,7 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
-from fastapi import FastAPI, HTTPException, Request
+from fastapi import FastAPI, HTTPException, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
 import json
@@ -15,33 +15,30 @@ import logging
 import threading
 import time
 
+from src.sessions import (
+    CreateSessionRequest,
+    DeleteSessionResponse,
+    SessionItem,
+    SessionListResponse,
+    SessionMessagesResponse,
+    append_session_messages,
+    create_session,
+    delete_session,
+    get_session_messages,
+    list_sessions,
+)
+
 logger = logging.getLogger(__name__)
 
-_cache: dict[str, dict] = {}
-_cache_lock = threading.Lock()
+from src.memory.ttl_cache import (
+    _ttl_cache,
+    clear_ttl_cache,
+    get_ttl_cached,
+    make_cache_key,
+    set_ttl_cached,
+)
 
-def get_cached_answer(question: str) -> dict | None:
-    from src.config import settings
-    if not settings.cache_enabled or settings.cache_ttl_s <= 0:
-        return None
-    with _cache_lock:
-        if question in _cache:
-            entry = _cache[question]
-            if time.time() < entry["expire_at"]:
-                return entry["data"]
-            else:
-                del _cache[question]
-    return None
-
-def set_cached_answer(question: str, data: dict):
-    from src.config import settings
-    if not settings.cache_enabled or settings.cache_ttl_s <= 0:
-        return
-    with _cache_lock:
-        _cache[question] = {
-            "data": data,
-            "expire_at": time.time() + settings.cache_ttl_s
-        }
+_cache = _ttl_cache
 
 from src.config import settings
 from src.agent.graph import Agent_Input, run_agent
@@ -52,6 +49,7 @@ from src.guardrails import (
     check_output,
     in_scope,
     redact_pii,
+    rejection_detail,
     _is_tool_empty,
 )
 from src.monitoring.tracing import trace_answer
@@ -72,11 +70,72 @@ app.add_middleware(
 
 FRONTEND_DIR = Path(__file__).resolve().parent.parent / "frontend"
 
+_SSE_SCHEMA_EXCERPT_MAX = 16000
+
+
+def _lookup_ttl_cache(question: str) -> dict[str, Any] | None:
+    """Tra TTL cache theo câu hỏi gốc (hỗ trợ key có route suffix)."""
+    try:
+        return get_ttl_cached(make_cache_key(question))
+    except Exception as exc:
+        logger.warning("TTL cache lookup failed, degrading to cache miss: %s", exc)
+        return None
+
+
+def _sanitize_sse_event(event: dict[str, Any]) -> dict[str, Any]:
+    """Giữ I/O structured thực; chỉ cắt field quá lớn (schema excerpt) trên SSE."""
+    import copy
+
+    ev = copy.deepcopy(event)
+    for side in ("input", "output"):
+        payload = ev.get(side)
+        if not isinstance(payload, dict):
+            continue
+        excerpt = payload.get("schema_excerpt")
+        if isinstance(excerpt, str) and len(excerpt) > _SSE_SCHEMA_EXCERPT_MAX:
+            payload["schema_excerpt"] = (
+                excerpt[:_SSE_SCHEMA_EXCERPT_MAX]
+                + f"\n… (cắt {len(excerpt) - _SSE_SCHEMA_EXCERPT_MAX} ký tự cho SSE; xem Langfuse để full)"
+            )
+    return ev
+
+
+def _build_chart_sse_event(
+    chart_spec: dict[str, Any] | None,
+    chart_png_base64: str | None,
+    chart_rows: list[dict] | None = None,
+) -> dict[str, Any]:
+    """Xây dựng SSE event chuẩn cho __chart__ node.
+
+    Args:
+        chart_spec: dict từ ChartSpec.model_dump() (chart_type, x_column, y_column, title_vi, ...).
+        chart_png_base64: chuỗi PNG base64 (không có prefix data:image/png;base64,).
+        chart_rows: list[dict] rows dữ liệu để FE render Chart.js (optional).
+
+    Returns:
+        dict SSE event với node_id='__chart__', status='done', chart_type, chart_spec,
+        chart_png_base64, chart_rows (khi có).
+    """
+    spec = chart_spec or {}
+    chart_type = spec.get("chart_type", "bar") if isinstance(spec, dict) else "bar"
+    event: dict[str, Any] = {
+        "node_id": "__chart__",
+        "status": "done",
+        "chart_type": chart_type,
+        "chart_spec": spec,
+        "chart_png_base64": chart_png_base64 or "",
+    }
+    if chart_rows is not None:
+        event["chart_rows"] = chart_rows
+    return event
+
 
 class ChatRequest(BaseModel):
     question: str = Field(min_length=1, description="Câu hỏi thống kê tự nhiên")
     model_provider: str | None = Field(default=None, description="Tùy chọn: 'openai' hoặc 'self_hosted'")
     model_override: str | None = Field(default=None, description="Tùy chọn ghi đè model name")
+    session_id: str = Field(default="default", description="ID phiên hội thoại")
+    user_id: str = Field(default="default", description="ID người dùng")
 
 
 class ChatResponse(BaseModel):
@@ -143,7 +202,12 @@ def ping_llm():
     """Endpoint ping LLM."""
     try:
         status = llm_ping()
-        return {"status": status}
+        return {
+            "status": status,
+            "backend": settings.llm_backend,
+            "model": settings.effective_model,
+            "base_url": settings.effective_base_url or "",
+        }
     except Exception as e:
         raise HTTPException(status_code=503, detail=str(e))
 
@@ -171,25 +235,141 @@ def get_config():
     }
 
 
+# ==============================================================================
+# Sessions API (Phase 4)
+# ==============================================================================
+
+
+@app.get("/api/sessions", response_model=SessionListResponse, tags=["sessions"])
+def api_list_sessions(
+    user_id: str = Query(..., min_length=1, description="ID người dùng"),
+) -> SessionListResponse:
+    """Liệt kê danh sách các phiên hội thoại của người dùng."""
+    if not user_id or not user_id.strip():
+        raise HTTPException(status_code=400, detail="user_id is required")
+    sessions = list_sessions(user_id=user_id.strip())
+    return SessionListResponse(sessions=sessions)
+
+
+@app.post("/api/sessions", response_model=SessionItem, tags=["sessions"])
+def api_create_session(req: CreateSessionRequest) -> SessionItem:
+    """Tạo phiên hội thoại mới cho người dùng."""
+    if not req.user_id or not req.user_id.strip():
+        raise HTTPException(status_code=400, detail="user_id is required")
+    sess = create_session(user_id=req.user_id.strip(), title=req.title)
+    return SessionItem(**sess)
+
+
+@app.delete("/api/sessions/{session_id}", response_model=DeleteSessionResponse, tags=["sessions"])
+def api_delete_session(
+    session_id: str,
+    user_id: str = Query(..., min_length=1, description="ID người dùng"),
+) -> DeleteSessionResponse:
+    """Xóa một phiên hội thoại theo session_id và user_id."""
+    if not user_id or not user_id.strip():
+        raise HTTPException(status_code=400, detail="user_id is required")
+    deleted = delete_session(session_id=session_id, user_id=user_id.strip())
+    if not deleted:
+        raise HTTPException(status_code=404, detail="Session not found")
+    return DeleteSessionResponse(deleted=True)
+
+
+@app.get(
+    "/api/sessions/{session_id}/messages",
+    response_model=SessionMessagesResponse,
+    tags=["sessions"],
+)
+def api_get_session_messages(
+    session_id: str,
+    user_id: str = Query(..., min_length=1, description="ID người dùng"),
+) -> SessionMessagesResponse:
+    """Lấy lịch sử tin nhắn short-term của một phiên hội thoại."""
+    if not user_id or not user_id.strip():
+        raise HTTPException(status_code=400, detail="user_id is required")
+    messages = get_session_messages(session_id=session_id, user_id=user_id.strip())
+    if messages is None:
+        raise HTTPException(status_code=404, detail="Session not found")
+    return SessionMessagesResponse(messages=messages)
+
+
+def _persist_session_turn(
+    *,
+    session_id: str,
+    user_id: str,
+    question: str,
+    answer: str,
+    detail: dict[str, Any] | None = None,
+    chart: dict[str, Any] | None = None,
+) -> None:
+    """Lưu một lượt hỏi–đáp vào session store (short-term UI history)."""
+    from datetime import datetime, timezone
+
+    now = datetime.now(timezone.utc).isoformat()
+    user_msg: dict[str, Any] = {"role": "user", "content": question, "timestamp": now}
+    assistant_msg: dict[str, Any] = {
+        "role": "assistant",
+        "content": answer,
+        "timestamp": now,
+    }
+    if detail:
+        assistant_msg["detail"] = detail
+    if chart:
+        assistant_msg["chart"] = chart
+    append_session_messages(session_id, user_id, [user_msg, assistant_msg])
+
+
+USER_ERROR_MAX_LEN = 240
+
+
+def _short_user_error(message: str) -> str:
+    """Cắt message hiển thị UI — không dump stack/SQL dài."""
+    msg = (message or "").strip()
+    if len(msg) <= USER_ERROR_MAX_LEN:
+        return msg
+    return msg[: USER_ERROR_MAX_LEN - 1].rstrip() + "…"
+
+
 def _format_error_message(exc: Exception) -> str:
     """Định dạng thông báo lỗi thân thiện cho người dùng khi gặp sự cố DB hoặc LLM."""
     err_str = str(exc).lower()
     if any(k in err_str for k in ("clickhouse", "ch timeout")):
-        return "Lỗi kết nối cơ sở dữ liệu phân tích: Hệ thống tạm thời không thể truy vấn số liệu thống kê. Vui lòng kiểm tra lại dịch vụ ClickHouse."
+        return _short_user_error(
+            "Lỗi cơ sở dữ liệu phân tích: không truy vấn được số liệu. Kiểm tra ClickHouse."
+        )
     if any(k in err_str for k in ("database", "postgres", "psycopg2", "could not connect to server", "connection refused to server")):
-        return "Lỗi kết nối cơ sở dữ liệu VMS: Hệ thống tạm thời không thể truy vấn số liệu từ Database. Vui lòng kiểm tra lại dịch vụ cơ sở dữ liệu."
+        return _short_user_error(
+            "Lỗi cơ sở dữ liệu VMS: không truy vấn được số liệu. Kiểm tra dịch vụ database."
+        )
     if any(k in err_str for k in ("timeout", "timed out", "connection error", "connection refused", "apiconnectionerror", "connect error")):
-        return "Lỗi kết nối mô hình AI: Quá thời gian chờ (timeout) hoặc máy chủ mô hình AI không phản hồi. Vui lòng thử lại sau."
+        return _short_user_error(
+            "Lỗi mô hình AI: quá thời gian chờ hoặc máy chủ không phản hồi. Thử lại sau."
+        )
     if any(k in err_str for k in ("rate limit", "429", "quota", "too many requests")):
-        return "Mô hình AI đang bận hoặc đạt giới hạn lượt gọi (Rate Limit). Vui lòng thử lại sau giây lát."
+        return _short_user_error(
+            "Mô hình AI đang bận (rate limit). Vui lòng thử lại sau giây lát."
+        )
     if any(k in err_str for k in ("llm structured", "parse", "schema", "validationerror")):
-        return "Mô hình AI trả về kết quả không đúng định dạng. Vui lòng thử lại với cách diễn đạt khác."
+        return _short_user_error(
+            "Mô hình AI trả về sai định dạng. Thử lại với cách diễn đạt khác."
+        )
+    if (
+        any(k in err_str for k in ("thiếu biến", "template rỗng", "placeholder", "render prompt"))
+        or ("prompt" in err_str and any(k in err_str for k in ("thiếu", "rỗng", "template", "biến", "placeholder")))
+    ):
+        return _short_user_error(
+            "Lỗi cấu hình prompt: thiếu biến hoặc template không hợp lệ. Liên hệ quản trị."
+        )
     if any(k in err_str for k in ("lỗi tạo sql", "lỗi validate sql", "vượt quá số lần sửa", "select ", " from ")):
-        return "Rất tiếc, hệ thống không thể tạo truy vấn dữ liệu phù hợp. Vui lòng thử lại với câu hỏi đơn giản hơn."
+        return _short_user_error(
+            "Không tạo được truy vấn dữ liệu phù hợp. Thử câu hỏi đơn giản hơn."
+        )
     if any(k in err_str for k in ("lỗi truy vấn cơ sở dữ liệu", "lỗi execute")):
-        return "Lỗi khi thực thi truy vấn. Hệ thống tạm thời không thể lấy số liệu. Vui lòng thử lại sau."
-    # Không dump exception thô (có thể chứa SQL) ra UI.
-    return "Không thể xử lý câu hỏi lúc này. Vui lòng thử lại hoặc diễn đạt khác."
+        return _short_user_error(
+            "Lỗi thực thi truy vấn. Tạm thời không lấy được số liệu. Thử lại sau."
+        )
+    return _short_user_error(
+        "Không thể xử lý câu hỏi lúc này. Vui lòng thử lại hoặc diễn đạt khác."
+    )
 
 
 
@@ -197,7 +377,20 @@ def _format_error_message(exc: Exception) -> str:
 @app.post("/api/chat", response_model=ChatResponse, tags=["agent"])
 def chat(req: ChatRequest) -> ChatResponse:
     """Endpoint chính nhận câu hỏi từ Frontend UI."""
-    with trace_answer("chat", req.question, metadata={"endpoint": "/api/chat", "provider": req.model_provider}) as t:
+    if not req.session_id or not req.session_id.strip():
+        raise HTTPException(status_code=400, detail="session_id không được để trống.")
+    if not req.user_id or not req.user_id.strip():
+        raise HTTPException(status_code=400, detail="user_id không được để trống.")
+    with trace_answer(
+        "chat",
+        req.question,
+        metadata={
+            "endpoint": "/api/chat",
+            "provider": req.model_provider,
+            "session_id": req.session_id,
+            "user_id": req.user_id,
+        },
+    ) as t:
         check_input(req.question)
         if not in_scope(req.question):
             t["output"] = {"status": "out_of_scope", "answer": OUT_OF_SCOPE_REPLY}
@@ -209,36 +402,48 @@ def chat(req: ChatRequest) -> ChatResponse:
             )
 
         question = redact_pii(req.question)
-        
-        from src.agent.rewrite import rewrite_question
-        rewritten = rewrite_question(question)
-        cache_key = rewritten.text # Cache key: use rewritten question text
-        cached = get_cached_answer(cache_key)
-        if cached:
+
+        try:
+            cached = _lookup_ttl_cache(question)
+        except Exception as exc:
+            logger.warning("Cache lookup failed on chat: %s", exc)
+            cached = None
+        if isinstance(cached, dict) and "answer" in cached:
             logger.info("cache hit")
             detail_payload = {
-                "tool": cached["tool"],
-                "columns": cached["columns"],
-                "row_count": cached["row_count"],
-                "agent_detail": cached["agent_detail"],
+                "tool": cached.get("tool", ""),
+                "columns": cached.get("columns", []),
+                "row_count": cached.get("row_count", 0),
+                "agent_detail": cached.get("agent_detail", ""),
+                "cache_hit": True,
             }
             response = ChatResponse(
-                question=cached["question"],
+                question=cached.get("question", req.question),
                 answer=cached["answer"],
-                tool=cached["tool"],
+                tool=cached.get("tool", ""),
                 detail=detail_payload,
-                row_count=cached["row_count"],
+                row_count=cached.get("row_count", 0),
             )
             t["output"] = {
                 "status": "ok",
                 "answer": response.answer,
                 "tool": response.tool,
                 "row_count": response.row_count,
+                "cached": True,
             }
             return response
 
         try:
-            out = run_agent(Agent_Input(question=question, rewritten=rewritten), parent_span=t.get("_span"))
+            from src.agent.rewrite import rewrite_question_safe
+
+            rewritten = rewrite_question_safe(question)
+            cache_q = rewritten.text if (rewritten and rewritten.text) else question
+            out = run_agent(
+                Agent_Input(question=question, rewritten=rewritten, user_id=req.user_id),
+                parent_span=t.get("_span"),
+                session_id=req.session_id,
+                user_id=req.user_id,
+            )
         except Exception as exc:
             friendly_msg = _format_error_message(exc)
             raise HTTPException(status_code=503, detail=friendly_msg) from exc
@@ -259,7 +464,11 @@ def chat(req: ChatRequest) -> ChatResponse:
             "row_count": query.row_count if query else 0,
             "agent_detail": out.detail,
         }
-        set_cached_answer(cache_key, cache_data)
+        route = out.detail or getattr(out, "intent", "")
+        try:
+            set_ttl_cached(make_cache_key(cache_q, route=route), cache_data)
+        except Exception as exc:
+            logger.warning("Failed to store TTL cache on chat: %s", exc)
 
         detail_payload: dict[str, Any] = {
             "tool": query.tool if query else "",
@@ -287,37 +496,51 @@ def chat(req: ChatRequest) -> ChatResponse:
 @app.post("/ask", response_model=AskResponse, tags=["agent"])
 def ask(req: AskRequest) -> AskResponse:
     """Endpoint tương thích ngược cho /ask."""
-    with trace_answer("ask", req.question, metadata={"endpoint": "/ask"}) as t:
+    with trace_answer(
+        "ask",
+        req.question,
+        metadata={
+            "endpoint": "/ask",
+            "session_id": getattr(req, "session_id", "default"),
+            "user_id": getattr(req, "user_id", "default"),
+        },
+    ) as t:
         check_input(req.question)
         if not in_scope(req.question):
             t["output"] = {"status": "out_of_scope", "answer": OUT_OF_SCOPE_REPLY}
             return AskResponse(question=req.question, answer=OUT_OF_SCOPE_REPLY)
 
         question = redact_pii(req.question)
-        
-        from src.agent.rewrite import rewrite_question
-        rewritten = rewrite_question(question)
-        cache_key = rewritten.text # Cache key: use rewritten question text
-        cached = get_cached_answer(cache_key)
-        if cached:
+
+        try:
+            cached = _lookup_ttl_cache(question)
+        except Exception as exc:
+            logger.warning("Cache lookup failed on ask: %s", exc)
+            cached = None
+        if isinstance(cached, dict) and "answer" in cached:
             logger.info("cache hit")
             response = AskResponse(
-                question=cached["question"],
+                question=cached.get("question", req.question),
                 answer=cached["answer"],
-                tool=cached["tool"],
-                columns=cached["columns"],
-                rows=cached["rows"],
-                row_count=cached["row_count"],
+                tool=cached.get("tool", ""),
+                columns=cached.get("columns", []),
+                rows=cached.get("rows", []),
+                row_count=cached.get("row_count", 0),
             )
             t["output"] = {
                 "status": "ok",
                 "answer": response.answer,
                 "tool": response.tool,
                 "row_count": response.row_count,
+                "cached": True,
             }
             return response
 
         try:
+            from src.agent.rewrite import rewrite_question_safe
+
+            rewritten = rewrite_question_safe(question)
+            cache_q = rewritten.text if (rewritten and rewritten.text) else question
             out = run_agent(Agent_Input(question=question, rewritten=rewritten), parent_span=t.get("_span"))
         except Exception as exc:
             friendly_msg = _format_error_message(exc)
@@ -339,7 +562,11 @@ def ask(req: AskRequest) -> AskResponse:
             "row_count": query.row_count if query else 0,
             "agent_detail": out.detail,
         }
-        set_cached_answer(cache_key, cache_data)
+        route = out.detail or getattr(out, "intent", "")
+        try:
+            set_ttl_cached(make_cache_key(cache_q, route=route), cache_data)
+        except Exception as exc:
+            logger.warning("Failed to store TTL cache on ask: %s", exc)
 
         response = AskResponse(
             question=out.question,
@@ -363,7 +590,7 @@ def guardrail_violation_handler(request: Request, exc: GuardrailViolation) -> JS
     return JSONResponse(
         status_code=400,
         content={
-            "detail": f"Câu hỏi bị từ chối: {exc.reason}",
+            "detail": rejection_detail(exc.reason),
             "error": "input_rejected",
             "reason": exc.reason,
             "details": exc.details,
@@ -373,27 +600,44 @@ def guardrail_violation_handler(request: Request, exc: GuardrailViolation) -> JS
 
 @app.post("/api/agent/stream", tags=["agent"])
 def stream_agent(req: ChatRequest) -> StreamingResponse:
+    if not req.session_id or not req.session_id.strip():
+        raise HTTPException(status_code=400, detail="session_id không được để trống.")
+    if not req.user_id or not req.user_id.strip():
+        raise HTTPException(status_code=400, detail="user_id không được để trống.")
     check_input(req.question)
 
     def event_generator():
         with trace_answer(
             "chat",
             req.question,
-            metadata={"endpoint": "/api/agent/stream", "provider": req.model_provider},
+            metadata={
+                "endpoint": "/api/agent/stream",
+                "provider": req.model_provider,
+                "session_id": req.session_id,
+                "user_id": req.user_id,
+            },
         ) as t:
             if not in_scope(req.question):
                 t["output"] = {"status": "out_of_scope", "answer": OUT_OF_SCOPE_REPLY}
+                _persist_session_turn(
+                    session_id=req.session_id.strip(),
+                    user_id=req.user_id.strip(),
+                    question=req.question,
+                    answer=OUT_OF_SCOPE_REPLY,
+                    detail={"status": "out_of_scope"},
+                )
                 yield f'data: {json.dumps({"node_id": "guardrail", "status": "done", "input": req.question, "output": OUT_OF_SCOPE_REPLY}, ensure_ascii=False)}\n\n'
                 yield f'data: {json.dumps({"node_id": "__answer__", "status": "done", "output": OUT_OF_SCOPE_REPLY, "detail": {"status": "out_of_scope"}}, ensure_ascii=False)}\n\n'
                 return
 
             question = redact_pii(req.question)
 
-            from src.agent.rewrite import rewrite_question
-            rewritten = rewrite_question(question)
-            cache_key = rewritten.text # Cache key: use rewritten question text
-            cached = get_cached_answer(cache_key)
-            if cached:
+            try:
+                cached = _lookup_ttl_cache(question)
+            except Exception as exc:
+                logger.warning("Cache lookup failed on stream: %s", exc)
+                cached = None
+            if isinstance(cached, dict) and "answer" in cached:
                 t["output"] = {
                     "status": "ok",
                     "answer": cached["answer"],
@@ -408,13 +652,55 @@ def stream_agent(req: ChatRequest) -> StreamingResponse:
                     "columns": cached.get("columns", []),
                     "row_count": cached.get("row_count", 0),
                     "agent_detail": cached.get("agent_detail", ""),
+                    "cache_hit": True,
                 }
+                _persist_session_turn(
+                    session_id=req.session_id.strip(),
+                    user_id=req.user_id.strip(),
+                    question=question,
+                    answer=cached["answer"],
+                    detail=detail_payload,
+                )
                 yield f'data: {json.dumps({"node_id": "__answer__", "status": "done", "output": cached["answer"], "detail": detail_payload}, ensure_ascii=False)}\n\n'
                 return
 
             try:
+                from src.agent.rewrite import rewrite_question_safe
                 from src.agent.graph import run_agent_stream, Agent_Input
-                for event in run_agent_stream(Agent_Input(question=question, rewritten=rewritten), parent_span=t.get("_span")):
+
+                rewritten = rewrite_question_safe(question)
+                cache_q = rewritten.text if (rewritten and rewritten.text) else question
+                stream_kwargs = {"parent_span": t.get("_span")}
+                target_fn = getattr(run_agent_stream, "side_effect", None) or run_agent_stream
+                can_pass_session = True
+                can_pass_user = True
+                if callable(target_fn):
+                    try:
+                        import inspect
+                        sig = inspect.signature(target_fn)
+                        can_pass_session = "session_id" in sig.parameters or any(
+                            p.kind == inspect.Parameter.VAR_KEYWORD for p in sig.parameters.values()
+                        )
+                        can_pass_user = "user_id" in sig.parameters or any(
+                            p.kind == inspect.Parameter.VAR_KEYWORD for p in sig.parameters.values()
+                        )
+                    except (ValueError, TypeError):
+                        pass
+                if can_pass_session:
+                    stream_kwargs["session_id"] = req.session_id
+                if can_pass_user:
+                    stream_kwargs["user_id"] = req.user_id
+
+                # Track chart info emitted from render_chart node during this stream run.
+                last_chart_png: str | None = None
+                last_chart_spec: dict[str, Any] | None = None
+                last_chart_type: str | None = None
+                last_chart_rows: list[dict] | None = None
+
+                for event in run_agent_stream(
+                    Agent_Input(question=question, rewritten=rewritten, user_id=req.user_id),
+                    **stream_kwargs,
+                ):
                     if "__final_result__" in event:
                         out = event["__final_result__"]
                         query = getattr(out, "query", None)
@@ -433,14 +719,24 @@ def stream_agent(req: ChatRequest) -> StreamingResponse:
                             "row_count": getattr(query, "row_count", 0) if query else 0,
                             "agent_detail": out.detail,
                         }
-                        set_cached_answer(cache_key, cache_data)
+                        route = getattr(out, "detail", "") or getattr(out, "intent", "")
+                        try:
+                            set_ttl_cached(make_cache_key(cache_q, route=route), cache_data)
+                        except Exception as exc:
+                            logger.warning("Failed to store TTL cache on stream: %s", exc)
 
-                        detail_payload = {
+                        detail_payload: dict[str, Any] = {
                             "tool": getattr(query, "tool", "") if query else "",
                             "columns": getattr(query, "columns", []) if query else [],
                             "row_count": getattr(query, "row_count", 0) if query else 0,
                             "agent_detail": out.detail,
                         }
+                        # Attach chart info to __answer__ detail when chart was rendered
+                        if last_chart_png:
+                            detail_payload["chart_type"] = last_chart_type or "bar"
+                            detail_payload["chart_spec"] = last_chart_spec or {}
+                            if last_chart_rows is not None:
+                                detail_payload["chart_rows"] = last_chart_rows
 
                         t["output"] = {
                             "status": "ok",
@@ -448,6 +744,22 @@ def stream_agent(req: ChatRequest) -> StreamingResponse:
                             "tool": getattr(query, "tool", "") if query else "",
                             "row_count": getattr(query, "row_count", 0) if query else 0,
                         }
+                        chart_payload = None
+                        if last_chart_png or detail_payload.get("chart_spec"):
+                            chart_payload = {
+                                "png": last_chart_png,
+                                "spec": detail_payload.get("chart_spec"),
+                                "type": detail_payload.get("chart_type", "bar"),
+                                "rows": detail_payload.get("chart_rows"),
+                            }
+                        _persist_session_turn(
+                            session_id=req.session_id.strip(),
+                            user_id=req.user_id.strip(),
+                            question=out.question or question,
+                            answer=result.answer,
+                            detail=detail_payload,
+                            chart=chart_payload,
+                        )
                         ans_event = {
                             "node_id": "__answer__",
                             "status": "done",
@@ -457,11 +769,34 @@ def stream_agent(req: ChatRequest) -> StreamingResponse:
                         yield f"data: {json.dumps(ans_event, ensure_ascii=False)}\n\n"
                         continue
 
-                    if "output" in event and isinstance(event["output"], str) and len(event["output"]) > 2000:
-                        event["output"] = event["output"][:2000] + "..."
-                    if "input" in event and isinstance(event["input"], str) and len(event["input"]) > 2000:
-                        event["input"] = event["input"][:2000] + "..."
-                    yield f"data: {json.dumps(event, ensure_ascii=False)}\n\n"
+                    # Detect render_chart node event — emit dedicated __chart__ SSE event
+                    event_node = event.get("node_id", "")
+                    event_chart_png = event.get("chart_png_base64") or ""
+                    event_chart_spec = event.get("chart_spec")
+                    if event_node == "render_chart" and event_chart_png:
+                        spec_dict = event_chart_spec if isinstance(event_chart_spec, dict) else {}
+                        last_chart_png = event_chart_png
+                        last_chart_spec = spec_dict
+                        last_chart_type = spec_dict.get("chart_type", "bar") if spec_dict else "bar"
+                        # Extract rows from event input for Chart.js rendering
+                        event_input = event.get("input") or {}
+                        raw_rows = None
+                        if isinstance(event_input, dict):
+                            raw_rows = event_input.get("rows") or event.get("rows")
+                        if raw_rows is None:
+                            raw_rows = event.get("rows")
+                        last_chart_rows = raw_rows if isinstance(raw_rows, list) else None
+                        chart_sse = _build_chart_sse_event(spec_dict, event_chart_png, last_chart_rows)
+                        yield f"data: {json.dumps(chart_sse, ensure_ascii=False)}\n\n"
+
+                    try:
+                        payload = json.dumps(_sanitize_sse_event(event), ensure_ascii=False, default=str)
+                    except Exception as ser_exc:
+                        friendly_msg = _format_error_message(ser_exc)
+                        yield f'data: {json.dumps({"node_id": "error", "status": "done", "output": friendly_msg}, ensure_ascii=False)}\n\n'
+                        yield f'data: {json.dumps({"node_id": "__answer__", "status": "error", "output": friendly_msg, "detail": {"status": "error"}}, ensure_ascii=False)}\n\n'
+                        break
+                    yield f"data: {payload}\n\n"
             except Exception as exc:
                 t["output"] = {"status": "error", "error": str(exc)}
                 friendly_msg = _format_error_message(exc)

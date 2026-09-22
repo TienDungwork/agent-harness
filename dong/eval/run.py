@@ -47,11 +47,13 @@ GOLDEN_30_PATH = Path(__file__).parent / "results" / "golden-30.md"
 
 def _enable_live_eval() -> None:
     os.environ.pop("PYTEST_CURRENT_TEST", None)
+    os.environ.pop("AGENT_OFFLINE", None)
     os.environ["AGENT_EVAL_LIVE"] = "1"
 
 
 def _disable_live_eval() -> None:
     os.environ.pop("AGENT_EVAL_LIVE", None)
+    os.environ["AGENT_OFFLINE"] = "1"
 
 
 def _preflight_live() -> None:

@@ -119,8 +119,20 @@ def trace_answer(name: str, question: str, metadata: dict[str, Any] | None = Non
 
     try:
         langfuse = _get_langfuse()
-        span = langfuse.start_observation(name=name, input=question, metadata=meta)
+        kwargs: dict[str, Any] = {"name": name, "input": question, "metadata": meta}
+        if "session_id" in meta and meta["session_id"]:
+            kwargs["session_id"] = str(meta["session_id"])
+        if "user_id" in meta and meta["user_id"]:
+            kwargs["user_id"] = str(meta["user_id"])
+        span = langfuse.start_observation(**kwargs)
         box["_span"] = span
+    except TypeError:
+        try:
+            span = langfuse.start_observation(name=name, input=question, metadata=meta)
+            box["_span"] = span
+        except Exception as exc:
+            logger.warning("Không thể khởi tạo Langfuse trace (fail-safe active): %s", exc)
+            span = None
     except Exception as exc:
         logger.warning("Không thể khởi tạo Langfuse trace (fail-safe active): %s", exc)
         span = None
@@ -218,8 +230,20 @@ def trace_step(parent_span: Any, name: str, input: Any = None, metadata: dict[st
     meta = dict(metadata or {})
 
     try:
-        span = parent_span.start_observation(name=name, input=input, metadata=meta)
+        kwargs: dict[str, Any] = {"name": name, "input": input, "metadata": meta}
+        if "session_id" in meta and meta["session_id"]:
+            kwargs["session_id"] = str(meta["session_id"])
+        if "user_id" in meta and meta["user_id"]:
+            kwargs["user_id"] = str(meta["user_id"])
+        span = parent_span.start_observation(**kwargs)
         box["_span"] = span
+    except TypeError:
+        try:
+            span = parent_span.start_observation(name=name, input=input, metadata=meta)
+            box["_span"] = span
+        except Exception as exc:
+            logger.warning("Không thể tạo Langfuse child span '%s' (fail-safe active): %s", name, exc)
+            span = None
     except Exception as exc:
         logger.warning("Không thể tạo Langfuse child span '%s' (fail-safe active): %s", name, exc)
         span = None

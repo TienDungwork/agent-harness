@@ -1,220 +1,243 @@
-# agent dong (v5)
+# agent dong — VMS Analytics Agent (v6)
 
-Trợ lý VMS KCN Hưng Phú: số liệu read-only, hướng dẫn VMS, biểu đồ, live graph.
+Trợ lý tiếng Việt cho VMS KCN Hưng Phú: số liệu read-only, hướng dẫn VMS/AIOC, biểu đồ trực quan, multi-agent orchestrator, bộ nhớ đa tầng (short-term / long-term / TTL cache), live trace graph.
 
-**Current state:** v5 demo-ready — chi tiết acceptance tại [specs/product-spec.md](specs/product-spec.md).
+**Trạng thái hiện tại:** v6 — Hoàn thành toàn bộ Phase 1 → 7 (MVP v6 sẵn sàng cho production demo & eval).
 
-## Specs
+---
 
-| File | Nội dung |
-|------|----------|
-| [specs/product-spec.md](specs/product-spec.md) | Mục tiêu, flow, acceptance |
-| [specs/implementation-plan.md](specs/implementation-plan.md) | Phase 1→7 |
-| [specs/test-plan.md](specs/test-plan.md) | pytest, Docker live, golden-30 |
-| [specs/change-log.md](specs/change-log.md) | Lịch sử thay đổi |
-| [AGENTS.md](AGENTS.md) | Quy tắc coding agent |
+## 📚 Specs & Tài liệu kỹ thuật
 
-## Kiến trúc (tóm tắt)
+| File | Nội dung chính |
+|------|----------------|
+| [specs/product-spec.md](specs/product-spec.md) | Mục tiêu app, user flow, bộ nhớ, session UI, 11 acceptance criteria |
+| [specs/implementation-plan.md](specs/implementation-plan.md) | Kế hoạch chi tiết triển khai qua từng task |
+| [specs/test-plan.md](specs/test-plan.md) | Kế hoạch kiểm thử offline (pytest), live (Docker + 196) và golden-30 |
+| [specs/smoke-manual-checklist.md](specs/smoke-manual-checklist.md) | Checklist kiểm thử thủ công Web UI & hướng dẫn smoke test |
+| [specs/change-log.md](specs/change-log.md) | Nhật ký chi tiết các thay đổi qua từng phase |
+| [AGENTS.md](AGENTS.md) | Hướng dẫn và quy tắc phát triển cho AI agent / Antigravity |
 
-Graph v5: `rewrite → classify → [route]` — nhánh số liệu (`QueryPlan` + SQL read-only), nhánh docs (YAML cards), optional chart PNG.
+---
+
+## 🏛️ Kiến trúc hệ thống
 
 ```text
-src/main.py          # FastAPI — /api/agent/stream, /api/health
-src/llm/structured.py
-src/agent/graph.py
-src/db/query_builder.py
-src/knowledge/       # YAML docs
-src/chart/render.py
-frontend/            # chat + SSE graph
-langfuse/            # observability (stack riêng)
+User Question → [recall_memory] → [rewrite] → [classify]
+                      │
+        ┌─────────────┼──────────────┐
+        ▼             ▼              ▼
+   [query_data]     [docs]     [orchestrator] (multi-agent)
+        │             │              │
+        └─────────────┼──────────────┘
+                      ▼
+       [respond] → [extract_memory] → SSE Stream + Chart + Full I/O Live Graph
 ```
+
+- **Backend:** FastAPI, LangGraph, Uvicorn, PostgreSQL (read-only), Keypool rotation / Self-hosted gateway.
+- **Frontend:** Vanilla HTML5, CSS3, JavaScript (SSE stream client, Chart.js, Mermaid / SVG live graph).
+- **Resource tĩnh:** Prompts YAML (`resource/prompts/`), Docs YAML (`resource/docs/`), DB Catalog (`resource/db/`).
+- **Observability:** Langfuse integration (trace full node I/O).
 
 ---
 
-## Local development
+## 📋 Yêu cầu tiên quyết (Prerequisites)
 
-Đường chạy trên máy dev (uvicorn + static frontend). **Deploy/demo production dùng Docker** (mục bên dưới).
-
-### Prerequisites
-
-- **Python 3.11+**
-- **pip** / **venv**
-- LAN tới **LLM gateway** (mặc định `192.168.1.196:18083`) nếu chạy LLM live
-- Postgres **read-only** (`agent_readonly`) — cần cho câu hỏi số liệu; how-to/guardrail vẫn chạy khi chưa có DB
-- (Tuỳ chọn) Langfuse local — `cd langfuse && docker compose up -d`
-
-### Install
-
-```bash
-cd agent-harness/dong
-cp .env.example .env          # chỉnh LLM + DB
-python3 -m venv .venv
-source .venv/bin/activate     # Windows: .venv\Scripts\activate
-pip install -r requirements.txt
-```
-
-### Environment variables
-
-Chỉnh `.env` (xem [.env.example](.env.example)). Nhóm chính:
-
-| Nhóm | Biến | Ghi chú |
-|------|------|---------|
-| **LLM (OpenAI)** | `LLM_BACKEND=openai`, `LLM_MODEL`, `OPENAI_API_KEYS` | Mặc định trong `.env.example` |
-| **LLM (vLLM qua gateway)** | `LLM_BACKEND=self_hosted`, `MODEL_*` | Demo: gateway `196:18083` → vLLM `qwen3-4b` + `MODEL_API_KEY` |
-| **Postgres** | `DB_HOST`, `DB_PORT`, `DB_USER`, `DB_PASSWORD`, `DB_NAME_*` | Read-only; 5 DB VMS |
-| **ClickHouse** | `CH_HOST`, `CH_PORT`, … | Tuỳ chọn |
-| **Langfuse** | `MONITORING_ENABLED`, `LANGFUSE_*`, `LANGFUSE_HOST` | Local dev: `LANGFUSE_HOST=http://localhost:3000` |
-| **v5** | `DOCS_ROOT`, `SQL_REPAIR_MAX` | YAML cards; số lần SQL repair |
-| **Cổng** | `FRONTEND_PORT`, `BACKEND_PORT` | Chủ yếu cho Docker; local thường 8080 / 8000 |
-
-**Kiến trúc LLM:** `dong` → `MODEL_BASE_URL` (OpenAI API) → gateway `:18083` server 196 → **vLLM**.
-
-Demo trên `.env`:
-
-```bash
-LLM_BACKEND=self_hosted
-MODEL_BASE_URL=http://192.168.1.196:18083/v1
-MODEL_NAME=qwen3-4b
-MODEL_API_KEY=<gateway_api_key>
-```
-
-### Backend run command
-
-Từ thư mục `agent-harness/dong` (venv đã activate):
-
-```bash
-uvicorn src.main:app --reload --port 8000
-```
-
-Kiểm tra:
-
-```bash
-curl -s http://localhost:8000/api/health
-curl -s http://localhost:8000/api/llm/ping
-python3 -c "from src.llm import ping; print(ping())"
-```
-
-### Frontend run command
-
-Terminal khác:
-
-```bash
-cd agent-harness/dong/frontend
-python3 -m http.server 8080
-```
-
-Trong UI → **Cài đặt** → **API Base URL** = `http://localhost:8000` (local không có Nginx proxy).
-
-### Local URLs
-
-| Dịch vụ | URL |
-|---------|-----|
-| Frontend UI | http://localhost:8080 |
-| Backend API / health | http://localhost:8000/api/health |
-| Agent stream (SSE) | http://localhost:8000/api/agent/stream |
-| Langfuse (tuỳ chọn) | http://localhost:3000 — `admin@agent-atin.local` / `Atin@123#` |
-
-### Troubleshooting (local)
-
-| Vấn đề | Cách xử lý |
-|--------|------------|
-| UI không gửi được chat | Settings → API Base URL = `http://localhost:8000` → Lưu |
-| `/api/llm/ping` lỗi | Gateway: `curl -s -H "Authorization: Bearer $MODEL_API_KEY" http://192.168.1.196:18083/v1/models`; xem `LLM_BACKEND=self_hosted` + `MODEL_*` |
-| Không thấy Langfuse trace | `MONITORING_ENABLED=true`; Langfuse stack đang chạy; `LANGFUSE_HOST=http://localhost:3000` |
-| Câu số liệu lỗi DB | Điền `DB_*`; user read-only; nhánh how-to vẫn chạy không cần DB |
-| pytest | `pytest -q` — offline, không cần LAN 196 |
+- **Hệ điều hành:** Linux (Ubuntu 20.04/22.04 khuyến nghị), macOS hoặc Windows (WSL2).
+- **Docker & Docker Compose:** Docker Engine 24.0+ và Docker Compose v2 (cho đường chạy production).
+- **Python:** Python 3.11+ (nếu chạy local development ngoài container).
+- **Mạng nội bộ / Gateway:** Kết nối được tới gateway LLM self-hosted `http://192.168.1.196:18083` hoặc có `OPENAI_API_KEYS` cho smoke test.
 
 ---
 
-## Docker deploy
+## ⚙️ Cấu hình môi trường (Environment Variables)
 
-**Đường chính** cho demo/production — không cần `.venv` trên máy deploy.
-
-### Prerequisites
-
-- Docker 24+ & Docker Compose 2.20+
-- LAN tới LLM gateway 196:18083 (hoặc chỉnh `MODEL_*` trong `.env`)
-- Postgres read-only cho câu số liệu
-
-### Install & run
+Khởi tạo file cấu hình môi trường từ mẫu:
 
 ```bash
 cd agent-harness/dong
-cp .env.example .env              # chỉnh LLM + DB
+cp .env.example .env
+```
 
-# App dong:
+Các biến môi trường chính trong `.env`:
+
+| Biến môi trường | Giá trị mặc định / Khuyến nghị | Ý nghĩa & Mục đích |
+|-----------------|-------------------------------|-------------------|
+| `LLM_BACKEND` | `self_hosted` (hoặc `openai`) | Lựa chọn backend LLM (`self_hosted` cho production, `openai` cho smoke test). |
+| `MODEL_BASE_URL` | `http://192.168.1.196:18083/v1` | URL của self-hosted LLM gateway (vLLM / LiteLLM). |
+| `MODEL_NAME` | `qwen3-4b` | Tên model phục vụ trên self-hosted gateway. |
+| `MODEL_API_KEY` | `""` (hoặc key được cấp) | API key truy cập gateway nội bộ. |
+| `OPENAI_API_KEYS` | `sk-...,sk-...` | Danh sách OpenAI API keys (phân tách bởi dấu phẩy, dùng khi `LLM_BACKEND=openai`). |
+| `DB_HOST` / `DB_PORT` | `localhost` / `5432` | Địa chỉ máy chủ PostgreSQL. |
+| `DB_NAME` / `DB_USER` | `vms_db` / `agent_readonly` | Tên cơ sở dữ liệu và user quyền read-only. |
+| `DB_PASSWORD` | `...` | Mật khẩu database. |
+| `MEMORY_TTL_SECONDS` | `300` | Thời gian sống (TTL) của bộ nhớ đệm cache kết quả (5 phút). |
+| `FRONTEND_PORT` | `8080` | Port truy cập giao diện Web UI frontend. |
+| `BACKEND_PORT` | `8000` | Port máy chủ API backend. |
+| `MONITORING_ENABLED` | `false` (hoặc `true`) | Bật/tắt gửi telemetry và trace tới Langfuse. |
+| `LANGFUSE_HOST` | `http://localhost:3000` | Địa chỉ server Langfuse. |
+| `LANGFUSE_PUBLIC_KEY` | `pk-lf-...` | Public API Key của dự án Langfuse. |
+| `LANGFUSE_SECRET_KEY` | `sk-lf-...` | Secret API Key của dự án Langfuse. |
+
+---
+
+## 🚀 Hướng dẫn chạy Docker (Production Deployment)
+
+Đây là đường chạy chính chuẩn hóa cho toàn bộ hệ thống.
+
+### 1. Khởi động toàn bộ dịch vụ
+
+```bash
 docker compose up --build -d
-
-# Langfuse (tuỳ chọn, terminal/stack riêng):
-cd langfuse && cp -n .env.example .env && docker compose up -d
 ```
 
-Dừng:
+Lệnh trên sẽ tự động:
+- Build container backend FastAPI (`kcn_hungphu_backend`) trên port 8000.
+- Build container frontend Nginx (`kcn_hungphu_frontend`) trên port 8080.
+- Thiết lập network `kcn_hungphu_network` và healthcheck tự động.
+
+### 2. Xem logs thời gian thực
+
+```bash
+docker compose logs -f
+# Hoặc xem riêng backend:
+docker compose logs -f ai_backend
+```
+
+### 3. Dừng hệ thống
 
 ```bash
 docker compose down
-cd langfuse && docker compose down    # nếu đã bật Langfuse
 ```
-
-Biến môi trường: cùng bảng [Environment variables](#environment-variables) ở trên. Trong container backend, `docker-compose.yml` **override** `LANGFUSE_HOST=http://host.docker.internal:3000` — không cần sửa `.env` cho Langfuse khi chạy Docker.
-
-Gateway trên **cùng máy host** với Docker (hiếm — thường dùng IP LAN `196:18083`):
-
-```bash
-LLM_BACKEND=self_hosted
-MODEL_BASE_URL=http://host.docker.internal:18083/v1
-```
-
-### Docker URLs
-
-| Dịch vụ | URL |
-|---------|-----|
-| Frontend | http://localhost:8080 *(hoặc `$FRONTEND_PORT`)* |
-| Backend health | http://localhost:8000/api/health |
-| Langfuse | http://localhost:3000 — project **agent_ATIN** |
-
-UI Docker: **API Base URL để trống** (Nginx proxy `/api/` sang backend).
-
-Chi tiết Langfuse: [langfuse/README.md](langfuse/README.md).
-
-### Troubleshooting (Docker)
-
-| Vấn đề | Cách xử lý |
-|--------|------------|
-| UI không chat được | Settings → API Base URL **trống** → Lưu |
-| Langfuse không có trace | Stack Langfuse đang chạy; `MONITORING_ENABLED=true`; backend dùng `host.docker.internal:3000` |
-| LLM ping fail trong container | `curl` gateway từ host; kiểm tra `MODEL_API_KEY`; IP LAN `196:18083` thường ổn từ container |
-| Build lâu | Lần đầu `docker compose up --build`; lần sau `-d` không `--build` nếu không đổi code |
 
 ---
 
-## Demo checklist (5 phút)
+## 💻 Hướng dẫn chạy Local Development (Không dùng Docker)
 
-1. `docker compose up --build -d` (+ `cd langfuse && docker compose up -d` nếu cần trace)
-2. Health + ping: `curl -s http://localhost:8000/api/health` và `/api/llm/ping`
-3. UI http://localhost:8080 — câu số liệu (*"Hôm nay có bao nhiêu xe CAR vào?"*)
-4. How-to (*"Làm sao thêm camera?"*)
-5. Biểu đồ (*"Vẽ biểu đồ xe vào theo loại hôm nay"*)
-6. Langfuse http://localhost:3000 — trace `chat` + spans
-7. Hover graph node → input/output
+Dành cho nhà phát triển muốn chạy và sửa đổi mã nguồn trực tiếp trên máy host.
 
----
-
-## Testing & evaluation
+### 1. Cài đặt môi trường Backend
 
 ```bash
 cd agent-harness/dong
-pytest -q                                    # offline
-python eval/run.py                           # golden-30 live (~15–30 phút)
-python eval/run.py --judge
-python eval/run.py --offline                 # CI/mock
+
+# Tạo và kích hoạt virtual environment
+python3 -m venv .venv
+source .venv/bin/activate  # Trên Windows: .venv\Scripts\activate
+
+# Cài đặt dependencies
+pip install --upgrade pip
+pip install -r requirements.txt
 ```
 
-Không set `PYTEST_CURRENT_TEST` khi chạy eval live. Output: `eval/results/golden-30.md`.
+### 2. Khởi chạy Backend FastAPI
+
+```bash
+uvicorn src.main:app --reload --host 0.0.0.0 --port 8000
+```
+
+> **Ghi chú:** Backend FastAPI tự động phục vụ giao diện tĩnh Frontend tại đường dẫn gốc `http://localhost:8000/`.
+
+### 3. Khởi chạy Frontend riêng biệt (Tuỳ chọn)
+
+Nếu bạn muốn chạy Frontend qua server tĩnh riêng biệt (ví dụ port 8080):
+
+```bash
+# Cách 1: Sử dụng Python HTTP Server
+python3 -m http.server 8080 --directory frontend
+
+# Cách 2: Sử dụng container frontend độc lập
+docker compose up -d frontend
+```
 
 ---
 
-## Tham chiếu
+## 🔗 Danh sách URL cục bộ (Local URLs)
 
-- Structured output: `llm-engineer-demo/`
-- YAML docs, SQL validator, chart: port từ `agent-harness/duy/`
+| Dịch vụ | URL truy cập | Mô tả |
+|---------|--------------|-------|
+| **Web UI (Nginx)** | `http://localhost:8080` | Giao diện chính người dùng (Chat, Sessions, Live Graph, Chart). |
+| **Web UI (FastAPI Direct)** | `http://localhost:8000` | Giao diện phục vụ trực tiếp từ backend khi chạy dev. |
+| **Swagger API Docs** | `http://localhost:8000/docs` | Tài liệu API tương tác OpenAPI/Swagger. |
+| **ReDoc API Docs** | `http://localhost:8000/redoc` | Tài liệu API định dạng ReDoc. |
+| **API Healthcheck** | `http://localhost:8000/api/health` | Kiểm tra trạng thái backend và cấu hình LLM hiện tại. |
+| **LLM Connection Ping** | `http://localhost:8000/api/llm/ping` | Kiểm tra kết nối tới LLM gateway / OpenAI. |
+| **Langfuse Dashboard** | `http://localhost:3000` | Bảng điều khiển giám sát LLM trace (nếu bật Langfuse). |
+
+---
+
+## 🧪 Kiểm thử & Benchmark (Testing & Eval)
+
+### 1. Chạy Unit & Integration Tests (Offline)
+
+```bash
+pytest -q
+# Chạy một file test cụ thể:
+pytest tests/test_api.py -q
+```
+
+### 2. Chạy kịch bản Smoke Test tự động
+
+```bash
+./scripts/smoke-production.sh
+```
+
+### 3. Chạy đánh giá bộ Benchmark Golden-30
+
+```bash
+# Đánh giá tiêu chuẩn:
+python eval/run.py
+
+# Đánh giá kèm LLM Judge chấm điểm 1-5:
+python eval/run.py --judge
+
+# Kết quả đánh giá sẽ được ghi tại: eval/results/golden-30.md
+```
+
+---
+
+## 🔭 Khởi động Langfuse Observability (Tuỳ chọn)
+
+Hệ thống cung cấp stack Langfuse riêng biệt trong thư mục `langfuse/`:
+
+```bash
+# Khởi động stack Langfuse (PostgreSQL + Langfuse Server)
+cd langfuse && docker compose up -d
+
+# Truy cập giao diện Langfuse tại: http://localhost:3000
+# Đăng ký tài khoản admin lần đầu, tạo Project và lấy Public/Secret keys điền vào .env
+```
+
+---
+
+## 🛠️ Xử lý sự cố thường gặp (Troubleshooting)
+
+### 1. Lỗi kết nối LLM Gateway (`503 Service Unavailable` hoặc Ping thất bại)
+- **Hiện tượng:** `curl http://localhost:8000/api/llm/ping` trả về lỗi kết nối hoặc timeout.
+- **Nguyên nhân:** Máy host không kết nối được mạng LAN `192.168.1.196` hoặc service vLLM/gateway chưa khởi động.
+- **Cách khắc phục:**
+  - Kiểm tra kết nối mạng tới gateway: `curl -s http://192.168.1.196:18083/v1/models`.
+  - Nếu test ngoài mạng nội bộ, chuyển `.env` sang `LLM_BACKEND=openai` và cung cấp `OPENAI_API_KEYS`.
+
+### 2. Xung đột cổng mạng (Port Conflict: 8000 hoặc 8080 đã được sử dụng)
+- **Hiện tượng:** Docker báo lỗi `bind: address already in use` cho port 8000 hoặc 8080.
+- **Cách khắc phục:**
+  - Kiểm tra tiến trình đang chiếm cổng: `sudo lsof -i :8000` hoặc `sudo lsof -i :8080`.
+  - Hoặc đổi port trong file `.env`: `BACKEND_PORT=8001`, `FRONTEND_PORT=8081`.
+
+### 3. Lỗi quyền truy cập Database PostgreSQL
+- **Hiện tượng:** Log backend báo `Permission denied for table ...` hoặc `FATAL: password authentication failed`.
+- **Cách khắc phục:**
+  - Đảm bảo user database là `agent_readonly` với quyền `SELECT` trên các bảng schema VMS.
+  - Kiểm tra kết nối database bằng `psql -h $DB_HOST -U $DB_USER -d $DB_NAME`.
+
+### 4. Lỗi CORS khi chạy Frontend và Backend trên port khác nhau
+- **Hiện tượng:** Console trình duyệt báo lỗi `Access to fetch at '...' from origin '...' has been blocked by CORS policy`.
+- **Cách khắc phục:**
+  - Backend FastAPI đã cấu hình `CORSMiddleware` cho phép mọi origin (`allow_origins=["*"]`).
+  - Đảm bảo truy cập qua Nginx reverse proxy tại `http://localhost:8080` (Nginx tự động proxy `/api/` về backend `ai_backend:8000`).
+
+### 5. Xóa bộ nhớ đệm TTL Cache khi cần kiểm thử dữ liệu mới
+- **Cách thực hiện:** Khởi động lại backend container hoặc đợi 300 giây để cache tự hết hạn.
+```bash
+docker compose restart ai_backend
+```

@@ -5,14 +5,8 @@ from __future__ import annotations
 from src.llm.client import use_offline_tools
 from src.llm.schemas import RewrittenQuestion
 from src.llm.structured import invoke_structured
+from src.prompts import registry
 
-REWRITE_SYSTEM_PROMPT = """Bạn là trợ lý chuẩn hóa câu hỏi cho hệ thống giám sát và vận hành VMS KCN Hưng Phú.
-Nhiệm vụ của bạn:
-1. Giữ nguyên ý đồ người dùng, chuẩn hóa câu hỏi rõ ràng, chính xác.
-2. Trích xuất các bộ lọc (filters) có trong câu (vd: biển số, loại xe, hướng di chuyển IN/OUT, cổng, làn xe).
-3. Trích xuất khoảng thời gian (time_range) nếu có (vd: hôm nay, hôm qua, tháng này, khoảng ngày giờ cụ thể).
-4. Gợi ý ý định (intent_hint): query_data, how_to, troubleshoot, concept, hoặc out_of_scope nếu nhận diện rõ.
-"""
 
 
 def _offline_rewrite(raw: str) -> RewrittenQuestion:
@@ -60,7 +54,15 @@ def rewrite_question(raw: str) -> RewrittenQuestion:
         return _offline_rewrite(cleaned)
 
     messages = [
-        {"role": "system", "content": REWRITE_SYSTEM_PROMPT},
+        {"role": "system", "content": registry().render("rewrite")},
         {"role": "user", "content": f"Câu hỏi gốc: {cleaned}"},
     ]
     return invoke_structured(messages, RewrittenQuestion)
+
+
+def rewrite_question_safe(raw: str) -> RewrittenQuestion:
+    """Rewrite với fallback offline khi LLM lỗi/timeout."""
+    try:
+        return rewrite_question(raw)
+    except Exception:
+        return _offline_rewrite(raw)

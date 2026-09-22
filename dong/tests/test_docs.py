@@ -13,22 +13,28 @@ from src.knowledge.loader import (
     docs_root,
     load_index,
     load_published_cards,
+    load_vms_cards,
 )
 from src.knowledge.retrieval import card_excerpt_for_llm, retrieve_docs
 from src.llm.schemas import DocsAnswer
 
 
 def test_docs_root_and_load_published_cards():
-    """Kiểm tra docs_root tồn tại và load đúng 40 cards published từ index.yaml."""
+    """Kiểm tra docs_root tồn tại và load đúng 40 cards published VMS cùng merged cards."""
     root = docs_root()
     assert root.exists()
+    assert "resource" in root.parts
+    assert root.as_posix().endswith("resource/docs/vms_yaml")
     assert (root / "index.yaml").exists()
 
     index = load_index()
     assert index.get("schema_version") == "1.0.0"
 
+    vms_cards = load_vms_cards()
+    assert len(vms_cards) == 40
+
     cards = load_published_cards()
-    assert len(cards) == 40
+    assert len(cards) == 47
 
     # Kiểm tra card needs_review (ai.search_face_journey) không được load
     card_ids = {c.get("id") for c in cards}
@@ -47,7 +53,8 @@ def test_clear_docs_cache():
     cards_before = load_published_cards()
     clear_docs_cache()
     cards_after = load_published_cards()
-    assert len(cards_before) == len(cards_after) == 40
+    assert len(cards_before) == len(cards_after) == 47
+    assert len(load_vms_cards()) == 40
 
 
 def test_retrieve_docs_known_how_to():

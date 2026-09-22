@@ -14,9 +14,12 @@ from src.llm.schemas import (
     ChartSpec,
     DocsAnswer,
     IntentResult,
+    OrchestratorPlan,
+    OrchestratorStep,
     QueryPlan,
     RewrittenQuestion,
     StatAnswer,
+    normalize_chart_type,
 )
 from src.llm.structured import invoke_structured
 
@@ -36,4 +39,7 @@ __all__ = [
     "DocsAnswer",
     "StatAnswer",
     "ChartSpec",
+    "normalize_chart_type",
+    "OrchestratorStep",
+    "OrchestratorPlan",
 ]

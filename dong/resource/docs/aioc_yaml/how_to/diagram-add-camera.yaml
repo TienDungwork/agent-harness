@@ -1,0 +1,59 @@
+schema_version: "1.0.0"
+id: aioc.diagram_add_camera
+type: how_to
+status: published
+locale: vi
+version: 1
+title: "Sơ đồ quy trình thêm camera mới trên AIOC"
+intent: diagram_add_camera
+aliases:
+  - "vẽ sơ đồ quy trình thêm một camera mới trên aioc"
+  - "vẽ sơ đồ quy trình thêm một camera mới trên aioc (từ mở form đến tạo xong)"
+  - "sơ đồ quy trình thêm một camera mới trên aioc"
+  - "sơ đồ quy trình thêm camera"
+  - "sơ đồ thêm camera mới trên aioc"
+  - "sơ đồ thêm camera"
+  - "quy trình thêm camera trên aioc"
+module: devices
+tags:
+  - sơ đồ
+  - quy trình
+  - camera
+  - aioc.atin.vn
+  - thêm camera
+  - devices
+roles:
+  - authenticated_user
+features:
+  - devices
+route: "/devices"
+menu_path:
+  - "Cấu hình & Thiết bị"
+  - "Quản Lý Camera"
+preconditions:
+  - "Người dùng đã truy cập trang Quản Lý Camera tại https://aioc.atin.vn/devices."
+summary: "Sơ đồ quy trình chi tiết các bước thêm một camera mới trên AIOC từ khi mở form đến khi tạo hoàn tất."
+steps:
+  - order: 1
+    say: "Sơ đồ quy trình thêm camera mới trên AIOC:\n[Đăng nhập hệ thống] ➔ [Vào Quản Lý Camera https://aioc.atin.vn/devices] ➔ [Nhấn Thêm Camera] ➔ [Điền thông tin camera (Mã, Tên, Zone, RTSP luồng chính)] ➔ [Nhấn Lưu] ➔ [Hoàn thành tạo camera]"
+    ui:
+      label: "Sơ đồ quy trình thêm camera"
+      i18n_key: "aioc.diagramAddCamera"
+      element_id: null
+  - order: 2
+    say: "Bước 1 (Mở trang thiết bị): Truy cập menu Cấu hình & Thiết bị > Quản Lý Camera tại địa chỉ https://aioc.atin.vn/devices."
+  - order: 3
+    say: "Bước 2 (Mở form thêm mới): Nhấn vào nút 'Thêm Camera' ở phía trên danh sách."
+  - order: 4
+    say: "Bước 3 (Nhập thông tin cơ bản): Điền Mã Camera, Tên Camera, chọn Tổ chức, Cơ sở và Zone quản lý."
+  - order: 5
+    say: "Bước 4 (Cấu hình luồng RTSP): Nhập địa chỉ RTSP luồng chính, luồng phụ và thông tin tài khoản kết nối camera."
+  - order: 6
+    say: "Bước 5 (Xác nhận lưu): Nhấn nút 'Lưu' để hệ thống kiểm tra luồng và tạo mới thiết bị camera."
+  - order: 7
+    say: "Bước 6 (Hoàn thành): Camera mới được thêm vào hệ thống và hiển thị trên bảng danh sách camera."
+sources:
+  - path: "https://aioc.atin.vn/devices"
+    kind: route
+    note: "Sơ đồ quy trình thêm mới camera trên AIOC devices"
+last_verified: "2026-09-22"

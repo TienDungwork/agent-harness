@@ -30,6 +30,11 @@ services:
         required: false
     environment:
       PORT: "8000"
+      LLM_BACKEND: ${LLM_BACKEND:-self_hosted}
+      MODEL_BASE_URL: ${MODEL_BASE_URL:-http://192.168.1.196:18083/v1}
+      MODEL_NAME: ${MODEL_NAME:-qwen3-4b}
+      MODEL_API_KEY: ${MODEL_API_KEY:-}
+      MODEL_ENDPOINT: ${MODEL_ENDPOINT:-http://192.168.1.196:18083/v1/chat/completions}
       MONITORING_ENABLED: ${MONITORING_ENABLED:-false}
       LANGFUSE_PUBLIC_KEY: ${LANGFUSE_PUBLIC_KEY:-}
       LANGFUSE_SECRET_KEY: ${LANGFUSE_SECRET_KEY:-}

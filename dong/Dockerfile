@@ -15,8 +15,7 @@ COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
 COPY src/ ./src/
-COPY prompts/ ./prompts/
-COPY docs/vms_yaml/ ./docs/vms_yaml/
+COPY resource/ ./resource/
 
 RUN chown -R appuser:appuser /app
 USER appuser

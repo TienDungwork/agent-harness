@@ -16,21 +16,7 @@ from src.db.validator import validate_sql
 from src.llm.client import use_offline_tools
 from src.llm.schemas import QueryPlan, RewrittenQuestion
 from src.llm.structured import invoke_structured
-
-PLAN_QUERY_SYSTEM_PROMPT = """Bạn là trợ lý cơ sở dữ liệu chuyên nghiệp cho hệ thống VMS KCN Hưng Phú.
-Nhiệm vụ của bạn là đọc câu hỏi của người dùng và Schema excerpt được cung cấp, sinh QueryPlan chuẩn hóa.
-Quy tắc:
-1. tables: Chỉ dùng bảng có trong Schema excerpt (thường là 1 bảng duy nhất).
-2. selects: Danh sách cột cần lấy hoặc hàm tổng hợp (vd: ["vehicle_type", "count(*) AS so_luot"]).
-3. filters: Danh sách điều kiện lọc WHERE (vd: ["direction = 'IN'", "vehicle_type = 'CAR'"]).
-4. group_by: Danh sách cột gom nhóm (vd: ["vehicle_type"]) khi có hàm đếm/tổng hợp.
-5. order_by: Mệnh đề sắp xếp nếu phù hợp (vd: "so_luot DESC").
-6. limit: Giới hạn số dòng trả về (mặc định 100).
-"""
-
-REPAIR_SYSTEM_PROMPT = """Bạn là trợ lý sửa lỗi QueryPlan cho hệ thống VMS KCN Hưng Phú.
-Kế hoạch truy vấn trước đó đã gặp lỗi khi kiểm tra hoặc thực thi SQL. Dựa vào Schema excerpt và thông báo lỗi, hãy tạo một QueryPlan mới đã được sửa chính xác.
-"""
+from src.prompts import registry
 
 
 def _offline_plan_query(question: str | RewrittenQuestion) -> QueryPlan:
@@ -82,12 +68,26 @@ def _offline_plan_query(question: str | RewrittenQuestion) -> QueryPlan:
             limit=100,
         )
     if any(k in low for k in ("ẩu đả", "đám đông", "leo trèo", "mực nước", "ngập", "bất thường", "anomaly")):
+        if not any("event_type" in f for f in filters):
+            if any(k in low for k in ("đám đông", "crowd")):
+                filters.append("event_type = 'CROWD_DETECTION'")
+            elif any(k in low for k in ("leo trèo", "intrusion")):
+                filters.append("event_type = 'INTRUSION_DETECTION'")
+            elif any(k in low for k in ("mực nước", "water", "ngập")):
+                filters.append("event_type = 'WATER_LEVEL_DETECTION'")
+            elif any(k in low for k in ("ẩu đả", "fight")):
+                filters.append("event_type = 'FIGHT_DETECTION'")
+
+        has_event_type = any("event_type" in f for f in filters)
+        selects = ["count(*) AS so_luot"] if has_event_type else ["event_type", "count(*) AS so_luot"]
+        group_by = [] if has_event_type else ["event_type"]
+        order_by = "so_luot DESC" if group_by else None
         return QueryPlan(
             tables=["anomaly_event"],
-            selects=["event_type", "count(*) AS so_luot"],
+            selects=selects,
             filters=filters,
-            group_by=["event_type"],
-            order_by="so_luot DESC",
+            group_by=group_by,
+            order_by=order_by,
             limit=100,
         )
 
@@ -117,13 +117,24 @@ def plan_query(
     text = question.text if isinstance(question, RewrittenQuestion) else str(question)
 
     messages = [
-        {"role": "system", "content": PLAN_QUERY_SYSTEM_PROMPT},
+        {"role": "system", "content": registry().render("plan_query")},
         {
             "role": "user",
             "content": f"Schema excerpt:\n{excerpt}\n\nCâu hỏi của người dùng:\n{text}",
         },
     ]
     return invoke_structured(messages, QueryPlan)
+
+
+def plan_query_safe(
+    question: str | RewrittenQuestion,
+    schema_excerpt: str | None = None,
+) -> QueryPlan:
+    """plan_query với fallback offline heuristic khi LLM lỗi."""
+    try:
+        return plan_query(question, schema_excerpt)
+    except Exception:
+        return _offline_plan_query(question)
 
 
 def repair_plan_query(
@@ -138,7 +149,7 @@ def repair_plan_query(
 
     text = question.text if isinstance(question, RewrittenQuestion) else str(question)
     messages = [
-        {"role": "system", "content": REPAIR_SYSTEM_PROMPT},
+        {"role": "system", "content": registry().render("plan_query_repair")},
         {
             "role": "user",
             "content": (
@@ -165,7 +176,7 @@ def plan_and_execute(
     """
     excerpt = schema_excerpt or build_schema_excerpt()
     limit_repairs = settings.sql_repair_max if max_repairs is None else max_repairs
-    plan = plan_query(question, excerpt)
+    plan = plan_query_safe(question, excerpt)
 
     for attempt in range(limit_repairs + 1):
         # 1. Build SQL

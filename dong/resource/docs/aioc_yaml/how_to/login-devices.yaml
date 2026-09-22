@@ -1,0 +1,60 @@
+schema_version: "1.0.0"
+id: aioc.login_devices
+type: how_to
+status: published
+locale: vi
+version: 1
+title: "Đăng nhập Cloud Cam AIOC"
+intent: login_devices
+aliases:
+  - "đăng nhập cloud cam"
+  - "đăng nhập aioc"
+  - "đăng nhập aioc devices"
+  - "mở trang quản lý camera"
+  - "đăng nhập https://aioc.atin.vn/devices"
+  - "cách đăng nhập cloud cam"
+  - "đăng nhập vào trang quản lý camera"
+module: devices
+tags:
+  - aioc.atin.vn
+  - đăng nhập
+  - devices
+  - cloud cam
+  - camera
+  - quản lý camera
+roles:
+  - authenticated_user
+features:
+  - devices
+route: "/devices"
+menu_path:
+  - "Cấu hình & Thiết bị"
+  - "Quản Lý Camera"
+preconditions:
+  - "Người dùng đã được cấp tài khoản hệ thống AIOC Cloud Cam."
+  - "Máy tính có trình duyệt web kết nối Internet hoặc mạng nội bộ."
+summary: "Hướng dẫn đăng nhập hệ thống Cloud Cam để truy cập trang Quản Lý Camera tại địa chỉ https://aioc.atin.vn/devices."
+steps:
+  - order: 1
+    say: "Mở trình duyệt web và truy cập địa chỉ đăng nhập Cloud Cam: https://aioc.atin.vn/devices (hoặc https://aioc.atin.vn/login)."
+    ui:
+      label: "Đăng nhập AIOC"
+      i18n_key: "aioc.login"
+      element_id: "login-form"
+  - order: 2
+    say: "Nhập thông tin tài khoản bao gồm Tên đăng nhập (hoặc Email) và Mật khẩu được quản trị viên cấp."
+    ui:
+      label: "Thông tin xác thực"
+      i18n_key: "aioc.credentials"
+      element_id: null
+  - order: 3
+    say: "Bấm nút 'Đăng nhập' để xác thực. Sau khi đăng nhập thành công, hệ thống sẽ tự động chuyển hướng vào trang Quản Lý Camera tại URL /devices."
+    ui:
+      label: "Đăng nhập"
+      i18n_key: "aioc.submitLogin"
+      element_id: "btn-login"
+sources:
+  - path: "https://aioc.atin.vn/devices"
+    kind: route
+    note: "Đăng nhập Cloud Cam AIOC và chuyển hướng vào /devices"
+last_verified: "2026-09-22"

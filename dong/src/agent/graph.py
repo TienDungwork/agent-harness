@@ -10,32 +10,40 @@ Pipeline chính:
 from __future__ import annotations
 
 import contextvars
+import logging
 import queue
 import re
 import threading
 from typing import Annotated, Any, TypedDict
 import operator
 
+logger = logging.getLogger(__name__)
+
 from pydantic import BaseModel
 from langgraph.graph import StateGraph, START, END
 from langgraph.graph.message import add_messages
+from langchain_core.messages import HumanMessage
 
-from src.agent.intent import classify_intent
+from src.memory.shortterm import get_checkpointer
+from src.agent.intent import classify_intent_safe, is_stat_event_domain
 from src.agent.rewrite import rewrite_question
 from src.db.catalog import build_schema_excerpt
-from src.agent.query_plan import plan_query, repair_plan_query
+from src.agent.query_plan import plan_query_safe, repair_plan_query
 from src.db.query_builder import build_sql
 from src.db.validator import validate_sql
 from src.db.executor import execute_sql
 from src.chart.render import should_render_chart, plan_chart, render_chart
-from src.llm.schemas import ChartSpec, QueryPlan, RewrittenQuestion, StatAnswer
+from src.llm.schemas import ChartSpec, OrchestratorPlan, QueryPlan, RewrittenQuestion, StatAnswer
 from src.guardrails import OUT_OF_SCOPE_REPLY
 from src.agent.tools import QueryResult
 from src.monitoring.tracing import trace_step
+from src.prompts import registry
+from src.agent.node_io import json_safe, node_event
 
 class Agent_Input(BaseModel):
     question: str
     rewritten: Any | None = None
+    user_id: str = "default"
 
 class Agent_Output(BaseModel):
     question: str
@@ -47,6 +55,12 @@ class AgentState(TypedDict, total=False):
     question: str
     rewritten: RewrittenQuestion
     intent: str
+    messages: Annotated[list, add_messages]
+    user_id: str
+    session_id: str
+    recalled_memories: list[str]
+    extracted_memories: list[str]
+    orchestrator_plan: OrchestratorPlan
     
     # Query Data branch
     schema_excerpt: str
@@ -64,61 +78,200 @@ class AgentState(TypedDict, total=False):
     _trace_span: Any
 
 _stream_queue = contextvars.ContextVar("_stream_queue", default=None)
+_trace_span_var = contextvars.ContextVar("_trace_span_var", default=None)
+
+
+def _reset_trace_span(token: contextvars.Token) -> None:
+    try:
+        _trace_span_var.reset(token)
+    except ValueError:
+        pass
+
 
 def _wrap_node(node_id: str, func):
     def wrapper(state: AgentState):
         q = _stream_queue.get()
-        parent = state.get("_trace_span")
+        parent = state.get("_trace_span") or _trace_span_var.get()
+        user_id = state.get("user_id") or "default"
+        session_id = state.get("session_id") or "default"
         if q is not None:
             q.put({"node_id": node_id, "status": "running"})
 
-        with trace_step(parent, node_id) as step:
+        with trace_step(
+            parent,
+            node_id,
+            metadata={"user_id": user_id, "session_id": session_id},
+        ) as step:
             try:
                 res = func(state)
             except Exception as e:
-                step["input"] = ""
-                step["output"] = f"Lỗi hệ thống: {str(e)}"
+                err_io = {
+                    "input": {"question": state.get("question", ""), "node_id": node_id},
+                    "output": {"error": str(e), "error_type": type(e).__name__},
+                }
+                step["input"] = err_io["input"]
+                step["output"] = err_io["output"]
                 if q is not None:
                     q.put({
                         "node_id": node_id,
                         "status": "done",
-                        "output": step["output"],
+                        "input": err_io["input"],
+                        "output": err_io["output"],
                     })
                 raise
 
             if isinstance(res, dict) and "events" in res and res["events"]:
                 ev = res["events"][-1]
-                step["input"] = ev.get("input", "")
-                step["output"] = ev.get("output", "")
-                if ev.get("meta"):
-                    step["metadata"] = ev["meta"]
+                step["input"] = json_safe(ev.get("input"))
+                step["output"] = json_safe(ev.get("output"))
+                meta = dict(ev.get("meta") or {})
+                meta.setdefault("user_id", user_id)
+                meta.setdefault("session_id", session_id)
+                step["metadata"] = json_safe(meta)
                 if q is not None:
                     for item in res["events"]:
                         q.put({
                             "node_id": item.get("node_id", node_id),
                             "status": "done",
-                            "input": item.get("input", ""),
-                            "output": item.get("output", ""),
+                            "input": json_safe(item.get("input")),
+                            "output": json_safe(item.get("output")),
                             "chart_png_base64": item.get("chart_png_base64"),
-                            "chart_meta": item.get("chart_meta"),
+                            "chart_meta": json_safe(item.get("chart_meta")),
+                            "chart_spec": json_safe(item.get("chart_spec")),
+                            "meta": json_safe(item.get("meta")),
                         })
             else:
-                step["input"] = ""
-                step["output"] = ""
+                step["input"] = None
+                step["output"] = None
                 if q is not None:
                     q.put({
                         "node_id": node_id,
                         "status": "done",
-                        "input": "",
-                        "output": "",
+                        "input": None,
+                        "output": None,
                     })
             return res
     return wrapper
+
+def recall_node(state: AgentState) -> dict:
+    from src.memory.longterm import recall_long_term
+
+    q = state.get("question", "")
+    user_id = state.get("user_id") or "default"
+    session_id = state.get("session_id") or "default"
+    try:
+        memories = recall_long_term(user_id, q, k=3)
+        ev_output: dict[str, Any] = {"recalled_memories": memories}
+        ev_meta: dict[str, Any] = {
+            "user_id": user_id,
+            "session_id": session_id,
+            "recalled_count": len(memories),
+        }
+    except Exception as exc:
+        logger.warning("recall_long_term failed, degrading safely: %s", exc)
+        memories = []
+        ev_output = {
+            "recalled_memories": [],
+            "degraded": True,
+            "error": str(exc)[:200],
+        }
+        ev_meta = {
+            "user_id": user_id,
+            "session_id": session_id,
+            "recalled_count": 0,
+            "degraded": True,
+        }
+    return {
+        "user_id": user_id,
+        "session_id": session_id,
+        "recalled_memories": memories,
+        "events": [node_event(
+            "recall",
+            input={"user_id": user_id, "question": q},
+            output=ev_output,
+            meta=ev_meta,
+        )],
+    }
+
+def run_store_extract(
+    user_id: str,
+    session_id: str,
+    question: str,
+    result: Agent_Output | None,
+    parent_span: Any = None,
+) -> list[dict]:
+    """Post-pipeline: extract + store memory sau khi đã trả lời (không chặn respond)."""
+    from src.memory.extract import extract_and_store_memory, memory_detail_includes_answer
+
+    q = question or ""
+    uid = user_id or "default"
+    sid = session_id or "default"
+    res = result
+    detail = res.detail if res else ""
+    ans = res.answer if res else ""
+    include_answer = memory_detail_includes_answer(detail)
+
+    input_payload = {
+        "user_id": uid,
+        "question": q,
+        "answer": ans if include_answer else "",
+        "detail": detail,
+        "include_answer": include_answer,
+    }
+
+    try:
+        with trace_step(
+            parent_span,
+            "store_extract",
+            metadata={"user_id": uid, "session_id": sid},
+        ) as step:
+            try:
+                extracted = extract_and_store_memory(
+                    uid, q, ans if include_answer else "", detail=detail, include_answer=include_answer
+                )
+                ev = node_event(
+                    "store_extract",
+                    input=input_payload,
+                    output={"extracted_memories": extracted},
+                    meta={"user_id": uid, "session_id": sid, "extracted_count": len(extracted)},
+                )
+            except Exception as exc:
+                logger.warning("extract_and_store_memory failed, degrading safely: %s", exc)
+                err_msg = str(exc)[:200]
+                ev = node_event(
+                    "store_extract",
+                    input=input_payload,
+                    output={"extracted_memories": [], "degraded": True, "error": err_msg},
+                    meta={"user_id": uid, "session_id": sid, "extracted_count": 0, "degraded": True},
+                )
+            step["input"] = ev["input"]
+            step["output"] = ev["output"]
+            step["metadata"] = ev["meta"]
+
+        return [
+            {"node_id": "store_extract", "status": "running"},
+            {"node_id": "store_extract", "status": "done", **{k: ev[k] for k in ("input", "output", "meta")}},
+        ]
+    except Exception as exc:
+        logger.warning("run_store_extract failed, degrading safely: %s", exc)
+        err_msg = str(exc)[:200]
+        return [
+            {"node_id": "store_extract", "status": "running"},
+            {
+                "node_id": "store_extract",
+                "status": "done",
+                "input": input_payload,
+                "output": {"extracted_memories": [], "degraded": True, "error": err_msg},
+                "meta": {"user_id": uid, "session_id": sid, "extracted_count": 0, "degraded": True},
+            },
+        ]
 
 def rewrite_node(state: AgentState) -> dict:
     from src.llm.client import use_offline_tools
 
     q = state.get("question", "")
+    user_id = state.get("user_id") or "default"
+    session_id = state.get("session_id") or "default"
     rewritten = state.get("rewritten")
     llm_used = False
     if not rewritten:
@@ -127,29 +280,36 @@ def rewrite_node(state: AgentState) -> dict:
     return {
         "rewritten": rewritten,
         "question": rewritten.text,
-        "events": [{
-            "node_id": "rewrite",
-            "input": q,
-            "output": rewritten.model_dump_json(),
-            "meta": {"llm_used": llm_used},
-        }],
+        "messages": [HumanMessage(q)],
+        "events": [node_event(
+            "rewrite",
+            input={"question": q},
+            output={"rewritten": rewritten.model_dump()},
+            meta={
+                "llm_used": llm_used,
+                "user_id": user_id,
+                "session_id": session_id,
+            },
+        )],
     }
 
 def classify_node(state: AgentState) -> dict:
     from src.llm.client import use_offline_tools
 
     rewritten = state["rewritten"]
+    user_id = state.get("user_id") or "default"
+    session_id = state.get("session_id") or "default"
     llm_used = not use_offline_tools()
-    res = classify_intent(rewritten)
+    res = classify_intent_safe(rewritten)
     intent = res.intent
     return {
         "intent": intent,
-        "events": [{
-            "node_id": "classify",
-            "input": rewritten.text,
-            "output": res.model_dump_json(),
-            "meta": {"llm_used": llm_used, "intent": intent},
-        }],
+        "events": [node_event(
+            "classify",
+            input={"rewritten_text": rewritten.text, "rewritten": rewritten.model_dump()},
+            output={"intent": intent, "reason": res.reason},
+            meta={"llm_used": llm_used, "user_id": user_id, "session_id": session_id},
+        )],
     }
 
 def route_intent(state: AgentState) -> str:
@@ -160,62 +320,286 @@ def route_intent(state: AgentState) -> str:
         return "out"
     return "query_data"
 
+def orchestrator_node(state: AgentState) -> dict:
+    from src.agent.orchestrator import plan_orchestration
+    from src.llm.client import use_offline_tools
+
+    q = state.get("question", "")
+    rewritten = state.get("rewritten")
+    q_text = rewritten.text if rewritten else q
+    user_id = state.get("user_id") or "default"
+    session_id = state.get("session_id") or "default"
+    intent = state.get("intent", "query_data")
+    llm_used = not use_offline_tools()
+
+    if intent == "out_of_scope" and is_stat_event_domain(q_text):
+        plan = plan_orchestration(q_text)
+    elif intent == "out_of_scope":
+        plan = OrchestratorPlan(steps=[], is_multi=False, reason="out_of_scope")
+    else:
+        plan = plan_orchestration(q_text)
+
+    return {
+        "orchestrator_plan": plan,
+        "events": [node_event(
+            "orchestrator",
+            input={"question": q_text, "intent": intent},
+            output={"orchestrator_plan": plan.model_dump()},
+            meta={"llm_used": llm_used, "user_id": user_id, "session_id": session_id},
+        )],
+    }
+
+def route_orchestrator(state: AgentState) -> str:
+    intent = state.get("intent", "query_data")
+    rewritten = state.get("rewritten")
+    q_text = rewritten.text if rewritten else state.get("question", "")
+
+    plan: OrchestratorPlan | None = state.get("orchestrator_plan")
+    if intent == "out_of_scope":
+        if is_stat_event_domain(q_text):
+            return "query_data"
+        return "out"
+
+    if plan and plan.is_multi and len(plan.steps) >= 2:
+        return "multi"
+
+    if plan and plan.steps:
+        agent = plan.steps[0].agent
+        if agent == "docs":
+            return "docs"
+        elif agent == "query_data":
+            return "query_data"
+
+    if intent in ("how_to", "troubleshoot", "concept"):
+        return "docs"
+    return "query_data"
+
+def orchestrator_respond_node(state: AgentState) -> dict:
+    from src.agent.query_plan import plan_and_execute
+    from src.knowledge.answer import answer_from_docs
+    from src.knowledge.retrieval import retrieve_docs
+    from src.llm.client import invoke_text, use_offline_tools
+
+    q = state.get("question", "")
+    user_id = state.get("user_id") or "default"
+    session_id = state.get("session_id") or "default"
+    plan: OrchestratorPlan | None = state.get("orchestrator_plan")
+
+    docs_result_text = ""
+    query_result_text = ""
+    query_res: QueryResult | None = None
+    sub_events: list[dict] = []
+    rows: list = []
+    columns: list = []
+
+    steps = plan.steps if plan else []
+    for idx, step in enumerate(steps):
+        sub_q = step.sub_question
+        if step.agent == "docs":
+            cards = retrieve_docs(sub_q)
+            docs_ans = answer_from_docs(sub_q, cards)
+            docs_result_text = docs_ans.answer_vi
+            sub_events.append(node_event(
+                f"orchestrator_docs_step_{idx+1}",
+                input={"sub_question": sub_q, "agent": "docs"},
+                output={"docs_answer": docs_ans.model_dump()},
+                meta={"user_id": user_id, "session_id": session_id},
+            ))
+        elif step.agent == "query_data":
+            exec_res = plan_and_execute(sub_q)
+            rows = exec_res.get("rows") or []
+            columns = list(rows[0].keys()) if rows else []
+            err = exec_res.get("error")
+
+            if err:
+                query_ans_vi = f"Lỗi khi truy vấn số liệu: {err}"
+            elif not rows:
+                from src.guardrails import empty_stat_reply
+
+                query_ans_vi = empty_stat_reply()
+            else:
+                lines = [", ".join(f"{c}={r[c]}" for c in columns) for r in rows[:20]]
+                template_ans = f"Số liệu ({len(rows)} dòng):\n" + "\n".join(lines)
+                query_ans_vi = template_ans
+                if not use_offline_tools():
+                    try:
+                        raw = invoke_text(
+                            registry().render("respond_stat"),
+                            f"{_memory_context_block(state)}Câu hỏi: {sub_q}\nDữ liệu:\n{template_ans}",
+                        )
+                        polished = _strip_thinking(raw)
+                        if polished:
+                            query_ans_vi = polished
+                    except Exception:
+                        pass
+
+            query_result_text = query_ans_vi
+            query_res = QueryResult(
+                tool="sql_builder",
+                columns=columns,
+                rows=[[r[c] for c in columns] for r in rows] if rows else [],
+                row_count=len(rows),
+                error=err or "",
+                reply_vi=query_ans_vi,
+            )
+            sub_events.append(node_event(
+                f"orchestrator_query_step_{idx+1}",
+                input={
+                    "sub_question": sub_q,
+                    "agent": "query_data",
+                    "sql": exec_res.get("sql"),
+                    "params": exec_res.get("params"),
+                },
+                output={
+                    "columns": columns,
+                    "rows": rows,
+                    "row_count": len(rows),
+                    "error": err or "",
+                    "answer_vi": query_ans_vi,
+                },
+                meta={"user_id": user_id, "session_id": session_id},
+            ))
+
+    parts = []
+    for step in steps:
+        if step.agent == "docs" and docs_result_text:
+            parts.append(docs_result_text)
+        elif step.agent == "query_data" and query_result_text:
+            parts.append(f"Về số liệu thống kê:\n{query_result_text}")
+
+    merged_answer = "\n\n".join(parts) if parts else "Không có kết quả điều phối."
+
+    result = Agent_Output(
+        question=q,
+        answer=merged_answer,
+        query=query_res,
+        detail="orchestrator:multi",
+    )
+
+    return {
+        "result": result,
+        "rows": rows,
+        "columns": columns,
+        "events": sub_events + [node_event(
+            "orchestrator_respond",
+            input={
+                "question": q,
+                "orchestrator_plan": plan.model_dump() if plan else {},
+                "step_count": len(steps),
+            },
+            output={
+                "answer": merged_answer,
+                "has_query": query_res is not None,
+                "has_docs": bool(docs_result_text),
+                "query": query_res.model_dump() if query_res else None,
+            },
+            meta={"user_id": user_id, "session_id": session_id, "is_multi": True},
+        )],
+    }
+
 def retrieve_docs_node(state: AgentState) -> dict:
     from src.knowledge import retrieve_docs
     q = state.get("question", "")
+    user_id = state.get("user_id") or "default"
+    session_id = state.get("session_id") or "default"
     cards = retrieve_docs(q)
+    card_ids = [str(c.get("id")) for c in cards if isinstance(c, dict) and c.get("id")]
+    titles = [str(c.get("title")) for c in cards if isinstance(c, dict) and c.get("title")]
     return {
-        "events": [{"node_id": "retrieve_docs", "input": q, "output": f"Tìm thấy {len(cards)} cards"}],
+        "events": [node_event(
+            "retrieve_docs",
+            input={"question": q},
+            output={"cards": cards, "card_count": len(cards), "card_ids": card_ids, "titles": titles},
+            meta={"user_id": user_id, "session_id": session_id},
+        )],
         "rows": cards  # temporary save cards in rows
     }
 
 def answer_from_docs_node(state: AgentState) -> dict:
     from src.knowledge import answer_from_docs
     q = state.get("question", "")
+    user_id = state.get("user_id") or "default"
+    session_id = state.get("session_id") or "default"
     cards = state.get("rows", [])
+    card_ids = [str(c.get("id")) for c in cards if isinstance(c, dict) and c.get("id")]
     docs_ans = answer_from_docs(q, cards)
     result = Agent_Output(question=q, answer=docs_ans.answer_vi, detail="docs")
     return {
         "result": result,
-        "events": [{"node_id": "answer_from_docs", "input": f"{len(cards)} cards", "output": docs_ans.answer_vi[:200]}]
+        "events": [node_event(
+            "answer_from_docs",
+            input={"question": q, "cards": cards, "card_ids": card_ids},
+            output={"docs_answer": docs_ans.model_dump()},
+            meta={"user_id": user_id, "session_id": session_id},
+        )],
     }
 
 def out_of_scope_node(state: AgentState) -> dict:
     q = state.get("question", "")
+    user_id = state.get("user_id") or "default"
+    session_id = state.get("session_id") or "default"
     result = Agent_Output(question=q, answer=OUT_OF_SCOPE_REPLY, detail="out_of_scope")
     return {
         "result": result,
-        "events": [{"node_id": "out_of_scope", "input": q, "output": OUT_OF_SCOPE_REPLY[:200]}]
+        "events": [node_event(
+            "out_of_scope",
+            input={"question": q},
+            output={"answer": OUT_OF_SCOPE_REPLY, "intent": "out_of_scope"},
+            meta={"user_id": user_id, "session_id": session_id},
+        )],
     }
 
 def retrieve_schema_node(state: AgentState) -> dict:
+    q = state.get("question", "")
+    intent = state.get("intent", "query_data")
+    user_id = state.get("user_id") or "default"
+    session_id = state.get("session_id") or "default"
     excerpt = build_schema_excerpt()
     return {
         "schema_excerpt": excerpt,
-        "events": [{"node_id": "retrieve_schema", "input": "", "output": f"Schema length: {len(excerpt)}"}]
+        "events": [node_event(
+            "retrieve_schema",
+            input={"intent": intent, "question": q},
+            output={"schema_excerpt": excerpt},
+            meta={"user_id": user_id, "session_id": session_id, "schema_length": len(excerpt)},
+        )],
     }
 
 def plan_query_node(state: AgentState) -> dict:
     rewritten = state["rewritten"]
     excerpt = state["schema_excerpt"]
-    plan = plan_query(rewritten, excerpt)
+    user_id = state.get("user_id") or "default"
+    session_id = state.get("session_id") or "default"
+    plan = plan_query_safe(rewritten, excerpt)
     return {
         "plan": plan,
-        "events": [{"node_id": "plan_query", "input": rewritten.text, "output": plan.model_dump_json()}]
+        "events": [node_event(
+            "plan_query",
+            input={
+                "rewritten": rewritten.model_dump(),
+                "schema_excerpt": excerpt,
+            },
+            output={"plan": plan.model_dump()},
+            meta={"user_id": user_id, "session_id": session_id},
+        )],
     }
 
 def validate_node(state: AgentState) -> dict:
     plan = state["plan"]
     rewritten = state["rewritten"]
     excerpt = state["schema_excerpt"]
+    user_id = state.get("user_id") or "default"
+    session_id = state.get("session_id") or "default"
     
     from src.config import settings
     limit_repairs = settings.sql_repair_max
     
     sql, params, error = "", [], None
     current_plan = plan
+    attempts_done = 0
     
     for attempt in range(limit_repairs + 1):
+        attempts_done = attempt + 1
         try:
             sql, params = build_sql(current_plan)
         except Exception as e:
@@ -245,15 +629,27 @@ def validate_node(state: AgentState) -> dict:
         "sql": sql,
         "params": params,
         "plan": current_plan,
-        "events": [{"node_id": "validate", "input": current_plan.model_dump_json(), "output": f"OK: {sql}"}]
+        "events": [node_event(
+            "validate",
+            input={"plan": current_plan.model_dump()},
+            output={"sql": sql, "params": params, "repair_attempts": attempts_done},
+            meta={"user_id": user_id, "session_id": session_id},
+        )],
     }
 
 def execute_node(state: AgentState) -> dict:
+    user_id = state.get("user_id") or "default"
+    session_id = state.get("session_id") or "default"
     if state.get("error"):
         return {
             "rows": [],
             "columns": [],
-            "events": [{"node_id": "execute", "input": "", "output": "Bỏ qua do lỗi validate"}]
+            "events": [node_event(
+                "execute",
+                input={"sql": state.get("sql"), "params": state.get("params")},
+                output={"skipped": True, "reason": "validate_error", "error": state.get("error")},
+                meta={"user_id": user_id, "session_id": session_id},
+            )],
         }
         
     sql = state["sql"]
@@ -265,7 +661,12 @@ def execute_node(state: AgentState) -> dict:
         return {
             "rows": rows,
             "columns": columns,
-            "events": [{"node_id": "execute", "input": sql, "output": f"Tra ve {len(rows)} dong"}]
+            "events": [node_event(
+                "execute",
+                input={"sql": sql, "params": params},
+                output={"columns": columns, "rows": rows, "row_count": len(rows)},
+                meta={"user_id": user_id, "session_id": session_id},
+            )],
         }
     except Exception as e:
         raise RuntimeError(f"Lỗi truy vấn cơ sở dữ liệu: {e}")
@@ -274,8 +675,10 @@ def should_render_chart_edge(state: AgentState) -> str:
     if state.get("error"):
         return "respond"
     q = state.get("question", "")
-    # StatAnswer.chart_requested chưa có trước respond — dùng keyword trên câu (sau rewrite).
-    if should_render_chart(q):
+    rewritten = state.get("rewritten")
+    rewritten_text = rewritten.text if rewritten else ""
+    # StatAnswer.chart_requested chưa có trước respond — dùng keyword trên câu (sau rewrite hoặc câu gốc).
+    if should_render_chart(q) or should_render_chart(rewritten_text):
         return "render_chart"
     return "respond"
 
@@ -283,38 +686,50 @@ def render_chart_node(state: AgentState) -> dict:
     """Vẽ chart nếu được; lỗi render → bỏ chart, vẫn để respond trả text."""
     rows = state.get("rows", [])
     q = state.get("question", "")
+    user_id = state.get("user_id") or "default"
+    session_id = state.get("session_id") or "default"
     try:
         spec = plan_chart(rows, q)
         png_base64 = render_chart(rows, spec)
         meta = spec.model_dump() if spec else {}
         ok = bool(png_base64)
+        node_meta = dict(meta)
+        node_meta.update({
+            "user_id": user_id,
+            "session_id": session_id,
+            "chart_spec": meta,
+        })
         return {
             "chart_png_base64": png_base64 or "",
             "chart_spec": spec,
-            "events": [{
-                "node_id": "render_chart",
-                "input": f"{len(rows)} rows",
-                "output": "Chart rendered" if ok else "Empty chart",
-                "chart_png_base64": png_base64 or "",
-                "chart_meta": meta,
-            }],
+            "events": [node_event(
+                "render_chart",
+                input={"question": q, "columns": state.get("columns", []), "rows": rows, "row_count": len(rows)},
+                output={
+                    "chart_spec": meta,
+                    "rendered": ok,
+                    "chart_png_base64_len": len(png_base64 or ""),
+                },
+                chart_png_base64=png_base64 or "",
+                chart_meta=meta,
+                chart_spec=meta,
+                meta=node_meta,
+            )],
         }
     except Exception as e:
         return {
             "chart_png_base64": "",
-            "events": [{
-                "node_id": "render_chart",
-                "input": f"{len(rows)} rows",
-                "output": f"Bỏ qua chart: {e}",
-                "chart_png_base64": "",
-            }],
+            "chart_spec": None,
+            "events": [node_event(
+                "render_chart",
+                input={"question": q, "columns": state.get("columns", []), "rows": rows, "row_count": len(rows)},
+                output={"rendered": False, "error": str(e)},
+                chart_png_base64="",
+                chart_meta={},
+                chart_spec=None,
+                meta={"user_id": user_id, "session_id": session_id, "error": str(e)},
+            )],
         }
-
-STAT_RESPOND_SYSTEM_PROMPT = (
-    "Bạn là trợ lý dữ liệu. Trả lời bằng tiếng Việt ngắn gọn (1–2 câu). "
-    "Không suy nghĩ, không dùng tag, không giải thích quy trình."
-)
-
 
 _THINKING_BLOCK = re.compile(r"\x3cthink\x3e.*?\x3c/think\x3e", re.DOTALL | re.IGNORECASE)
 
@@ -326,6 +741,15 @@ def _strip_thinking(text: str) -> str:
     ):
         return ""
     return _THINKING_BLOCK.sub("", text).strip()
+
+
+def _memory_context_block(state: AgentState) -> str:
+    """Chèn recalled long-term memories vào prompt downstream."""
+    memories = state.get("recalled_memories") or []
+    if not memories:
+        return ""
+    lines = "\n".join(f"- {m}" for m in memories)
+    return f"Thông tin đã biết về người dùng:\n{lines}\n\n"
 
 
 def respond_node(state: AgentState) -> dict:
@@ -342,7 +766,9 @@ def respond_node(state: AgentState) -> dict:
         ans = f"Lỗi khi truy vấn: {error}"
         answer_source = "error"
     elif not rows:
-        ans = "Không có dữ liệu khớp câu hỏi trong khoảng thời gian/điều kiện đã cho."
+        from src.guardrails import empty_stat_reply
+
+        ans = empty_stat_reply()
         answer_source = "empty"
     else:
         lines = [", ".join(f"{c}={r[c]}" for c in columns) for r in rows[:20]]
@@ -353,8 +779,8 @@ def respond_node(state: AgentState) -> dict:
             llm_used = True
             try:
                 raw = invoke_text(
-                    STAT_RESPOND_SYSTEM_PROMPT,
-                    f"Câu hỏi: {q}\nDữ liệu:\n{template_ans}",
+                    registry().render("respond_stat"),
+                    f"{_memory_context_block(state)}Câu hỏi: {q}\nDữ liệu:\n{template_ans}",
                 )
                 polished = _strip_thinking(raw)
                 if polished:
@@ -380,24 +806,43 @@ def respond_node(state: AgentState) -> dict:
     )
     
     result = Agent_Output(question=q, answer=ans, query=query_res, detail="query_data")
+    user_id = state.get("user_id") or "default"
+    session_id = state.get("session_id") or "default"
     return {
         "result": result,
-        "events": [{
-            "node_id": "respond",
-            "input": f"{len(rows)} rows | cols={columns}",
-            "output": stat.model_dump_json(),
-            "meta": {
-                "llm_used": llm_used,
+        "events": [node_event(
+            "respond",
+            input={
+                "question": q,
+                "columns": columns,
+                "rows": rows,
+                "row_count": len(rows),
+                "recalled_memories": state.get("recalled_memories") or [],
+                "error": error or "",
+            },
+            output={
+                "answer_vi": ans,
                 "answer_source": answer_source,
                 "stat_answer": stat.model_dump(),
+                "query": query_res.model_dump(),
             },
-        }],
+            meta={"llm_used": llm_used, "user_id": user_id, "session_id": session_id},
+        )],
     }
 
-def _build_graph():
+_compiled = None
+
+
+def _build_graph(checkpointer=None):
+    if checkpointer is None:
+        checkpointer = get_checkpointer()
+
     graph = StateGraph(AgentState)
+    graph.add_node("recall", _wrap_node("recall", recall_node))
     graph.add_node("rewrite", _wrap_node("rewrite", rewrite_node))
     graph.add_node("classify", _wrap_node("classify", classify_node))
+    graph.add_node("orchestrator", _wrap_node("orchestrator", orchestrator_node))
+    graph.add_node("orchestrator_respond", _wrap_node("orchestrator_respond", orchestrator_respond_node))
     graph.add_node("retrieve_schema", _wrap_node("retrieve_schema", retrieve_schema_node))
     graph.add_node("plan_query", _wrap_node("plan_query", plan_query_node))
     graph.add_node("validate", _wrap_node("validate", validate_node))
@@ -410,13 +855,16 @@ def _build_graph():
     
     graph.add_node("out_of_scope", _wrap_node("out_of_scope", out_of_scope_node))
     
-    graph.add_edge(START, "rewrite")
+    graph.add_edge(START, "recall")
+    graph.add_edge("recall", "rewrite")
     graph.add_edge("rewrite", "classify")
+    graph.add_edge("classify", "orchestrator")
     
-    graph.add_conditional_edges("classify", route_intent, {
+    graph.add_conditional_edges("orchestrator", route_orchestrator, {
         "query_data": "retrieve_schema",
         "docs": "retrieve_docs",
-        "out": "out_of_scope"
+        "out": "out_of_scope",
+        "multi": "orchestrator_respond",
     })
     
     # Query Data branch
@@ -434,27 +882,70 @@ def _build_graph():
     graph.add_edge("retrieve_docs", "answer_from_docs")
     graph.add_edge("answer_from_docs", END)
     
-    # Out branch
+    # Multi orchestrator branch
+    graph.add_edge("orchestrator_respond", END)
+
     graph.add_edge("out_of_scope", END)
     
-    return graph.compile()
+    return graph.compile(checkpointer=checkpointer)
 
-def run_agent(inp: Agent_Input, parent_span: Any = None) -> Agent_Output:
-    question = (inp.question or "").strip()
-    return _build_graph().invoke({"question": question, "rewritten": inp.rewritten, "_trace_span": parent_span, "events": []})["result"]
 
-def run_agent_stream(inp: Agent_Input, parent_span: Any = None):
+def _get_graph():
+    global _compiled
+    from unittest.mock import Mock
+    if isinstance(_build_graph, Mock):
+        return _build_graph()
+    if _compiled is None:
+        _compiled = _build_graph()
+    return _compiled
+
+
+def run_agent(inp: Agent_Input, parent_span: Any = None, session_id: str = "default", user_id: str | None = None) -> Agent_Output:
     question = (inp.question or "").strip()
+    uid = user_id or getattr(inp, "user_id", "default") or "default"
+    config = {"configurable": {"thread_id": session_id}}
+    token = _trace_span_var.set(parent_span)
+    try:
+        state = _get_graph().invoke(
+            {"question": question, "rewritten": inp.rewritten, "user_id": uid, "session_id": session_id, "events": []},
+            config=config,
+        )
+        result = state.get("result")
+        if result is None:
+            raise RuntimeError("Pipeline không trả về kết quả.")
+        threading.Thread(
+            target=run_store_extract,
+            args=(uid, session_id, question, result, parent_span),
+            daemon=True,
+        ).start()
+        return result
+    finally:
+        _reset_trace_span(token)
+
+
+def run_agent_stream(inp: Agent_Input, parent_span: Any = None, session_id: str = "default", user_id: str | None = None):
+    question = (inp.question or "").strip()
+    uid = user_id or getattr(inp, "user_id", "default") or "default"
+    config = {"configurable": {"thread_id": session_id}}
     
     q = queue.Queue()
     _stream_queue.set(q)
+    token = _trace_span_var.set(parent_span)
     ctx = contextvars.copy_context()
     
     def target():
         try:
-            res = ctx.run(_build_graph().invoke, {"question": question, "rewritten": inp.rewritten, "_trace_span": parent_span, "events": []})
+            res = ctx.run(
+                _get_graph().invoke,
+                {"question": question, "rewritten": inp.rewritten, "user_id": uid, "session_id": session_id, "events": []},
+                config=config,
+            )
             if res and "result" in res:
                 q.put({"__final_result__": res["result"]})
+                for store_ev in run_store_extract(
+                    uid, session_id, question, res["result"], parent_span
+                ):
+                    q.put(store_ev)
         except Exception as e:
             from src.main import _format_error_message
             msg = _format_error_message(e)
@@ -466,17 +957,21 @@ def run_agent_stream(inp: Agent_Input, parent_span: Any = None):
     t = threading.Thread(target=target)
     t.start()
     
-    while True:
-        ev = q.get()
-        if ev is None:
-            break
-        yield ev
+    try:
+        while True:
+            ev = q.get()
+            if ev is None:
+                break
+            yield ev
+    finally:
+        _reset_trace_span(token)
     
     t.join()
 
+
 def save_graph_visualization(path: str = "graph.png") -> str:
     """Xuất sơ đồ LangGraph: PNG + Mermaid source + HTML xem trên browser."""
-    graph = _build_graph().get_graph()
+    graph = _get_graph().get_graph()
     mermaid_code = graph.draw_mermaid()
     base = path.rsplit(".", 1)[0]
     mmd_path = f"{base}.mmd"

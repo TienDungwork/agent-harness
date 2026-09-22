@@ -11,7 +11,7 @@ eval/results/*
 !eval/results/.gitkeep
 tests/
 *.md
-!docs/vms/*.md
+!resource/**
 langfuse/
 docker-compose*.yml
 Dockerfile

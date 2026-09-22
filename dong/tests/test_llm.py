@@ -80,6 +80,13 @@ from src.agent.answer import _get_system_prompt
 from src.prompts import PromptRegistry, registry
 
 
+def test_prompt_registry_default_dir_is_resource():
+    reg = PromptRegistry()
+    assert "resource" in reg.prompts_dir.parts
+    assert reg.prompts_dir.as_posix().endswith("resource/prompts")
+    assert reg.prompts_dir.is_dir()
+
+
 def test_prompt_registry_get_by_version():
     reg = registry()
     prompt = reg.get("agent_system", 1)
@@ -116,7 +123,8 @@ def test_prompt_registry_render_missing_variable_raises_value_error():
     reg = registry()
     with pytest.raises(ValueError) as exc_info:
         reg.render("agent_system", "production")
-    assert "Thiếu biến khi render prompt" in str(exc_info.value)
+    assert "agent_system" in str(exc_info.value)
+    assert "thiếu biến" in str(exc_info.value).lower()
     assert "now" in str(exc_info.value)
 
 
@@ -126,9 +134,62 @@ def test_prompt_registry_non_existent_prompt_raises_file_not_found():
         reg.get("non_existent_prompt", 1)
 
 
-
 def test_agent_answer_system_prompt_integration():
     ans_prompt = _get_system_prompt()
     assert "Bạn viết câu trả lời tiếng Việt ngắn gọn cho câu hỏi thống kê" in ans_prompt
+
+
+ALL_PROMPT_NAMES = [
+    "agent_answer",
+    "agent_system",
+    "answer",
+    "answer_docs",
+    "classify",
+    "judge_eval",
+    "memory_extract",
+    "orchestrator",
+    "plan_chart",
+    "plan_query",
+    "plan_query_repair",
+    "respond_stat",
+    "rewrite",
+]
+
+
+@pytest.mark.parametrize("prompt_name", ALL_PROMPT_NAMES)
+def test_each_prompt_name_loads(prompt_name: str):
+    """Kiểm tra từng prompt name trong resource/prompts/ load thành công qua registry."""
+    reg = registry()
+    prompt = reg.get(prompt_name, "production")
+    assert prompt.name == prompt_name
+    assert prompt.version >= 1
+    assert len(prompt.template.strip()) > 0
+
+
+def test_render_missing_var_raises_value_error_for_prompt_with_vars():
+    """Kiểm tra render prompt có chứa biến mẫu (agent_system) khi thiếu biến sẽ raise ValueError."""
+    reg = registry()
+    with pytest.raises(ValueError) as exc_info:
+        reg.render("agent_system")
+    assert "agent_system" in str(exc_info.value)
+    assert "thiếu biến" in str(exc_info.value).lower()
+    assert "now" in str(exc_info.value)
+
+
+def test_api_llm_ping_returns_metadata():
+    """Kiểm tra GET /api/llm/ping trả về {status, backend, model, base_url}."""
+    from unittest.mock import patch
+    from fastapi.testclient import TestClient
+    from src.main import app
+
+    tc = TestClient(app)
+    with patch("src.main.llm_ping", return_value="OK"):
+        res = tc.get("/api/llm/ping")
+        assert res.status_code == 200
+        data = res.json()
+        assert data["status"] == "OK"
+        assert data["backend"] == settings.llm_backend
+        assert data["model"] == settings.effective_model
+        assert "base_url" in data
 
 

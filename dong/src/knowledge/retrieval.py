@@ -17,8 +17,18 @@ _STOP = {
 _PHRASES = sorted(
     [
         "thêm camera",
+        "thêm một camera mới",
+        "thêm camera mới",
+        "thêm một camera",
+        "quy trình thêm camera",
         "xóa camera",
         "sửa camera",
+        "chỉnh sửa camera",
+        "trạng thái camera",
+        "trực tuyến",
+        "ngoại tuyến",
+        "bảo trì",
+        "quản lý camera",
         "đăng nhập",
         "đăng xuất",
         "xem live",
@@ -103,6 +113,8 @@ def retrieve_docs(
 
         aliases = [str(a).lower() for a in (card.get("aliases") or [])]
         tags = [str(t).lower() for t in (card.get("tags") or [])]
+        menu_path_str = " ".join(str(m) for m in (card.get("menu_path") or [])).lower()
+        route_str = str(card.get("route") or "").lower()
         hay = " ".join(
             [
                 str(card.get("id") or ""),
@@ -110,6 +122,8 @@ def retrieve_docs(
                 str(card.get("intent") or ""),
                 str(card.get("summary") or ""),
                 str(card.get("module") or ""),
+                menu_path_str,
+                route_str,
                 " ".join(aliases),
                 " ".join(tags),
             ]
@@ -136,6 +150,26 @@ def retrieve_docs(
                 score += 4
             elif token in hay:
                 score += 1
+
+        cid = str(card.get("id") or "")
+        if any(k in q for k in ("trạng thái", "trực tuyến", "ngoại tuyến", "bảo trì")):
+            if cid == "aioc.camera_status":
+                score += 30
+            elif cid == "devices.edit_camera":
+                score += 25
+        if "thêm" in q and "camera" in q:
+            if "aioc" in q and cid == "aioc.add_camera":
+                score += 30
+            elif cid == "devices.add_camera":
+                score += 25
+        if any(k in q for k in ("sơ đồ", "quy trình")) and "camera" in q and cid == "aioc.diagram_add_camera":
+            score += 35
+        if any(k in q for k in ("sơ đồ", "quy trình")) and ("đăng nhập" in q or "mở" in q) and cid == "aioc.diagram_login_devices":
+            score += 35
+        if any(k in q for k in ("khác gì so với", "phân biệt")) and cid == "aioc.vms_vs_devices":
+            score += 35
+        if any(k in q for k in ("quản lý camera", "devices", "aioc")) and ("quản lý camera" in menu_path_str or "devices" in route_str):
+            score += 20
 
         score -= type_penalty
         if score >= min_score:

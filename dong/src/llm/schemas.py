@@ -2,9 +2,9 @@
 
 from __future__ import annotations
 
-from typing import Literal
+from typing import Any, Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 
 class RewrittenQuestion(BaseModel):
@@ -40,8 +40,41 @@ class StatAnswer(BaseModel):
     chart_requested: bool = False
 
 
+def normalize_chart_type(raw: Any) -> Literal["bar", "pie", "line"]:
+    """Normalize raw chart type into 'bar' | 'pie' | 'line'. Defaults to 'bar' if invalid."""
+    if not raw or not isinstance(raw, str):
+        return "bar"
+    val = raw.strip().lower()
+    if val in ("bar", "pie", "line"):
+        return val  # type: ignore[return-value]
+    if any(k in val for k in ("pie", "tròn", "tron", "bánh", "banh", "cơ cấu", "co cau", "tỷ lệ", "ty le", "phần trăm")):
+        return "pie"
+    if any(k in val for k in ("line", "đường", "duong", "thời gian", "thoi gian", "xu hướng", "xu huong", "ngày", "ngay", "tháng", "thang", "giờ", "gio")):
+        return "line"
+    if any(k in val for k in ("bar", "cột", "cot")):
+        return "bar"
+    return "bar"
+
+
 class ChartSpec(BaseModel):
-    chart_type: str
-    x_column: str
-    y_column: str
-    title_vi: str
+    chart_type: Literal["bar", "pie", "line"] = "bar"
+    x_column: str = ""
+    y_column: str = ""
+    title_vi: str = ""
+
+    @field_validator("chart_type", mode="before")
+    @classmethod
+    def _validate_chart_type(cls, v: Any) -> str:
+        return normalize_chart_type(v)
+
+
+class OrchestratorStep(BaseModel):
+    agent: Literal["query_data", "docs"]
+    sub_question: str
+
+
+class OrchestratorPlan(BaseModel):
+    steps: list[OrchestratorStep] = Field(default_factory=list)
+    is_multi: bool = False
+    reason: str = ""
+

@@ -1,0 +1,55 @@
+schema_version: "1.0.0"
+id: aioc.diagram_login_devices
+type: how_to
+status: published
+locale: vi
+version: 1
+title: "Sơ đồ các bước mở trang Quản Lý Camera từ đăng nhập trên AIOC"
+intent: diagram_login_devices
+aliases:
+  - "sơ đồ các bước mở trang quản lý camera từ đăng nhập tới https://aioc.atin.vn/devices"
+  - "vẽ sơ đồ các bước mở trang quản lý camera từ đăng nhập tới https://aioc.atin.vn/devices"
+  - "sơ đồ đăng nhập devices"
+  - "sơ đồ mở quản lý camera"
+  - "vẽ sơ đồ mở quản lý camera từ đăng nhập"
+  - "sơ đồ đăng nhập aioc"
+module: devices
+tags:
+  - sơ đồ
+  - aioc.atin.vn
+  - devices
+  - đăng nhập
+  - quản lý camera
+roles:
+  - authenticated_user
+features:
+  - devices
+route: "/devices"
+menu_path:
+  - "Cấu hình & Thiết bị"
+  - "Quản Lý Camera"
+preconditions:
+  - "Người dùng có kết nối mạng và tài khoản AIOC hợp lệ."
+summary: "Sơ đồ các bước thực hiện từ khi đăng nhập tài khoản Cloud Cam tới khi mở thành công trang Quản Lý Camera tại https://aioc.atin.vn/devices."
+steps:
+  - order: 1
+    say: "Sơ đồ các bước mở trang Quản Lý Camera từ đăng nhập:\n[Truy cập https://aioc.atin.vn] ➔ [Nhập tài khoản & mật khẩu] ➔ [Nhấn Đăng nhập] ➔ [Chọn menu Cấu hình & Thiết bị] ➔ [Chọn Quản Lý Camera (URL https://aioc.atin.vn/devices)] ➔ [Hiển thị danh sách thiết bị]"
+    ui:
+      label: "Sơ đồ luồng mở devices"
+      i18n_key: "aioc.flowDiagramLoginDevices"
+      element_id: null
+  - order: 2
+    say: "Bước 1 (Truy cập): Mở trình duyệt web, nhập địa chỉ hệ thống https://aioc.atin.vn (hoặc vào thẳng https://aioc.atin.vn/devices)."
+  - order: 3
+    say: "Bước 2 (Xác thực): Điền thông tin tài khoản gồm Tên đăng nhập/Email và Mật khẩu."
+  - order: 4
+    say: "Bước 3 (Đăng nhập): Bấm nút 'Đăng nhập' để hệ thống kiểm tra phân quyền người dùng."
+  - order: 5
+    say: "Bước 4 (Điều hướng menu): Sau khi đăng nhập, tại cột điều hướng bên trái chọn nhóm 'Cấu hình & Thiết bị'."
+  - order: 6
+    say: "Bước 5 (Mở trang thiết bị): Chọn mục 'Quản Lý Camera' để truy cập giao diện danh sách thiết bị camera tại địa chỉ URL https://aioc.atin.vn/devices."
+sources:
+  - path: "https://aioc.atin.vn/devices"
+    kind: route
+    note: "Sơ đồ quy trình đăng nhập và mở màn hình Quản Lý Camera"
+last_verified: "2026-09-22"

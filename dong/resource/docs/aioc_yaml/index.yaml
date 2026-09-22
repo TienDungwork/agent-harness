@@ -1,0 +1,77 @@
+schema_version: "1.0.0"
+knowledge_base: "aioc-usage-guide"
+default_locale: vi
+last_updated: "2026-09-22"
+
+ingestion:
+  include_statuses:
+    - published
+  exclude_statuses:
+    - needs_review
+    - draft
+    - deprecated
+  card_schema: "schema.yaml"
+
+coverage:
+  total_cards: 7
+  by_status:
+    published: 7
+    needs_review: 0
+    draft: 0
+    deprecated: 0
+  by_type:
+    how_to: 6
+    troubleshooting: 0
+    concept: 1
+  modules:
+    - devices
+
+cards:
+  - id: aioc.login_devices
+    file: how_to/login-devices.yaml
+    type: how_to
+    status: published
+    module: devices
+    title: "Đăng nhập Cloud Cam AIOC"
+
+  - id: aioc.manage_camera
+    file: how_to/manage-camera.yaml
+    type: how_to
+    status: published
+    module: devices
+    title: "Quản Lý Camera trên AIOC"
+
+  - id: aioc.add_camera
+    file: how_to/add-camera.yaml
+    type: how_to
+    status: published
+    module: devices
+    title: "Thêm camera mới trên AIOC"
+
+  - id: aioc.camera_status
+    file: how_to/camera-status.yaml
+    type: how_to
+    status: published
+    module: devices
+    title: "Trạng thái camera trên AIOC và cách thay đổi"
+
+  - id: aioc.diagram_login_devices
+    file: how_to/diagram-login-devices.yaml
+    type: how_to
+    status: published
+    module: devices
+    title: "Sơ đồ các bước mở trang Quản Lý Camera từ đăng nhập trên AIOC"
+
+  - id: aioc.diagram_add_camera
+    file: how_to/diagram-add-camera.yaml
+    type: how_to
+    status: published
+    module: devices
+    title: "Sơ đồ quy trình thêm camera mới trên AIOC"
+
+  - id: aioc.vms_vs_devices
+    file: how_to/vms-vs-devices.yaml
+    type: concept
+    status: published
+    module: devices
+    title: "Phân biệt hỏi thống kê sự kiện VMS và hướng dẫn AIOC devices"

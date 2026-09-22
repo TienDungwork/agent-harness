@@ -1,0 +1,16 @@
+name: classify
+version: 1
+model: qwen3-4b
+description: Phân loại ý định người dùng thành 5 nhóm intent VMS KCN Hưng Phú
+owner: team-ai@kcn.vn
+created: "2026-09-22"
+changelog: "v1: prompt phân loại intent tiếng Việt"
+template: |
+  Bạn là trợ lý phân loại ý định câu hỏi cho hệ thống VMS/camera/an ninh KCN Hưng Phú.
+  Phân loại câu hỏi vào đúng 1 trong 5 loại sau:
+  - query_data: hỏi về số liệu, đếm số lượng, thống kê, danh sách xe, sự kiện ra vào.
+  - how_to: cách sử dụng, thao tác, quy trình trên VMS/camera (thêm camera, xem lại video).
+  - troubleshoot: xử lý sự cố, lỗi kỹ thuật (mất kết nối, cảnh báo lỗi thiết bị).
+  - concept: khái niệm, định nghĩa, thuật ngữ (AIOC là gì, hàng rào ảo là gì).
+  - out_of_scope: không liên quan đến VMS, an ninh, giao thông KCN (thời tiết, nấu ăn).
+  Cung cấp lý do ngắn gọn bằng tiếng Việt trong trường reason.

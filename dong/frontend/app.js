@@ -15,6 +15,14 @@
     graphNodes: {},
     streamAbortController: null,
     streamEventsCount: 0,
+    userId: null,
+    activeSessionId: null,
+    sessions: [],
+    lastChart: null,
+    lastChartSpec: null,
+    lastChartType: null,
+    lastChartRows: null,
+    lastStreamError: null,
   };
 
   // DOM Elements
@@ -22,6 +30,8 @@
     sidebar: document.getElementById('sidebar'),
     btnToggleSidebar: document.getElementById('btn-toggle-sidebar'),
     btnNewChat: document.getElementById('btn-new-chat'),
+    sessionList: document.getElementById('session-list'),
+    domainChips: document.getElementById('domain-chips'),
     btnOpenSettings: document.getElementById('btn-open-settings'),
     sidebarModelLabel: document.getElementById('sidebar-model-label'),
     systemStatusText: document.getElementById('system-status-text'),
@@ -45,12 +55,270 @@
     graphIoBody: document.getElementById('graph-io-body'),
   };
 
+  // ==========================================================================
+  // Session & LocalStorage Helpers (Phase 2)
+  // ==========================================================================
+  function generateUUID() {
+    if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+      return crypto.randomUUID();
+    }
+    return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function (c) {
+      const r = (Math.random() * 16) | 0;
+      const v = c === 'x' ? r : (r & 0x3) | 0x8;
+      return v.toString(16);
+    });
+  }
+
+  async function initUserAndSessions() {
+    // agent_user_id: UUID once
+    let uid = localStorage.getItem('agent_user_id');
+    if (!uid) {
+      uid = generateUUID();
+      localStorage.setItem('agent_user_id', uid);
+    }
+    state.userId = uid;
+
+    // Clean up mock agent_sessions if leftover from Phase 2
+    localStorage.removeItem('agent_sessions');
+
+    let loaded = [];
+    try {
+      const res = await fetch(getApiEndpoint(`/api/sessions?user_id=${encodeURIComponent(state.userId)}`));
+      if (res.ok) {
+        const data = await res.json();
+        loaded = Array.isArray(data.sessions) ? data.sessions : [];
+      }
+    } catch (err) {
+      console.error('Lỗi khi tải danh sách sessions:', err);
+      loaded = [];
+    }
+
+    if (loaded.length === 0) {
+      try {
+        const res = await fetch(getApiEndpoint('/api/sessions'), {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ user_id: state.userId }),
+        });
+        if (res.ok) {
+          const firstSession = await res.json();
+          loaded = [firstSession];
+        }
+      } catch (err) {
+        console.error('Lỗi khi tạo session mặc định:', err);
+      }
+    }
+
+    loaded.forEach(s => {
+      if (!Array.isArray(s.messages)) s.messages = [];
+    });
+    state.sessions = loaded;
+
+    // agent_session_id
+    let sid = localStorage.getItem('agent_session_id');
+    if (!sid || !state.sessions.some(s => s.id === sid)) {
+      sid = state.sessions.length > 0 ? state.sessions[0].id : null;
+      if (sid) {
+        localStorage.setItem('agent_session_id', sid);
+      } else {
+        localStorage.removeItem('agent_session_id');
+      }
+    }
+    state.activeSessionId = sid;
+  }
+
+  function formatSessionTime(isoString) {
+    if (!isoString) return '';
+    const date = new Date(isoString);
+    if (isNaN(date.getTime())) return '';
+    const now = new Date();
+    const isToday = date.toDateString() === now.toDateString();
+    const hours = String(date.getHours()).padStart(2, '0');
+    const minutes = String(date.getMinutes()).padStart(2, '0');
+    if (isToday) {
+      return `${hours}:${minutes}`;
+    }
+    const day = String(date.getDate()).padStart(2, '0');
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    return `${day}/${month} ${hours}:${minutes}`;
+  }
+
+  function renderSessionList() {
+    if (!el.sessionList) return;
+    el.sessionList.innerHTML = '';
+
+    state.sessions.forEach(sess => {
+      const item = document.createElement('div');
+      item.className = 'session-item' + (sess.id === state.activeSessionId ? ' active' : '');
+      item.dataset.sessionId = sess.id;
+
+      const header = document.createElement('div');
+      header.className = 'session-item-header';
+
+      const title = document.createElement('span');
+      title.className = 'session-item-title';
+      title.textContent = sess.title || 'Phiên chat';
+
+      const meta = document.createElement('div');
+      meta.className = 'session-item-meta';
+
+      const time = document.createElement('span');
+      time.className = 'session-item-time';
+      time.textContent = formatSessionTime(sess.updated_at || sess.updatedAt);
+
+      const deleteBtn = document.createElement('button');
+      deleteBtn.type = 'button';
+      deleteBtn.className = 'session-delete-btn';
+      deleteBtn.title = 'Xóa phiên chat';
+      deleteBtn.setAttribute('aria-label', 'Xóa phiên chat');
+      deleteBtn.innerHTML = `
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <line x1="18" y1="6" x2="6" y2="18"></line>
+          <line x1="6" y1="6" x2="18" y2="18"></line>
+        </svg>
+      `;
+      deleteBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        deleteSession(sess.id);
+      });
+
+      meta.appendChild(time);
+      meta.appendChild(deleteBtn);
+      header.appendChild(title);
+      header.appendChild(meta);
+
+      const preview = document.createElement('div');
+      preview.className = 'session-item-preview';
+      preview.textContent = sess.preview || 'Chưa có tin nhắn';
+
+      item.appendChild(header);
+      item.appendChild(preview);
+
+      item.addEventListener('click', () => {
+        switchSession(sess.id);
+      });
+
+      el.sessionList.appendChild(item);
+    });
+  }
+
+  async function switchSession(sessionId) {
+    if (state.activeSessionId === sessionId) return;
+    state.activeSessionId = sessionId;
+    localStorage.setItem('agent_session_id', sessionId);
+    renderSessionList();
+    await loadCurrentSessionMessages();
+  }
+
+  async function loadCurrentSessionMessages() {
+    el.messagesList.innerHTML = '';
+    resetGraph();
+
+    if (!state.activeSessionId) {
+      el.welcomeScreen.style.display = 'block';
+      state.messages = [];
+      return;
+    }
+
+    let messages = [];
+    try {
+      const res = await fetch(
+        getApiEndpoint(
+          `/api/sessions/${encodeURIComponent(state.activeSessionId)}/messages?user_id=${encodeURIComponent(state.userId)}`
+        )
+      );
+      if (res.ok) {
+        const data = await res.json();
+        messages = Array.isArray(data.messages) ? data.messages : [];
+      }
+    } catch (err) {
+      console.error('Lỗi khi tải lịch sử phiên:', err);
+    }
+
+    const sess = state.sessions.find(s => s.id === state.activeSessionId);
+    if (sess) {
+      sess.messages = messages;
+    }
+
+    if (messages.length === 0) {
+      el.welcomeScreen.style.display = 'block';
+      state.messages = [];
+      return;
+    }
+
+    el.welcomeScreen.style.display = 'none';
+    state.messages = messages;
+    messages.forEach(msg => {
+      appendMessage(msg.role, msg.content, msg.detail, msg.chart);
+    });
+    scrollToBottom();
+  }
+
+  async function createNewSession() {
+    if (state.isGenerating) return;
+    try {
+      const res = await fetch(getApiEndpoint('/api/sessions'), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ user_id: state.userId }),
+      });
+      if (!res.ok) throw new Error('Không thể tạo phiên chat mới');
+      const newSession = await res.json();
+      newSession.messages = [];
+      state.sessions.unshift(newSession);
+      state.activeSessionId = newSession.id;
+      localStorage.setItem('agent_session_id', newSession.id);
+      renderSessionList();
+      await loadCurrentSessionMessages();
+      el.questionInput.value = '';
+      adjustTextareaHeight();
+      el.questionInput.focus();
+    } catch (e) {
+      console.error('Lỗi createNewSession:', e);
+    }
+  }
+
+  async function deleteSession(sessionId) {
+    if (!sessionId) return;
+    try {
+      const res = await fetch(
+        getApiEndpoint(`/api/sessions/${encodeURIComponent(sessionId)}?user_id=${encodeURIComponent(state.userId)}`),
+        { method: 'DELETE' }
+      );
+      if (!res.ok && res.status !== 404) {
+        console.error('Lỗi khi xóa session:', res.statusText);
+        return;
+      }
+
+      state.sessions = state.sessions.filter(s => s.id !== sessionId);
+
+      if (state.activeSessionId === sessionId) {
+        if (state.sessions.length > 0) {
+          state.activeSessionId = state.sessions[0].id;
+          localStorage.setItem('agent_session_id', state.activeSessionId);
+          renderSessionList();
+          await loadCurrentSessionMessages();
+        } else {
+          await createNewSession();
+          return;
+        }
+      } else {
+        renderSessionList();
+      }
+    } catch (err) {
+      console.error('Lỗi deleteSession:', err);
+    }
+  }
+
   // Initialize
-  function init() {
+  async function init() {
     setupEventListeners();
     applyStateToUI();
-    checkSystemHealth();
     adjustTextareaHeight();
+    checkSystemHealth();
+    await initUserAndSessions();
+    renderSessionList();
+    await loadCurrentSessionMessages();
   }
 
   function setupEventListeners() {
@@ -60,19 +328,19 @@
       el.sidebar.classList.toggle('active');
     });
 
-    // New Chat
-    el.btnNewChat.addEventListener('click', resetChat);
+    // New Chat (#btn-new-chat)
+    el.btnNewChat.addEventListener('click', createNewSession);
 
-    // Quick Domain Tags & Suggestion Cards
-    document.querySelectorAll('[data-query]').forEach(item => {
-      item.addEventListener('click', () => {
-        const query = item.getAttribute('data-query');
-        if (query) {
-          el.questionInput.value = query;
-          adjustTextareaHeight();
-          handleSendMessage();
-        }
-      });
+    // Domain Chips & Suggestion Cards (data-query click -> send)
+    document.addEventListener('click', (e) => {
+      const item = e.target.closest('[data-query]');
+      if (!item) return;
+      const query = item.getAttribute('data-query');
+      if (query) {
+        el.questionInput.value = query;
+        adjustTextareaHeight();
+        handleSendMessage();
+      }
     });
 
     // Input Handling
@@ -113,25 +381,42 @@
     el.questionInput.style.height = Math.min(el.questionInput.scrollHeight, 160) + 'px';
   }
 
-  function resetChat() {
-    state.messages = [];
-    el.messagesList.innerHTML = '';
-    el.welcomeScreen.style.display = 'block';
-    el.questionInput.value = '';
-    adjustTextareaHeight();
-    resetGraph();
-    el.questionInput.focus();
-  }
-
   // ==========================================================================
   // Graph Logic (Phase 5+)
   // ==========================================================================
-  const IO_MAX_CHARS = 2000;
+  const IO_MAX_CHARS = 80000;
   let graphRunId = 0;
+  let hoveredGraphNodeId = null;
+
+  function formatIoValue(val) {
+    if (val === null || val === undefined) return '(empty)';
+    if (typeof val === 'string') {
+      const trimmed = val.trim();
+      if (
+        (trimmed.startsWith('{') && trimmed.endsWith('}')) ||
+        (trimmed.startsWith('[') && trimmed.endsWith(']'))
+      ) {
+        try {
+          return JSON.stringify(JSON.parse(trimmed), null, 2);
+        } catch (e) {
+          return val;
+        }
+      }
+      return val;
+    }
+    if (typeof val === 'object') {
+      try {
+        return JSON.stringify(val, null, 2);
+      } catch (e) {
+        return String(val);
+      }
+    }
+    return String(val);
+  }
 
   function truncateIoText(text) {
     if (text.length <= IO_MAX_CHARS) return text;
-    return text.slice(0, IO_MAX_CHARS) + '\n… (đã cắt ~2KB)';
+    return text.slice(0, IO_MAX_CHARS) + '\n… (đã cắt — xem Langfuse để full)';
   }
 
   function resetGraph() {
@@ -142,6 +427,10 @@
     state.streamAbortController = new AbortController();
     state.streamEventsCount = 0;
     state.lastChart = null;
+    state.lastChartSpec = null;
+    state.lastChartType = null;
+    state.lastChartRows = null;
+    state.lastStreamError = null;
     state.graphNodes = {};
     if (el.graphNodes) el.graphNodes.innerHTML = '';
     if (el.graphPlaceholder) {
@@ -163,15 +452,31 @@
     });
     el.graphIoEmpty.hidden = true;
     el.graphIoBody.hidden = false;
-    const raw =
-      'input:\n' + JSON.stringify(n.input ?? null, null, 2) +
-      '\n\noutput:\n' + JSON.stringify(n.output ?? null, null, 2);
+    let raw =
+      'input:\n' + formatIoValue(n.input) +
+      '\n\noutput:\n' + formatIoValue(n.output);
+    if (n.meta && typeof n.meta === 'object' && Object.keys(n.meta).length > 0) {
+      raw += '\n\nmeta:\n' + formatIoValue(n.meta);
+    }
     el.graphIoBody.textContent = truncateIoText(raw);
   }
 
-  function upsertGraphNode(nodeId, status, input, output) {
+  function upsertGraphNode(nodeId, status, input, output, meta) {
     if (el.graphPlaceholder) el.graphPlaceholder.classList.add('hidden');
-    state.graphNodes[nodeId] = { status, input, output };
+    const prev = state.graphNodes[nodeId] || {};
+    const next = {
+      status,
+      input: status === 'done'
+        ? input
+        : (input !== undefined && input !== null ? input : prev.input),
+      output: status === 'done'
+        ? output
+        : (output !== undefined && output !== null ? output : prev.output),
+      meta: status === 'done'
+        ? (meta !== undefined ? meta : prev.meta)
+        : (meta !== undefined && meta !== null ? meta : prev.meta),
+    };
+    state.graphNodes[nodeId] = next;
     let card = el.graphNodes.querySelector(`[data-node-id="${nodeId}"]`);
     if (!card) {
       card = document.createElement('button');
@@ -181,7 +486,13 @@
       card.innerHTML =
         '<div class="graph-node-id"></div><div class="graph-node-status"></div>';
       card.addEventListener('click', () => showNodeIo(nodeId));
-      card.addEventListener('mouseenter', () => showNodeIo(nodeId));
+      card.addEventListener('mouseenter', () => {
+        hoveredGraphNodeId = nodeId;
+        showNodeIo(nodeId);
+      });
+      card.addEventListener('mouseleave', () => {
+        if (hoveredGraphNodeId === nodeId) hoveredGraphNodeId = null;
+      });
       el.graphNodes.appendChild(card);
     }
     card.classList.remove('running', 'done');
@@ -189,8 +500,8 @@
     card.querySelector('.graph-node-id').textContent = nodeId;
     card.querySelector('.graph-node-status').textContent =
       status === 'running' ? 'đang chạy…' : 'xong — trỏ hoặc bấm để xem I/O';
-      
-    if (status === 'done' && card.classList.contains('selected')) {
+
+    if (status === 'done' && (card.classList.contains('selected') || hoveredGraphNodeId === nodeId)) {
       showNodeIo(nodeId);
     }
   }
@@ -266,7 +577,87 @@
       .replace(/'/g, '&#039;');
   }
 
-  function appendMessage(role, content, detail) {
+  // ==========================================================================
+  // Chart.js rendering helper
+  // ==========================================================================
+
+  /** WeakMap to track Chart.js instances keyed by canvas element */
+  const _chartInstances = new WeakMap();
+
+  /**
+   * Render an interactive Chart.js bar or pie chart inside containerEl.
+   * @param {HTMLElement} containerEl  - the .chart-slot element
+   * @param {{ chartType: string, chartSpec: Object, rows: Array }} opts
+   */
+  function renderChartJs(containerEl, { chartType, chartSpec, rows }) {
+    if (typeof Chart === 'undefined') return;
+    if (!Array.isArray(rows) || rows.length === 0) return;
+    if (!chartSpec || !chartSpec.x_column || !chartSpec.y_column) return;
+
+    const xCol = chartSpec.x_column;
+    const yCol = chartSpec.y_column;
+    const title = chartSpec.title_vi || '';
+
+    const labels = rows.map(r => String(r[xCol] !== undefined ? r[xCol] : ''));
+    const values = rows.map(r => {
+      const v = r[yCol];
+      return (v !== undefined && v !== null) ? Number(v) : 0;
+    });
+
+    const type = (chartType === 'pie') ? 'pie' : 'bar';
+
+    // Palette
+    const palette = [
+      'rgba(194, 65, 12, 0.75)',
+      'rgba(217, 119, 6, 0.75)',
+      'rgba(5, 150, 105, 0.75)',
+      'rgba(37, 99, 235, 0.75)',
+      'rgba(124, 58, 237, 0.75)',
+      'rgba(220, 38, 38, 0.75)',
+      'rgba(16, 185, 129, 0.75)',
+      'rgba(245, 158, 11, 0.75)',
+    ];
+    const colors = values.map((_, i) => palette[i % palette.length]);
+
+    // Clear previous content
+    containerEl.innerHTML = '';
+    const canvas = document.createElement('canvas');
+    canvas.setAttribute('aria-label', title || 'Biểu đồ');
+    canvas.setAttribute('role', 'img');
+    containerEl.appendChild(canvas);
+
+    // Destroy existing Chart instance on this canvas if any
+    if (_chartInstances.has(canvas)) {
+      _chartInstances.get(canvas).destroy();
+    }
+
+    const dataset = {
+      label: yCol,
+      data: values,
+      backgroundColor: colors,
+    };
+    if (type === 'bar') {
+      dataset.borderColor = colors.map(c => c.replace('0.75', '1'));
+      dataset.borderWidth = 1;
+    }
+
+    const config = {
+      type,
+      data: { labels, datasets: [dataset] },
+      options: {
+        responsive: true,
+        plugins: {
+          legend: { display: type === 'pie' },
+          title: title ? { display: true, text: title } : { display: false },
+        },
+      },
+    };
+
+    const instance = new Chart(canvas, config);
+    _chartInstances.set(canvas, instance);
+  }
+
+  function appendMessage(role, content, detail, chartPayload) {
     el.welcomeScreen.style.display = 'none';
 
     const item = document.createElement('div');
@@ -318,8 +709,48 @@
     const bubble = document.createElement('div');
     bubble.className = 'message-bubble';
     bubble.innerHTML = parseMarkdown(content);
-
     contentDiv.appendChild(bubble);
+
+    // Chart rendering in assistant messages
+    if (role === 'assistant') {
+      const chartSlot = document.createElement('div');
+      chartSlot.className = 'chart-slot';
+
+      // Normalize chartPayload: can be string (legacy PNG base64) or object {png, spec, type, rows}
+      let chartObj = null;
+      if (chartPayload && typeof chartPayload === 'object') {
+        chartObj = chartPayload; // {png, spec, type, rows}
+      } else if (typeof chartPayload === 'string' && chartPayload) {
+        chartObj = { png: chartPayload };
+      }
+
+      const chartSpec = chartObj && (chartObj.spec || null);
+      const chartRows = chartObj && (chartObj.rows || null);
+      const chartType = chartObj && (chartObj.type || 'bar');
+      const chartPng = chartObj && (chartObj.png || null);
+
+      if (chartSpec && Array.isArray(chartRows) && chartRows.length > 0 && typeof Chart !== 'undefined') {
+        // Prefer Chart.js interactive render
+        renderChartJs(chartSlot, { chartType, chartSpec, rows: chartRows });
+      } else if (chartPng) {
+        // PNG fallback
+        chartSlot.innerHTML = `<img src="data:image/png;base64,${chartPng}" alt="Biểu đồ" style="max-width:100%; border-radius:8px; display:block; margin:0 auto;">`;
+      } else {
+        // No chart data — placeholder only when no chart at all
+        chartSlot.innerHTML = `
+          <div class="chart-placeholder">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <line x1="18" y1="20" x2="18" y2="10"></line>
+              <line x1="12" y1="20" x2="12" y2="4"></line>
+              <line x1="6" y1="20" x2="6" y2="14"></line>
+            </svg>
+            <span>Khu vực biểu đồ (Bar/Pie chart)</span>
+          </div>
+        `;
+      }
+      contentDiv.appendChild(chartSlot);
+    }
+
     item.appendChild(avatar);
     item.appendChild(contentDiv);
 
@@ -369,12 +800,42 @@
 
   async function handleSendMessage() {
     const question = el.questionInput.value.trim();
-    if (!question) return;
+    if (!question || state.isGenerating) return;
+
+    let sess = state.sessions.find(s => s.id === state.activeSessionId);
+    if (!sess) {
+      await createNewSession();
+      sess = state.sessions[0];
+    }
+    if (!sess) return;
 
     state.isGenerating = true;
     el.btnSend.disabled = true;
     el.questionInput.value = '';
     adjustTextareaHeight();
+
+    const now = new Date().toISOString();
+    const userMsg = {
+      role: 'user',
+      content: question,
+      timestamp: now,
+    };
+    if (!Array.isArray(sess.messages)) sess.messages = [];
+    sess.messages.push(userMsg);
+    sess.updated_at = now;
+    sess.updatedAt = now;
+    sess.preview = question;
+
+    if (sess.title === 'Phiên chat mới' || sess.messages.filter(m => m.role === 'user').length === 1) {
+      sess.title = question.length > 32 ? question.slice(0, 32) + '…' : question;
+    }
+
+    const sessIdx = state.sessions.findIndex(s => s.id === sess.id);
+    if (sessIdx > 0) {
+      state.sessions.splice(sessIdx, 1);
+      state.sessions.unshift(sess);
+    }
+    renderSessionList();
 
     appendMessage('user', question);
     showThinkingIndicator();
@@ -382,11 +843,17 @@
     // Subscribe to SSE
     resetGraph();
     const currentRunId = graphRunId;
+    const currentSessionId = sess.id;
 
     fetch(getApiEndpoint('/api/agent/stream'), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ question: question, model_provider: state.activeModel }),
+      body: JSON.stringify({
+        question: question,
+        model_provider: state.activeModel,
+        session_id: state.activeSessionId,
+        user_id: state.userId,
+      }),
       signal: state.streamAbortController.signal
     }).then(async (res) => {
       if (currentRunId !== graphRunId) return;
@@ -427,23 +894,76 @@
               if (event.chart_png_base64) {
                 state.lastChart = event.chart_png_base64;
               }
-              
+
+              // Dedicated __chart__ event — update chart state
+              if (event.node_id === '__chart__') {
+                state.lastChart = event.chart_png_base64 || state.lastChart || null;
+                state.lastChartSpec = event.chart_spec || null;
+                state.lastChartType = event.chart_type || null;
+                state.lastChartRows = Array.isArray(event.chart_rows) ? event.chart_rows : null;
+                continue;
+              }
+
+              if (event.node_id === 'error') {
+                state.lastStreamError = event.output || 'Đã xảy ra lỗi.';
+              }
+
               if (event.node_id === '__answer__') {
                 if (currentRunId !== graphRunId) return;
                 hasAnswer = true;
                 removeThinkingIndicator();
-                
-                let answerHtml = event.output || 'Không có câu trả lời.';
-                if (state.lastChart) {
-                  answerHtml += `\n\n<img src="data:image/png;base64,${state.lastChart}" alt="Biểu đồ" style="max-width:100%; border-radius:8px; margin-top:10px;">`;
-                  state.lastChart = null;
+
+                const isError = event.status === 'error' ||
+                  (event.detail && event.detail.status === 'error');
+                let answerText = event.output || 'Không có câu trả lời.';
+                if (isError) {
+                  state.lastStreamError = answerText;
+                  if (!answerText.startsWith('⚠️')) {
+                    answerText = '⚠️ ' + answerText;
+                  }
+                }
+                // Build full chart payload object (prefer rows from detail if available)
+                const detailRows = event.detail && Array.isArray(event.detail.chart_rows) ? event.detail.chart_rows : null;
+                const chartPayload = (state.lastChart || state.lastChartSpec) ? {
+                  png: state.lastChart || null,
+                  spec: state.lastChartSpec || (event.detail && event.detail.chart_spec) || null,
+                  type: state.lastChartType || (event.detail && event.detail.chart_type) || 'bar',
+                  rows: detailRows || state.lastChartRows || null,
+                } : null;
+                state.lastChart = null;
+                state.lastChartSpec = null;
+                state.lastChartType = null;
+                state.lastChartRows = null;
+
+                const targetSession = state.sessions.find(item => item.id === currentSessionId);
+                if (targetSession) {
+                  if (!Array.isArray(targetSession.messages)) targetSession.messages = [];
+                  targetSession.messages.push({
+                    role: 'assistant',
+                    content: answerText,
+                    detail: event.detail,
+                    chart: chartPayload,
+                    timestamp: new Date().toISOString()
+                  });
+                  const now = new Date().toISOString();
+                  targetSession.updated_at = now;
+                  targetSession.updatedAt = now;
+                  const cleanPreview = answerText.replace(/[\n\r#*`]/g, ' ').replace(/\s+/g, ' ').trim();
+                  targetSession.preview = cleanPreview.length > 45 ? cleanPreview.slice(0, 45) + '…' : cleanPreview;
+                  renderSessionList();
                 }
                 
-                appendMessage('assistant', answerHtml, event.detail);
+                appendMessage('assistant', answerText, event.detail, chartPayload);
                 continue;
               }
 
-              upsertGraphNode(event.node_id, event.status, event.input, event.output);
+              upsertGraphNode(
+                event.node_id,
+                event.status,
+                event.input,
+                event.output,
+                event.meta
+              );
               state.streamEventsCount++;
             } catch (e) {
               console.error("Parse SSE data error", e);
@@ -453,7 +973,25 @@
       }
       if (!hasAnswer && currentRunId === graphRunId) {
         removeThinkingIndicator();
-        appendMessage('assistant', 'Xin lỗi, đã xảy ra lỗi trong quá trình xử lý (stream ended early).');
+        const fallbackText = state.lastStreamError
+          ? ('⚠️ ' + state.lastStreamError)
+          : '⚠️ Xin lỗi, đã xảy ra lỗi trong quá trình xử lý. Vui lòng thử lại.';
+        state.lastStreamError = null;
+        const targetSession = state.sessions.find(item => item.id === currentSessionId);
+        if (targetSession) {
+          if (!Array.isArray(targetSession.messages)) targetSession.messages = [];
+          targetSession.messages.push({
+            role: 'assistant',
+            content: fallbackText,
+            timestamp: new Date().toISOString()
+          });
+          const now = new Date().toISOString();
+          targetSession.updated_at = now;
+          targetSession.updatedAt = now;
+          targetSession.preview = fallbackText;
+          renderSessionList();
+        }
+        appendMessage('assistant', fallbackText);
       }
     }).catch(err => {
       if (currentRunId !== graphRunId || err.name === 'AbortError') return;
@@ -465,6 +1003,20 @@
         placeholder.textContent = 'Lỗi Stream SSE';
       }
       const msg = err.isCustomMsg ? err.message : '⚠️ **Lỗi kết nối**: Không thể kết nối tới backend/API. Vui lòng kiểm tra lại hệ thống.';
+      const targetSession = state.sessions.find(item => item.id === currentSessionId);
+      if (targetSession) {
+        if (!Array.isArray(targetSession.messages)) targetSession.messages = [];
+        targetSession.messages.push({
+          role: 'assistant',
+          content: msg,
+          timestamp: new Date().toISOString()
+        });
+        const now = new Date().toISOString();
+        targetSession.updated_at = now;
+        targetSession.updatedAt = now;
+        targetSession.preview = '⚠️ Lỗi kết nối';
+        renderSessionList();
+      }
       appendMessage(
         'assistant',
         msg

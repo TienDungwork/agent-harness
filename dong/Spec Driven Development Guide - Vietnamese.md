@@ -292,6 +292,7 @@ Check:
 Fix only issues related to this feature.
 Do not add new features.
 Update specs/change-log.md after fixing.
+
 ```
 
 ### Kết quả kỳ vọng
@@ -316,6 +317,7 @@ After implementation:
 - mark the task as completed
 - update specs/change-log.md
 - provide manual test steps
+
 ```
 
 ### Kết quả kỳ vọng

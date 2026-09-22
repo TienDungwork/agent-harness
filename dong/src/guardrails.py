@@ -189,9 +189,30 @@ OUT_OF_SCOPE_REPLY = (
     '"Làm sao mở Quản Lý Camera trên AIOC?".'
 )
 
+INJECTION_REJECT_MESSAGE = (
+    "Không thể xử lý yêu cầu này vì có dấu hiệu tấn công prompt injection "
+    "(cố gắng bỏ qua hướng dẫn hệ thống). "
+    "Hãy đặt câu hỏi trực tiếp về thống kê camera VMS, hướng dẫn AIOC hoặc biểu đồ sự kiện."
+)
+
+TOXIC_REJECT_MESSAGE = (
+    "Không thể xử lý yêu cầu vì có từ ngữ không phù hợp. "
+    "Vui lòng đặt câu hỏi lịch sự về giám sát camera KCN Hưng Phú."
+)
+
 _FALLBACK = "Xin lỗi, tôi chưa đủ dữ liệu đáng tin để trả lời. Hãy hỏi lại rõ hơn."
 _DISCLAIMER = " (Lưu ý: số liệu chưa xác minh được với dữ liệu tool trả về.)"
-EMPTY_TOOL_REPLY = "Không có dữ liệu khớp câu hỏi trong khoảng thời gian/điều kiện đã cho."
+
+
+def empty_stat_reply() -> str:
+    """Câu trả lời chuẩn khi tool/SQL không có số liệu — luôn ghi rõ 0."""
+    return (
+        "Không có dữ liệu khớp câu hỏi trong khoảng thời gian/điều kiện đã cho "
+        "(ghi nhận 0 lượt / 0 kết quả)."
+    )
+
+
+EMPTY_TOOL_REPLY = empty_stat_reply()
 
 
 class GuardrailViolation(Exception):
@@ -231,9 +252,35 @@ def redact_pii(text: str) -> str:
     return text
 
 
+MEMORY_STATEMENT_KEYWORDS = frozenset(
+    {
+        "tên tôi là",
+        "tôi tên là",
+        "nhớ là",
+        "ghi nhớ",
+        "tôi phụ trách",
+        "tôi quản lý",
+        "tôi thích",
+        "tôi ưu tiên",
+        "tôi quan tâm",
+    }
+)
+
+
 def in_scope(question: str) -> bool:
     low = (question or "").lower()
+    if any(k in low for k in MEMORY_STATEMENT_KEYWORDS):
+        return True
     return any(k in low for k in STAT_KEYWORDS)
+
+
+def rejection_detail(reason: str) -> str:
+    """Chuyển mã lý do nội bộ sang thông báo từ chối tiếng Việt cho người dùng."""
+    if reason == "prompt_injection_detected":
+        return INJECTION_REJECT_MESSAGE
+    if reason == "unsafe_content":
+        return TOXIC_REJECT_MESSAGE
+    return "Không thể xử lý câu hỏi này. Vui lòng thử lại với nội dung phù hợp phạm vi VMS/AIOC."
 
 
 def check_input(text: str) -> None:
@@ -285,6 +332,10 @@ def check_output(answer: str, evidence: list[str], *, tool_empty: bool = False) 
     if max_len and len(text) > max_len:
         issues.append("answer_too_long")
         text = text[:max_len].rstrip() + "…"
+
+    if tool_empty and not re.search(r"\b0\b", text):
+        issues.append("empty_stat_missing_zero")
+        text = empty_stat_reply()
 
     return OutputCheckResult(valid=len(issues) == 0, issues=issues, answer=text)
 

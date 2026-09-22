@@ -10,33 +10,59 @@ from src.knowledge.retrieval import card_excerpt_for_llm, retrieve_docs
 from src.llm.client import use_offline_tools
 from src.llm.schemas import DocsAnswer
 from src.llm.structured import invoke_structured
+from src.prompts import registry
 
-DOCS_SYSTEM_PROMPT = """Bạn là trợ lý hướng dẫn sử dụng hệ thống VMS (Video Management System).
-Nhiệm vụ: Trả lời câu hỏi của người dùng CHỈ dựa vào các task cards được cung cấp.
 
-Quy tắc bắt buộc:
-1. Chỉ dùng thông tin trong task cards (summary, steps, checks, menu_path, preconditions).
-2. Không bịa thêm menu, nút bấm, trường dữ liệu ngoài tài liệu.
-3. Trả lời bằng tiếng Việt, súc tích, theo từng bước rõ ràng.
-4. Nếu có menu_path, nêu rõ đường dẫn menu ở đầu.
-5. Nếu có preconditions quan trọng, nhắc người dùng trước khi thao tác.
-6. Với troubleshooting: trình bày rõ điều kiện (nếu... thì...).
-7. Tuyệt đối không đề cập đến SQL, cơ sở dữ liệu hay query backend.
-8. Điền đầy đủ trường card_ids chứa mã định danh (id) của các card được sử dụng.
-9. Điền danh sách steps tóm tắt các bước chính (nếu câu hỏi là dạng how_to)."""
+def _empty_cards_fallback(question: str) -> DocsAnswer:
+    """Minimal keyword fallback khi không tìm thấy cards nào phù hợp."""
+    low = (question or "").lower()
+    if any(k in low for k in ("trạng thái", "trực tuyến", "ngoại tuyến", "bảo trì")):
+        return DocsAnswer(
+            answer_vi=(
+                "Giải thích trạng thái camera:\n"
+                "- Trực Tuyến: Camera đang kết nối mạng và truyền hình ảnh bình thường.\n"
+                "- Ngoại Tuyến: Mất kết nối tới camera hoặc camera mất nguồn.\n"
+                "- Bảo Trì: Camera đang trong diện sửa chữa hoặc kiểm tra kỹ thuật.\n"
+                "Cách đổi trạng thái: Truy cập menu Cấu hình & Thiết bị > Quản Lý Camera (https://aioc.atin.vn/devices), "
+                "chọn camera cần sửa, bấm Chỉnh Sửa và cập nhật trường Trạng Thái."
+            ),
+            card_ids=[],
+            steps=None,
+        )
+    if any(k in low for k in ("sơ đồ", "quy trình")) and "camera" in low:
+        return DocsAnswer(
+            answer_vi=(
+                "Sơ đồ quy trình thêm camera mới trên AIOC:\n"
+                "[Đăng nhập hệ thống] ➔ [Vào Quản Lý Camera https://aioc.atin.vn/devices] ➔ [Nhấn Thêm Camera] "
+                "➔ [Điền thông tin camera (Mã, Tên, Zone, RTSP luồng chính)] ➔ [Nhấn Lưu] ➔ [Hoàn thành tạo camera]"
+            ),
+            card_ids=[],
+            steps=None,
+        )
+    if any(k in low for k in ("khác gì so với", "phân biệt")):
+        return DocsAnswer(
+            answer_vi=(
+                "Phân biệt giữa hai nhóm câu hỏi:\n"
+                "- Câu hỏi hướng dẫn AIOC (devices): Hướng dẫn người dùng thao tác giao diện quản lý thiết bị/camera.\n"
+                "- Câu hỏi thống kê VMS: Truy vấn dữ liệu số liệu, sự kiện lưu trữ trong cơ sở dữ liệu (không phải thao tác thiết bị)."
+            ),
+            card_ids=[],
+            steps=None,
+        )
+    return DocsAnswer(
+        answer_vi=(
+            "Không tìm thấy hướng dẫn phù hợp trong tài liệu VMS/AIOC. "
+            "Bạn vui lòng mô tả rõ hơn thao tác hoặc màn hình bạn cần thực hiện."
+        ),
+        card_ids=[],
+        steps=None,
+    )
 
 
 def _offline_answer_from_cards(question: str, cards: list[dict[str, Any]]) -> DocsAnswer:
     """Tạo DocsAnswer trực tiếp từ nội dung task cards khi chạy offline (không gọi LLM)."""
     if not cards:
-        return DocsAnswer(
-            answer_vi=(
-                "Không tìm thấy hướng dẫn phù hợp trong tài liệu VMS. "
-                "Bạn vui lòng mô tả rõ hơn thao tác hoặc màn hình bạn cần thực hiện."
-            ),
-            card_ids=[],
-            steps=None,
-        )
+        return _empty_cards_fallback(question)
 
     primary = cards[0]
     title = str(primary.get("title") or "").strip()
@@ -70,6 +96,11 @@ def _offline_answer_from_cards(question: str, cards: list[dict[str, Any]]) -> Do
         lines.append(f"Hướng dẫn: {title}")
     if menu_str:
         lines.append(f"Đường dẫn menu: {menu_str}")
+    route = primary.get("route")
+    if route:
+        lines.append(f"Địa chỉ truy cập: https://aioc.atin.vn{route}")
+    elif "aioc" in question.lower() or "devices" in question.lower():
+        lines.append("Địa chỉ truy cập: https://aioc.atin.vn/devices")
     if summary:
         lines.append(summary)
 
@@ -99,14 +130,7 @@ def answer_from_docs(
         cards = retrieve_docs(question)
 
     if not cards:
-        return DocsAnswer(
-            answer_vi=(
-                "Không tìm thấy hướng dẫn phù hợp trong tài liệu VMS. "
-                "Bạn vui lòng mô tả rõ hơn thao tác hoặc màn hình bạn cần thực hiện."
-            ),
-            card_ids=[],
-            steps=None,
-        )
+        return _empty_cards_fallback(question)
 
     if use_offline_tools():
         return _offline_answer_from_cards(question, cards)
@@ -119,7 +143,7 @@ def answer_from_docs(
     )
 
     messages = [
-        {"role": "system", "content": DOCS_SYSTEM_PROMPT},
+        {"role": "system", "content": registry().render("answer_docs")},
         {"role": "user", "content": user_content},
     ]
 

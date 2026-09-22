@@ -63,10 +63,10 @@ def _pool() -> _RotatingKeyPool:
 
 
 def use_offline_tools(backend_override: str | None = None) -> bool:
-    """Không key (khi backend=openai) hoặc đang pytest: agent giả 1 tool_call."""
+    """Không key (khi backend=openai) hoặc đang pytest / offline: agent giả 1 tool_call."""
     if os.environ.get("AGENT_EVAL_LIVE", "").lower() in ("1", "true", "yes"):
         return False
-    if bool(os.environ.get("PYTEST_CURRENT_TEST")):
+    if bool(os.environ.get("PYTEST_CURRENT_TEST")) or os.environ.get("AGENT_OFFLINE", "").lower() in ("1", "true", "yes"):
         return True
     backend_name = (backend_override or settings.llm_backend).strip().lower()
     backend = _BACKENDS.get(backend_name)

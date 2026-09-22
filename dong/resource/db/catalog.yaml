@@ -1,0 +1,162 @@
+plate_event:
+  id: its.plate_events
+  database: its
+  table: plate_event
+  description: Lượt xe ra/vào KCN, nhận diện biển số (ALPR), loại xe, hướng di chuyển.
+  time_column: event_time
+  columns:
+    event_time:
+      type: timestamp
+      description: Thời điểm xe qua camera
+    camera_code:
+      type: varchar
+      description: Mã camera
+    camera_name:
+      type: varchar
+      description: Tên camera vị trí cổng
+    direction:
+      type: varchar
+      description: 'Hướng di chuyển (IN: vào, OUT: ra)'
+      sample_values:
+      - IN
+      - OUT
+    vehicle_type:
+      type: varchar
+      description: Loại phương tiện (chỉ 4 loại, không có xe 4/7 chỗ)
+      sample_values:
+      - BUS
+      - CAR
+      - MOTORCYCLE
+      - TRUCK
+    manufacturer:
+      type: varchar
+      description: Hãng xe ô tô (Toyota, Honda, ...)
+    license_plate:
+      type: varchar
+      description: Biển số xe đầy đủ
+    normalized_license_plate:
+      type: varchar
+      description: Biển số xe viết liền viết hoa
+    organization_id:
+      type: int
+      description: Mã tổ chức / KCN
+zone_event:
+  id: virtual_fence.zone_events
+  database: virtual_fence
+  table: zone_event
+  description: Sự kiện xâm nhập khu vực hàng rào ảo / vùng cấm bảo vệ.
+  time_column: event_time
+  columns:
+    event_time:
+      type: timestamp
+      description: Thời điểm phát hiện xâm nhập
+    zone_name_cached:
+      type: varchar
+      description: Tên khu vực / hàng rào ảo cảnh báo
+    camera_name:
+      type: varchar
+      description: Tên camera quan sát
+    organization_id:
+      type: int
+      description: Mã tổ chức / KCN
+smf_face_events:
+  id: smart_face.events
+  database: smart_face
+  table: smf_face_events
+  description: Lượt nhận diện khuôn mặt chấm công / nhân viên ra vào cổng.
+  time_column: access_time
+  columns:
+    access_time:
+      type: timestamp
+      description: Thời điểm nhận diện khuôn mặt (không dùng event_time)
+    direction:
+      type: varchar
+      description: 'Hướng ra/vào (IN: vào, OUT: ra)'
+      sample_values:
+      - IN
+      - OUT
+    department_name:
+      type: varchar
+      description: Tên phòng ban
+    device_name:
+      type: varchar
+      description: Tên thiết bị nhận diện
+    area_name:
+      type: varchar
+      description: Khu vực quét mặt
+    user_name:
+      type: varchar
+      description: Tên nhân viên
+    organization_id:
+      type: int
+      description: Mã tổ chức / KCN
+fire_smoke_event:
+  id: firesmoke.events
+  database: firesmoke
+  table: fire_smoke_event
+  description: Sự kiện cảnh báo phát hiện cháy và khói.
+  time_column: event_time
+  columns:
+    event_time:
+      type: timestamp
+      description: Thời điểm phát hiện cháy/khói
+    entity_type:
+      type: varchar
+      description: 'Loại sự kiện (FIRE: cháy, SMOKE: khói)'
+      sample_values:
+      - FIRE
+      - SMOKE
+    alert_level:
+      type: varchar
+      description: Mức độ cảnh báo (HIGH, MEDIUM, LOW)
+      sample_values:
+      - HIGH
+      - MEDIUM
+      - LOW
+    camera_code:
+      type: varchar
+      description: Mã camera
+    camera_name:
+      type: varchar
+      description: Tên camera
+    organization_id:
+      type: int
+      description: Mã tổ chức / KCN
+anomaly_event:
+  id: anomaly.events
+  database: anomaly
+  table: anomaly_event
+  description: 'Sự kiện bất thường AI: ẩu đả, đám đông, leo trèo hàng rào, mực nước
+    ngập.'
+  time_column: event_time
+  columns:
+    event_time:
+      type: timestamp
+      description: Thời điểm xảy ra sự kiện
+    event_type:
+      type: varchar
+      description: Loại sự kiện bất thường
+      sample_values:
+      - FIGHT_DETECTION
+      - CROWD_DETECTION
+      - INTRUSION_DETECTION
+      - WATER_LEVEL_DETECTION
+    severity:
+      type: varchar
+      description: Mức độ nghiêm trọng (HIGH, MEDIUM, LOW)
+      sample_values:
+      - HIGH
+      - MEDIUM
+      - LOW
+    zone_name:
+      type: varchar
+      description: Tên khu vực
+    camera_code:
+      type: varchar
+      description: Mã camera
+    camera_name:
+      type: varchar
+      description: Tên camera
+    organization_id:
+      type: int
+      description: Mã tổ chức / KCN

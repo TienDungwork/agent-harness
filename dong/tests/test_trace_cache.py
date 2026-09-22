@@ -305,8 +305,16 @@ def test_v5_graph_trace_step_uses_node_event_input(monkeypatch):
             "result": None,
             "events": [{
                 "node_id": "respond",
-                "input": "1 rows | cols=['direction', 'so_luot']",
-                "output": "Hôm nay có 1956 lượt xe vào.",
+                "input": {
+                    "question": "Hôm nay có bao nhiêu lượt xe vào?",
+                    "columns": ["direction", "so_luot"],
+                    "rows": [{"direction": "IN", "so_luot": 1956}],
+                    "row_count": 1,
+                },
+                "output": {
+                    "answer_vi": "Hôm nay có 1956 lượt xe vào.",
+                    "answer_source": "llm_text",
+                },
                 "meta": {"llm_used": True, "answer_source": "llm_text"},
             }],
         }
@@ -323,8 +331,8 @@ def test_v5_graph_trace_step_uses_node_event_input(monkeypatch):
     assert child_kwargs.get("input") is None
 
     update_kwargs = mock_child.update.call_args[1]
-    assert update_kwargs["input"] == "1 rows | cols=['direction', 'so_luot']"
-    assert "1956" in str(update_kwargs["output"])
+    assert update_kwargs["input"]["row_count"] == 1
+    assert update_kwargs["output"]["answer_vi"] == "Hôm nay có 1956 lượt xe vào."
     assert update_kwargs["metadata"]["answer_source"] == "llm_text"
 
 
@@ -344,8 +352,8 @@ def test_v5_graph_trace_rewrite_input_not_parent_question(monkeypatch):
             "question": "Thống kê xe IN hôm nay",
             "events": [{
                 "node_id": "rewrite",
-                "input": "Hôm nay có bao nhiêu lượt xe vào?",
-                "output": '{"text":"Thống kê xe IN hôm nay"}',
+                "input": {"question": "Hôm nay có bao nhiêu lượt xe vào?"},
+                "output": {"rewritten": {"text": "Thống kê xe IN hôm nay"}},
                 "meta": {"llm_used": True},
             }],
         }
@@ -360,8 +368,8 @@ def test_v5_graph_trace_rewrite_input_not_parent_question(monkeypatch):
         })
 
     update_kwargs = mock_child.update.call_args[1]
-    assert update_kwargs["input"] == "Hôm nay có bao nhiêu lượt xe vào?"
-    assert "Thống kê xe IN hôm nay" in str(update_kwargs["output"])
+    assert update_kwargs["input"]["question"] == "Hôm nay có bao nhiêu lượt xe vào?"
+    assert update_kwargs["output"]["rewritten"]["text"] == "Thống kê xe IN hôm nay"
 
 
 def test_strip_thinking_removes_qwen_block():
@@ -380,8 +388,8 @@ def test_respond_offline_emits_stat_answer_event():
         "columns": ["direction", "so_luot"],
     })
     ev = out["events"][0]
-    assert "answer_vi" in ev["output"]
-    assert ev["meta"]["stat_answer"]["answer_vi"]
+    assert ev["output"]["answer_vi"]
+    assert ev["output"]["stat_answer"]["answer_vi"]
     assert out["result"].answer
 
 
@@ -415,6 +423,7 @@ def test_trace_answer_token_sum_via_contextvar(monkeypatch):
 
 
 from src.main import _cache, chat, ChatRequest
+from src.memory.ttl_cache import clear_ttl_cache
 
 def test_cache_miss_then_hit_skips_run_agent(monkeypatch):
     from src.agent.graph import Agent_Output
@@ -426,10 +435,10 @@ def test_cache_miss_then_hit_skips_run_agent(monkeypatch):
     mock_run_agent.return_value = dummy_out
     monkeypatch.setattr("src.main.run_agent", mock_run_agent)
     monkeypatch.setattr("src.main.settings.cache_enabled", True)
-    monkeypatch.setattr("src.main.settings.cache_ttl_s", 60)
+    monkeypatch.setattr("src.main.settings.memory_ttl_seconds", 300)
     
     # clear cache
-    _cache.clear()
+    clear_ttl_cache()
 
     # miss
     resp1 = chat(ChatRequest(question="Thống kê xe hôm nay"))
@@ -440,6 +449,7 @@ def test_cache_miss_then_hit_skips_run_agent(monkeypatch):
     resp2 = chat(ChatRequest(question="Thống kê xe hôm nay"))
     assert mock_run_agent.call_count == 1 # still 1
     assert valid_answer in resp2.answer
+    assert resp2.detail.get("cache_hit") is True
 
 def test_cache_expired_entry_misses(monkeypatch):
     from src.agent.graph import Agent_Output
@@ -451,10 +461,10 @@ def test_cache_expired_entry_misses(monkeypatch):
     mock_run_agent.return_value = dummy_out
     monkeypatch.setattr("src.main.run_agent", mock_run_agent)
     monkeypatch.setattr("src.main.settings.cache_enabled", True)
-    monkeypatch.setattr("src.main.settings.cache_ttl_s", 60)
+    monkeypatch.setattr("src.main.settings.memory_ttl_seconds", 300)
     
     # clear cache
-    _cache.clear()
+    clear_ttl_cache()
 
     # miss 1
     resp1 = chat(ChatRequest(question="Thống kê xe hôm nay"))
@@ -480,10 +490,10 @@ def test_cache_disabled(monkeypatch):
     mock_run_agent.return_value = dummy_out
     monkeypatch.setattr("src.main.run_agent", mock_run_agent)
     monkeypatch.setattr("src.main.settings.cache_enabled", False)
-    monkeypatch.setattr("src.main.settings.cache_ttl_s", 60)
+    monkeypatch.setattr("src.main.settings.memory_ttl_seconds", 300)
     
     # clear cache
-    _cache.clear()
+    clear_ttl_cache()
 
     # first call
     resp1 = chat(ChatRequest(question="Thống kê xe hôm nay"))
@@ -494,4 +504,85 @@ def test_cache_disabled(monkeypatch):
     resp2 = chat(ChatRequest(question="Thống kê xe hôm nay"))
     assert mock_run_agent.call_count == 2
     assert valid_answer in resp2.answer
+
+
+def test_every_graph_node_emits_full_input_output_and_session_user_meta():
+    """Tất cả node trong graph đều ghi nhận đầy đủ input, output và metadata session/user."""
+    from src.agent.graph import Agent_Input, run_agent_stream
+
+    user_id = "user-trace-full"
+    session_id = "session-trace-full"
+
+    # 1. Query data pipeline
+    inp = Agent_Input(question="Hôm nay có bao nhiêu lượt xe vào?", user_id=user_id)
+    events = list(run_agent_stream(inp, session_id=session_id, user_id=user_id))
+
+    done_events = [ev for ev in events if ev.get("status") == "done" and ev.get("node_id") not in ("__answer__", "error")]
+    assert len(done_events) >= 6
+
+    for ev in done_events:
+        node_id = ev.get("node_id")
+        assert ev.get("input") is not None, f"Node {node_id} thiếu input"
+        assert ev.get("output") is not None, f"Node {node_id} thiếu output"
+        out = ev.get("output")
+        assert out is not None and out != "" and out != {}, f"Node {node_id} output bị rỗng"
+        assert isinstance(ev.get("input"), dict), f"Node {node_id} input phải là dict structured"
+        assert isinstance(out, dict), f"Node {node_id} output phải là dict structured"
+
+    execute_ev = next(ev for ev in done_events if ev.get("node_id") == "execute")
+    assert "sql" in execute_ev["input"]
+    assert "rows" in execute_ev["output"]
+    assert "row_count" in execute_ev["output"]
+    assert "Trả về" not in str(execute_ev["output"])
+
+    # 2. Docs pipeline
+    inp_docs = Agent_Input(question="Làm sao để thêm camera trên AIOC?", user_id=user_id)
+    events_docs = list(run_agent_stream(inp_docs, session_id=session_id, user_id=user_id))
+    docs_done = [ev for ev in events_docs if ev.get("status") == "done" and ev.get("node_id") in ("retrieve_docs", "answer_from_docs")]
+    assert len(docs_done) == 2
+    for ev in docs_done:
+        assert ev.get("input")
+        assert ev.get("output")
+
+
+def test_trace_observation_receives_session_and_user_metadata(monkeypatch):
+    """Langfuse start_observation nhận đầy đủ session_id và user_id từ API."""
+    monkeypatch.setattr("src.monitoring.tracing.settings.monitoring_enabled", True)
+
+    mock_langfuse = MagicMock()
+    mock_parent_span = MagicMock()
+    mock_child_span = MagicMock()
+
+    mock_langfuse.start_observation.return_value = mock_parent_span
+    mock_parent_span.start_observation.return_value = mock_child_span
+
+    with patch("src.monitoring.tracing._get_langfuse", return_value=mock_langfuse):
+        from src.main import app
+        from fastapi.testclient import TestClient
+
+        client = TestClient(app)
+        resp = client.post(
+            "/api/chat",
+            json={
+                "question": "Hôm nay có bao nhiêu xe vào?",
+                "session_id": "sess-langfuse-test",
+                "user_id": "user-langfuse-test",
+            },
+        )
+        assert resp.status_code == 200
+
+    # Kiểm tra start_observation của root span nhận session_id và user_id
+    assert mock_langfuse.start_observation.called
+    call_kwargs = mock_langfuse.start_observation.call_args[1]
+    assert call_kwargs.get("session_id") == "sess-langfuse-test" or call_kwargs.get("metadata", {}).get("session_id") == "sess-langfuse-test"
+    assert call_kwargs.get("user_id") == "user-langfuse-test" or call_kwargs.get("metadata", {}).get("user_id") == "user-langfuse-test"
+
+    # Kiểm tra child spans cũng nhận session_id và user_id
+    assert mock_parent_span.start_observation.called
+    child_kwargs = mock_parent_span.start_observation.call_args[1]
+    meta = child_kwargs.get("metadata", {})
+    assert meta.get("user_id") == "user-langfuse-test"
+    assert meta.get("session_id") == "sess-langfuse-test"
+
+
 

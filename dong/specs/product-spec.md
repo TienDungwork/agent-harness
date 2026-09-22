@@ -1,115 +1,75 @@
-# Product Spec — agent dong v5 (MVP)
+# Product Spec — agent dong v6 (MVP)
 
-**Trạng thái:** Phase 1–**7** (demo setup) xong; Đã đạt trạng thái demo-ready. Kế thừa v4 (guardrail, Langfuse, Docker).
+**Trạng thái:** v6 in progress — **Phase 1 done** (resource/ layout). Kế thừa v5 (QueryPlan, Docker, golden-30).
 
 ## App goal
 
-Trợ lý tiếng Việt cho VMS KCN Hưng Phú — **một codebase `src/`**, triển khai **chỉ qua Docker Compose**.
+Trợ lý tiếng Việt cho vận hành VMS KCN Hưng Phú: hỏi số liệu (read-only), hướng dẫn VMS/AIOC, và xem biểu đồ — code ngắn, rõ, chạy production bằng Docker.
 
-1. Trả **số liệu** từ DB read-only — truy vấn **linh hoạt theo schema**, không gói cứng từng tool một.
-2. Trả **hướng dẫn VMS** theo cách **duy** (YAML card retrieval + trả lời bám nguồn).
-3. **Vẽ biểu đồ** khi user hỏi số liệu (PNG base64 sau truy vấn).
-4. UI: **live graph** SSE — node lần lượt, hover/click → input/output.
-5. (Tuỳ chọn) Langfuse trace.
-
-**Phong cách code:** học `llm-engineer-demo` — module mỏng, config một chỗ, **structured output bắt buộc** mọi lần gọi LLM.
+MVP v6 thêm: memory (short / long / TTL 5 phút), sidebar session, prompt LLMOps trong `resource/`, multi-agent để cải thiện golden-30, và trace đầy đủ input/output mỗi node.
 
 ## Target users
 
-- Vận hành KCN: hỏi tiếng Việt, không viết SQL.
-- Reviewer: graph + Langfuse + `eval/results/golden-30.md`.
+| Ai | Họ làm gì với app |
+|----|-------------------|
+| Vận hành KCN | Hỏi tiếng Việt; đổi session; xem số liệu / hướng dẫn / biểu đồ — không viết SQL |
+| Dev / reviewer | Chạy Docker, xem live graph + Langfuse, chạy eval → `eval/results/golden-30.md` |
 
 ## Core user flow
 
-1. User gửi câu tiếng Việt qua UI (`POST /api/agent/stream`).
-2. **Guardrail** injection / out-of-scope.
-3. **`rewrite`** — LLM chuẩn hóa câu hỏi (structured) để tăng độ chính xác truy vấn.
-4. **`classify_intent`** — structured → `query_data` | `how_to` | `troubleshoot` | `concept` | `out_of_scope`.
-5. Nhánh:
-   - **Số liệu:** inject **DB schema excerpt** vào prompt → LLM trả **`QueryPlan`** (structured) → builder SQL parameterized + validator read-only → execute → optional **chart** → **`respond`** (structured summary + câu trả lời VI).
-   - **Docs:** retrieve YAML cards (duy) → **`answer_from_docs`** (structured).
-   - **Khác:** từ chối một câu.
-6. SSE emit từng node; UI graph + (nếu có) hiển thị chart.
+1. Mở UI → chọn hoặc tạo **session** (cột trái).
+2. Gõ câu hỏi tiếng Việt (tuỳ chọn: gợi ý domain trong khung chat).
+3. Backend: recall memory → guardrail → rewrite → classify → route.
+4. Nhánh xử lý:
+   - **Số liệu:** QueryPlan → SQL read-only → (tuỳ câu) chart → trả lời
+   - **Hướng dẫn:** lấy card từ `resource/docs/` → trả lời
+   - **Khó / đa domain:** orchestrator multi-agent ngắn
+5. Lưu short-term; có thể store long-term; TTL cache 5 phút nếu trùng câu.
+6. UI stream câu trả lời + biểu đồ; live graph / Langfuse hiện **full I/O** từng node.
 
-## Structured output (bắt buộc)
+## Features in scope
 
-Mọi lần gọi LLM phải trả **Pydantic schema** (OpenAI-compatible `response_format` / parse API). Không parse JSON thủ công từ free text (trừ fallback no-op khi monitoring tắt).
+- Code sạch, production-only; file tĩnh gom vào `resource/` (prompts, docs, db catalog).
+- Prompt management kiểu LLMOps: YAML versioned + `production.txt`; nội dung ngắn, rõ.
+- Docker là đường chạy chính; không dùng venv trong quick start.
+- Đổi LLM bằng `LLM_BACKEND`: `self_hosted` (gateway 196) ↔ `openai` (keys pattern `llm-engineer-demo/.env`).
+- Memory: short-term theo session, long-term theo `user_id`, TTL response cache **300 giây**.
+- UI: cột trái = danh sách session; domain chips nằm trong chat.
+- Biểu đồ theo câu hỏi: **bar**, **pie** (MVP; line nếu dễ).
+- Trace: mỗi graph node ghi đủ input và output (Langfuse + SSE hover).
+- Multi-agent MVP để pass các case fail golden-30 (008–011, 015, 017, 023, 024).
+- Eval live trên LLM 196 + judge → cập nhật `eval/results/golden-30.md` (target ≥28/30; baseline 22/30).
 
-| Bước | Schema (ví dụ) |
-|------|----------------|
-| Rewrite | `RewrittenQuestion { text, filters[], time_range?, intent_hint? }` |
-| Classify | `IntentResult { intent, reason }` |
-| Query plan | `QueryPlan { tables[], selects[], filters[], group_by[], order_by?, limit? }` |
-| Docs answer | `DocsAnswer { answer_vi, card_ids[], steps[]? }` |
-| Respond số liệu | `StatAnswer { answer_vi, highlights[], chart_requested: bool }` |
-| Chart (nếu LLM chọn kiểu) | `ChartSpec { chart_type, x_column, y_column, title_vi }` |
+## Features out of scope
 
-Judge eval: structured rubric 1–5 (giống demo).
-
-## DB — linh hoạt nhưng an toàn
-
-- **Không** giữ 9 tool cố định làm đường chính v5.
-- **Có:** catalog dataset + **`describe_table`** (columns, sample values) → đưa vào prompt.
-- LLM chỉ sinh **`QueryPlan`** (structured), không sinh SQL thô trực tiếp cho user.
-- **`query_builder`** Python: plan → SQL `%s` parameterized; whitelist table/column từ schema excerpt.
-- **`validate_sql`:** SELECT-only, chặn DML/DDL (port logic duy, đơn giản hóa).
-- Postgres read-only 5 DB + ClickHouse tuỳ chọn (giữ v4).
-- Repair loop tối đa `SQL_REPAIR_MAX` (mặc định 1) nếu validate/execute lỗi.
-
-## Docs — theo duy
-
-- Nguồn: YAML cards `VMS_doc` (index + card `how_to|troubleshoot|concept`).
-- Loader + keyword retrieval (port tối thiểu từ `agent-harness/duy`).
-- Không grep markdown thô `docs/vms/*.md` làm đường chính.
-
-## Chart
-
-- Sau execute: nếu user hỏi biểu đồ / `StatAnswer.chart_requested` → node **`render_chart`**.
-- Matplotlib Agg → PNG base64; SSE event `{ node_id: "render_chart", chart_png_base64, chart_meta }`.
-- FE hiển thị `<img>` dưới câu trả lời (MVP).
-
-## Graph agent (LangGraph)
-
-```
-START → rewrite → classify → [route]
-  query_data → retrieve_schema → plan_query → validate → execute → [render_chart] → respond → END
-  how_to|troubleshoot|concept → retrieve_docs → answer_from_docs → END
-  out_of_scope → END
-```
-
-ReAct loop v4 **thay thế** bằng pipeline trên (đơn giản hơn, dễ trace từng node).
-
-## Deploy & repo
-
-- **Chỉ Docker Compose** cho deploy/demo (`docker-compose.yml` + `langfuse/docker-compose.yml`).
-- README không hướng dẫn `.venv` là đường chính; dev local uvicorn **tuỳ chọn** cho contributor.
-- Dọn code thừa: `ai/`, script one-off không dùng, dead import — **đã xóa ở Phase 7**.
-
-## Features in scope (v5 MVP)
-
-- Structured output layer (`src/llm/structured.py` hoặc tương đương).
-- Node **`rewrite`**.
-- Schema-aware **QueryPlan** + builder + validator.
-- Docs YAML (duy).
-- Chart PNG.
-- Giữ: guardrail, cache TTL, Langfuse, SSE graph UI, eval golden-30.
-- `tests/` **< 10 file**.
-
-## Out of scope (v5)
-
-- Text-to-SQL tự do không qua QueryPlan/validator.
-- Web search, multi-agent, MCP, ghi DB.
-- Graph editor kéo-thả, semantic cache.
-- ApexCharts phức tạp (chỉ PNG MVP).
+- Venv / local pip là đường chính.
+- Ghi DB production, web search, MCP, swarm agent phức tạp.
+- Sync prompt lên Langfuse Cloud.
+- Backend Ollama.
+- Graph editor / dashboard analytics ngoài chat.
 
 ## Acceptance criteria
 
-1. `docker compose up --build -d` (+ Langfuse tuỳ chọn) → UI + API healthy.
-2. Mọi LLM call trong graph dùng structured schema; pytest mock schema parse.
-3. Câu số liệu: schema trong prompt; thêm filter (vd. `vehicle_type`) → query phản ánh đúng cột.
-4. Câu how-to: trả lời bám card YAML; không gọi DB.
-5. Câu “vẽ biểu đồ …” → PNG hiển thị trên UI.
-6. Node `rewrite` xuất hiện trên graph SSE.
-7. Read-only DB enforced; `DELETE` bị chặn.
-8. Langfuse trace per request (stream path).
-9. `pytest -q` xanh offline; golden-30 chạy live ghi `eval/results/golden-30.md`.
+1. `docker compose up --build -d` → healthy; không bắt buộc `.venv`.
+2. `LLM_BACKEND=self_hosted` + gateway 196 → `/api/llm/ping` OK.
+3. `LLM_BACKEND=openai` + keys theo pattern `llm-engineer-demo` → smoke OK.
+4. Prompt chỉ load từ `resource/prompts/`; đổi `production.txt` → đổi hành vi, không sửa code.
+5. Langfuse / SSE: hover node thấy **full** input và output.
+6. Sidebar: tạo / chuyển session; short-term nhớ trong cùng session.
+7. Long-term: nói 1 fact → session mới cùng `user_id` vẫn recall (smoke).
+8. TTL: cùng câu trong 5 phút → `cache_hit` (hoặc trả lời identical nhanh hơn).
+9. Chart **bar** và **pie** render đúng trên UI.
+10. Golden-30 live trên 196: **≥28/30 pass**; file `eval/results/golden-30.md` cập nhật.
+11. `pytest -q` xanh offline.
+
+---
+
+## Ghi chú MVP (không mở rộng scope)
+
+| Chủ đề | Quyết định ngắn |
+|--------|-----------------|
+| Layout UI | `[Sessions] \| [Chat] \| [Live graph]` |
+| Memory | Short = checkpointer theo `session_id`; long = vector/in-memory theo `user_id`; TTL = hash(question+route), 300s |
+| Prompt bắt buộc | rewrite, classify, plan_query, answer_docs, respond_stat, plan_chart, orchestrator, memory_extract, judge_eval |
+| Chart | Planner chọn `chart_type`; FE Chart.js từ JSON spec |
+| Multi-agent | Orchestrator 1–2 bước specialist → responder; không swarm |

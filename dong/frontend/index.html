@@ -27,17 +27,8 @@
         </button>
       </div>
 
-      <div class="sidebar-section-title">8 Domain Sự Kiện VMS</div>
-      <div class="quick-domains">
-        <div class="domain-tag" data-query="Hôm nay có bao nhiêu lượt xe vào?">🚗 Phương tiện (ITS)</div>
-        <div class="domain-tag" data-query="Khung thời gian nào xảy ra xâm nhập khu vực nhiều nhất hôm nay?">🚧 Vùng cấm (Fence)</div>
-        <div class="domain-tag" data-query="Hôm nay có bao nhiêu lượt nhận diện khuôn mặt?">👤 Khuôn mặt (Face)</div>
-        <div class="domain-tag" data-query="Hôm nay có vụ ẩu đả nào không?">⚠️ Ẩu đả (Fight)</div>
-        <div class="domain-tag" data-query="Hôm nay có cảnh báo đám đông ở khu vực nào không?">👥 Đám đông (Crowd)</div>
-        <div class="domain-tag" data-query="Hôm nay có phát hiện leo trèo không?">🧗 Leo trèo (Intrusion)</div>
-        <div class="domain-tag" data-query="Hôm nay có cảnh báo cháy hoặc khói không?">🔥 Cháy khói (Fire)</div>
-        <div class="domain-tag" data-query="Mực nước hôm nay có vượt ngưỡng cảnh báo không?">💧 Mực nước (Water)</div>
-      </div>
+      <div class="sidebar-section-title">Phiên chat</div>
+      <div class="session-list" id="session-list"></div>
 
       <div class="sidebar-footer">
         <div class="model-pill" id="btn-open-settings" title="Nhấn để đổi cấu hình Model">
@@ -118,6 +109,16 @@
 
       <!-- Input Area -->
       <div class="input-container">
+        <div class="domain-chips" id="domain-chips">
+          <button type="button" class="domain-chip" data-query="Hôm nay có bao nhiêu lượt xe vào?">🚗 Phương tiện (ITS)</button>
+          <button type="button" class="domain-chip" data-query="Khung thời gian nào xảy ra xâm nhập khu vực nhiều nhất hôm nay?">🚧 Vùng cấm (Fence)</button>
+          <button type="button" class="domain-chip" data-query="Hôm nay có bao nhiêu lượt nhận diện khuôn mặt?">👤 Khuôn mặt (Face)</button>
+          <button type="button" class="domain-chip" data-query="Hôm nay có vụ ẩu đả nào không?">⚠️ Ẩu đả (Fight)</button>
+          <button type="button" class="domain-chip" data-query="Hôm nay có cảnh báo đám đông ở khu vực nào không?">👥 Đám đông (Crowd)</button>
+          <button type="button" class="domain-chip" data-query="Hôm nay có phát hiện leo trèo không?">🧗 Leo trèo (Intrusion)</button>
+          <button type="button" class="domain-chip" data-query="Hôm nay có cảnh báo cháy hoặc khói không?">🔥 Cháy khói (Fire)</button>
+          <button type="button" class="domain-chip" data-query="Mực nước hôm nay có vượt ngưỡng cảnh báo không?">💧 Mực nước (Water)</button>
+        </div>
         <div class="input-wrapper">
           <textarea
             id="question-input"
@@ -207,6 +208,7 @@
     </div>
   </div>
 
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
   <script src="app.js"></script>
 </body>
 </html>
