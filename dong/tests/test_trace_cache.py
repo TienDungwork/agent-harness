@@ -288,6 +288,103 @@ def test_trace_stream_with_langfuse(monkeypatch):
     mock_langfuse.flush.assert_called_once()
 
 
+def test_v5_graph_trace_step_uses_node_event_input(monkeypatch):
+    """Langfuse child span input/output lấy từ event node, không lặp câu hỏi gốc."""
+    monkeypatch.setattr("src.monitoring.tracing.settings.monitoring_enabled", True)
+
+    mock_langfuse = MagicMock()
+    mock_parent = MagicMock()
+    mock_child = MagicMock()
+    mock_langfuse.start_observation.return_value = mock_parent
+    mock_parent.start_observation.return_value = mock_child
+
+    captured: list[dict] = []
+
+    def fake_respond(_state):
+        return {
+            "result": None,
+            "events": [{
+                "node_id": "respond",
+                "input": "1 rows | cols=['direction', 'so_luot']",
+                "output": "Hôm nay có 1956 lượt xe vào.",
+                "meta": {"llm_used": True, "answer_source": "llm_text"},
+            }],
+        }
+
+    with patch("src.monitoring.tracing._get_langfuse", return_value=mock_langfuse):
+        from src.agent.graph import _wrap_node
+
+        wrapped = _wrap_node("respond", fake_respond)
+        wrapped({"question": "Hôm nay có bao nhiêu lượt xe vào?", "_trace_span": mock_parent})
+
+    mock_parent.start_observation.assert_called_once()
+    child_kwargs = mock_parent.start_observation.call_args[1]
+    assert child_kwargs["name"] == "respond"
+    assert child_kwargs.get("input") is None
+
+    update_kwargs = mock_child.update.call_args[1]
+    assert update_kwargs["input"] == "1 rows | cols=['direction', 'so_luot']"
+    assert "1956" in str(update_kwargs["output"])
+    assert update_kwargs["metadata"]["answer_source"] == "llm_text"
+
+
+def test_v5_graph_trace_rewrite_input_not_parent_question(monkeypatch):
+    """Span rewrite phải ghi input câu gốc, không lặp question đã rewrite trong state."""
+    monkeypatch.setattr("src.monitoring.tracing.settings.monitoring_enabled", True)
+
+    mock_parent = MagicMock()
+    mock_child = MagicMock()
+    mock_langfuse = MagicMock()
+    mock_langfuse.start_observation.return_value = mock_parent
+    mock_parent.start_observation.return_value = mock_child
+
+    def fake_rewrite(state):
+        return {
+            "rewritten": None,
+            "question": "Thống kê xe IN hôm nay",
+            "events": [{
+                "node_id": "rewrite",
+                "input": "Hôm nay có bao nhiêu lượt xe vào?",
+                "output": '{"text":"Thống kê xe IN hôm nay"}',
+                "meta": {"llm_used": True},
+            }],
+        }
+
+    with patch("src.monitoring.tracing._get_langfuse", return_value=mock_langfuse):
+        from src.agent.graph import _wrap_node
+
+        wrapped = _wrap_node("rewrite", fake_rewrite)
+        wrapped({
+            "question": "Hôm nay có bao nhiêu lượt xe vào?",
+            "_trace_span": mock_parent,
+        })
+
+    update_kwargs = mock_child.update.call_args[1]
+    assert update_kwargs["input"] == "Hôm nay có bao nhiêu lượt xe vào?"
+    assert "Thống kê xe IN hôm nay" in str(update_kwargs["output"])
+
+
+def test_strip_thinking_removes_qwen_block():
+    from src.agent.graph import _strip_thinking
+
+    raw = "\x3cthink\x3einternal\x3c/think\x3e\nHôm nay có 10 xe vào."
+    assert _strip_thinking(raw) == "Hôm nay có 10 xe vào."
+
+
+def test_respond_offline_emits_stat_answer_event():
+    from src.agent.graph import respond_node
+
+    out = respond_node({
+        "question": "Hôm nay có bao nhiêu lượt xe vào?",
+        "rows": [{"direction": "IN", "so_luot": 10}],
+        "columns": ["direction", "so_luot"],
+    })
+    ev = out["events"][0]
+    assert "answer_vi" in ev["output"]
+    assert ev["meta"]["stat_answer"]["answer_vi"]
+    assert out["result"].answer
+
+
 def test_backend_monitoring_reexport():
     assert be_extract_token_usage is extract_token_usage
     assert be_trace_answer is trace_answer

@@ -1,3 +1,39 @@
+## 2026-09-22 (Review — Langfuse trace + respond vs product-spec / test-plan)
+
+### Pass
+- **Langfuse nested span**: input/output từ `events[-1]`, không lặp câu hỏi gốc mọi node (`test_v5_graph_trace_step_uses_node_event_input`, `test_v5_graph_trace_rewrite_input_not_parent_question`).
+- **Stream path**: `parent_span` + SSE node I/O (`test_api_agent_stream_passes_trace_parent_span`).
+- **Rewrite / classify**: online gọi LLM structured; trace meta `llm_used`.
+- **Respond**: ~3–5s (không còn timeout 66s); trace meta `answer_source`, `stat_answer`; output event = `StatAnswer` JSON.
+- **pytest**: 197 passed.
+
+### Fail → fixed trong review
+- `_strip_thinking` regex sai (backtick rỗng) → dùng `\x3cthink\x3e...\x3c/think\x3e`.
+- `respond` thiếu `StatAnswer` (product-spec §Structured output) → bọc `StatAnswer` sau LLM/template.
+- Error span ghi `input=node_id` → `input=""`.
+
+### Missing (ngoài scope feature — không sửa)
+- Live Langfuse manual: hover I/O trên UI `:3001` (test-plan live).
+- `respond` LLM polish qua `invoke_text` (không `invoke_structured` parse API) — chủ đích tránh timeout Qwen3/vLLM; node output vẫn `StatAnswer`.
+
+## 2026-09-22 (Langfuse + respond — input từng node, bỏ timeout 60s)
+
+### Root cause
+- `_wrap_node` ghi Langfuse `input=state.question` cho mọi node → trace lặp câu hỏi gốc.
+- `classify` bỏ qua LLM khi `rewrite.intent_hint` có sẵn → node gần như tức thì.
+- `respond` dùng `invoke_structured(StatAnswer)` — Qwen3/vLLM timeout ~66s (3× retry) rồi fallback template; user không thấy `answer_source` trên trace.
+
+### Changed
+- **`src/agent/graph.py`**: Langfuse input/output/meta lấy từ `events[-1]`; `classify` luôn gọi `classify_intent`; `respond` dùng `invoke_text` + `_strip_thinking`, meta `answer_source`/`llm_used`.
+- **`src/monitoring/tracing.py`**: `trace_step` cập nhật `input` + `metadata` khi kết thúc span.
+- **`tests/test_trace_cache.py`**: `test_v5_graph_trace_step_uses_node_event_input`.
+
+### Verify
+```bash
+pytest tests/test_trace_cache.py tests/test_intent.py -q
+# Live: respond ~5–10s, Langfuse respond input = "N rows | cols=...", metadata.answer_source=llm_text
+```
+
 ## 2026-09-22 (LLM — gỡ backend Ollama, chỉ openai + self_hosted/vLLM)
 
 ### Changed

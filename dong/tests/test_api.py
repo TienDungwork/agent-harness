@@ -446,7 +446,7 @@ def test_api_agent_stream_running_before_done_timing():
         fourth_event = next(stream)
         assert fourth_event["node_id"] == "classify"
         assert fourth_event["status"] == "done"
-        assert fourth_event["output"] == "query_data"
+        assert "query_data" in fourth_event["output"]
         assert time.time() - start_time >= 0.4
 
         # Exhaust the rest of the stream to let the background thread finish

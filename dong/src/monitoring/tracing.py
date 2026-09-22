@@ -242,6 +242,7 @@ def trace_step(parent_span: Any, name: str, input: Any = None, metadata: dict[st
                 out = box.get("output")
                 if out is None:
                     out = {"status": "completed"}
+                trace_in = box.get("input", input)
 
                 model_name = box.get("model_name") or meta.get("model_name")
                 temperature = box.get("temperature", meta.get("temperature"))
@@ -251,6 +252,8 @@ def trace_step(parent_span: Any, name: str, input: Any = None, metadata: dict[st
                     meta["model_name"] = model_name
                 if temperature is not None:
                     meta["temperature"] = temperature
+                if box.get("metadata"):
+                    meta.update(box["metadata"])
 
                 usage = box.get("usage") or {}
                 p_tokens = int(usage.get("prompt_tokens", meta.get("prompt_tokens", 0)))
@@ -263,6 +266,7 @@ def trace_step(parent_span: Any, name: str, input: Any = None, metadata: dict[st
                     meta["total_tokens"] = tot_tokens
 
                 update_kwargs: dict[str, Any] = {
+                    "input": trace_in,
                     "output": out,
                     "metadata": meta,
                 }

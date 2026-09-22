@@ -1,23 +1,4 @@
-<!DOCTYPE html>
-<html lang="vi">
-<head>
-  <meta charset="UTF-8">
-  <title>Sơ đồ Đồ thị ReAct Agent — agent_ATIN</title>
-  <script src="https://cdn.jsdelivr.net/npm/mermaid/dist/mermaid.min.js"></script>
-  <style>
-    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 100vh; margin: 0; background: #fbfbf9; padding: 1rem; }
-    .card { background: #ffffff; padding: 2rem; border-radius: 12px; border: 1px solid #e5e4dc; box-shadow: 0 4px 12px rgba(0,0,0,0.06); max-width: 900px; width: 100%; text-align: center; }
-    h2 { color: #1c1b18; margin-bottom: 0.5rem; }
-    p { color: #636159; font-size: 0.95rem; margin-bottom: 1.5rem; }
-    code { background: #f0eee6; padding: 0.2rem 0.4rem; border-radius: 4px; font-family: monospace; }
-    .mermaid { margin: 1rem 0; display: flex; justify-content: center; }
-  </style>
-</head>
-<body>
-  <div class="card">
-    <h2>Sơ đồ Đồ thị ReAct Agent (LangGraph)</h2>
-    <p>Kiến trúc ReAct Agent: <code>START → seed → agent ⇄ tools → pack → END</code></p>
-    <div class="mermaid">
+<!DOCTYPE html><html lang="vi"><head><meta charset="UTF-8"><title>Agent graph v5</title><script src="https://cdn.jsdelivr.net/npm/mermaid/dist/mermaid.min.js"></script></head><body><div class="mermaid">
 ---
 config:
   flowchart:
@@ -25,23 +6,35 @@ config:
 ---
 graph TD;
 	__start__([<p>__start__</p>]):::first
-	seed(seed)
-	agent(agent)
-	tools(tools)
-	pack(pack)
+	rewrite(rewrite)
+	classify(classify)
+	retrieve_schema(retrieve_schema)
+	plan_query(plan_query)
+	validate(validate)
+	execute(execute)
+	render_chart(render_chart)
+	respond(respond)
+	retrieve_docs(retrieve_docs)
+	answer_from_docs(answer_from_docs)
+	out_of_scope(out_of_scope)
 	__end__([<p>__end__</p>]):::last
-	__start__ --> seed;
-	agent -.-> pack;
-	agent -.-> tools;
-	seed --> agent;
-	tools --> agent;
-	pack --> __end__;
+	__start__ --> rewrite;
+	classify -. &nbsp;out&nbsp; .-> out_of_scope;
+	classify -. &nbsp;docs&nbsp; .-> retrieve_docs;
+	classify -. &nbsp;query_data&nbsp; .-> retrieve_schema;
+	execute -.-> render_chart;
+	execute -.-> respond;
+	plan_query --> validate;
+	render_chart --> respond;
+	retrieve_docs --> answer_from_docs;
+	retrieve_schema --> plan_query;
+	rewrite --> classify;
+	validate --> execute;
+	answer_from_docs --> __end__;
+	out_of_scope --> __end__;
+	respond --> __end__;
 	classDef default fill:#f2f0ff,line-height:1.2
 	classDef first fill-opacity:0
 	classDef last fill:#bfb6fc
 
-    </div>
-  </div>
-  <script>mermaid.initialize({startOnLoad:true, theme: 'neutral'});</script>
-</body>
-</html>
+</div><script>mermaid.initialize({{startOnLoad:true}});</script></body></html>

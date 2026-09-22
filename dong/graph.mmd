@@ -18,20 +18,20 @@ graph TD;
 	out_of_scope(out_of_scope)
 	__end__([<p>__end__</p>]):::last
 	__start__ --> rewrite;
-	rewrite --> classify;
-	classify -.-> retrieve_schema;
-	classify -.-> retrieve_docs;
-	classify -.-> out_of_scope;
-	retrieve_schema --> plan_query;
-	plan_query --> validate;
-	validate --> execute;
+	classify -. &nbsp;out&nbsp; .-> out_of_scope;
+	classify -. &nbsp;docs&nbsp; .-> retrieve_docs;
+	classify -. &nbsp;query_data&nbsp; .-> retrieve_schema;
 	execute -.-> render_chart;
 	execute -.-> respond;
+	plan_query --> validate;
 	render_chart --> respond;
-	respond --> __end__;
 	retrieve_docs --> answer_from_docs;
+	retrieve_schema --> plan_query;
+	rewrite --> classify;
+	validate --> execute;
 	answer_from_docs --> __end__;
 	out_of_scope --> __end__;
+	respond --> __end__;
 	classDef default fill:#f2f0ff,line-height:1.2
 	classDef first fill-opacity:0
 	classDef last fill:#bfb6fc
