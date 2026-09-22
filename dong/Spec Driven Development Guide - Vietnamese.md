@@ -341,6 +341,7 @@ Include:
 - backend run command if applicable
 - local URLs
 - troubleshooting notes
+- docker deploy
 
 Do not change app logic.
 ```

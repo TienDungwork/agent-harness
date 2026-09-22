@@ -29,10 +29,10 @@
 # must_include ngắn, tránh expected cứng.
 
 dataset: agent_stat
-version: "2.1"
+version: "2.2"
 created: 2026-09-17
 updated: 2026-09-21
-changelog: "v2.1: giữ 30 case + tỉ lệ 18/6/3/3. Thêm AIOC howto (4 lookup) + vẽ sơ đồ (3 lookup) + 2 comparison liên quan; giảm lookup VMS trùng (PLATE 4→3, FACE/FIGHT/CROWD/FIRE/WATER/INTRUSION mỗi loại còn 1). Giữ ZONE 2 (phân biệt leo trèo), comparison v1 #019–#021 và #022 ẩu đả vs đám đông. out_of_scope/injection giữ 3+3."
+changelog: "v2.2: Cập nhật assertions cho v5 (QueryPlan-era), dùng sql_builder/query_data/docs thay cho các ReAct tools cũ."
 
 cases:
   # ── LOOKUP (18 case) ──────────────────────────────────────────────────
@@ -42,21 +42,21 @@ cases:
     question: "Hôm nay có bao nhiêu lượt xe vào?"
     expected: "Số lượt xe vào hôm nay, dùng tool count_vehicle_flow, direction=IN."
     slice: { type: lookup, difficulty: easy, multihop: false, out_of_scope: false }
-    must_include_tool: ["count_vehicle_flow"]
+    must_include_tool: ["sql_builder"]
     must_include_columns_any: ["direction", "so_luot"]
 
   - id: agent_stat_v2_002
     question: "Truy vết lịch sử di chuyển của biển số 15K40139."
     expected: "Liệt kê các sự kiện thật của biển số 15K40139 (có dữ liệu thật trong its.plate_event)."
     slice: { type: lookup, difficulty: medium, multihop: false, out_of_scope: false }
-    must_include_tool: ["trace_plate"]
+    must_include_tool: ["sql_builder"]
     must_include: ["15K40139"]
 
   - id: agent_stat_v2_003
     question: "Số liệu ô tô theo hãng xe hôm nay như thế nào?"
     expected: "Liệt kê hãng xe kèm số lượt, dùng count_vehicle_flow(vehicle_type=CAR, group_by=manufacturer)."
     slice: { type: lookup, difficulty: medium, multihop: false, out_of_scope: false }
-    must_include_tool: ["count_vehicle_flow"]
+    must_include_tool: ["sql_builder"]
     must_include_columns_any: ["manufacturer"]
 
   # -- ZONE (2) --
@@ -64,53 +64,53 @@ cases:
     question: "Khung giờ nào có nhiều lượt xâm nhập khu vực nhất hôm nay?"
     expected: "Dùng zone_intrusion_by_hour — 'vùng cấm' (virtual_fence.zone_event), KHÁC 'leo trèo' (anomaly INTRUSION_DETECTION)."
     slice: { type: lookup, difficulty: easy, multihop: false, out_of_scope: false }
-    must_include_tool: ["zone_intrusion_by_hour"]
+    must_include_tool: ["sql_builder"]
 
   - id: agent_stat_v2_005
     question: "Danh sách khu vực và camera hợp lệ hiện có là gì?"
     expected: "Liệt kê theo module qua list_khu_vuc (PLATE/ZONE/FACE/FIRE/ANOMALY)."
     slice: { type: lookup, difficulty: easy, multihop: false, out_of_scope: false }
-    must_include_tool: ["list_khu_vuc"]
+    must_include_tool: ["sql_builder"]
 
   # -- FACE / FIGHT / CROWD / INTRUSION / FIRE / WATER (1 mỗi domain) --
   - id: agent_stat_v2_006
     question: "Trong khoảng từ 07/09/2026 đến 14/09/2026 có bao nhiêu lượt nhận diện khuôn mặt?"
     expected: "Có dữ liệu thật trong khoảng này; không bịa OUT nếu không có."
     slice: { type: lookup, difficulty: medium, multihop: false, out_of_scope: false }
-    must_include_tool: ["count_face_events"]
+    must_include_tool: ["sql_builder"]
     must_not_include: ["OUT"]
 
   - id: agent_stat_v2_007
     question: "Trong khoảng từ 04/09/2026 đến 16/09/2026 có bao nhiêu vụ ẩu đả?"
     expected: "count_anomaly_events(event_type=FIGHT_DETECTION), org 106."
     slice: { type: lookup, difficulty: medium, multihop: false, out_of_scope: false }
-    must_include_tool: ["count_anomaly_events"]
+    must_include_tool: ["sql_builder"]
 
   - id: agent_stat_v2_008
     question: "Trong khoảng từ 04/09/2026 đến 16/09/2026 có bao nhiêu lượt phát hiện đám đông?"
     expected: "CROWD_DETECTION=0 cho org 106 (invariant) — câu trả lời có số 0, không bịa."
     slice: { type: lookup, difficulty: hard, multihop: false, out_of_scope: false }
-    must_include_tool: ["count_anomaly_events"]
+    must_include_tool: ["sql_builder"]
     must_include: ["0"]
 
   - id: agent_stat_v2_009
     question: "Hôm nay có phát hiện leo trèo không?"
     expected: "count_anomaly_events(INTRUSION_DETECTION), KHÔNG dùng zone_intrusion_by_hour."
     slice: { type: lookup, difficulty: hard, multihop: false, out_of_scope: false }
-    must_include_tool: ["count_anomaly_events"]
-    must_not_include_tool: ["zone_intrusion_by_hour"]
+    must_include_tool: ["sql_builder"]
+    must_not_include_tool: ["docs"]
 
   - id: agent_stat_v2_010
     question: "Hôm nay có cảnh báo cháy hoặc khói không?"
     expected: "firesmoke thường rỗng — trả lời trung thực (thường có 0), không bịa cảnh báo."
     slice: { type: lookup, difficulty: medium, multihop: false, out_of_scope: false }
-    must_include_tool: ["count_fire_smoke_events"]
+    must_include_tool: ["sql_builder"]
 
   - id: agent_stat_v2_011
     question: "Hôm nay mực nước có vượt ngưỡng cảnh báo không?"
     expected: "WATER_LEVEL_DETECTION — thường CÓ dữ liệu sống; dùng count_anomaly_events."
     slice: { type: lookup, difficulty: hard, multihop: false, out_of_scope: false }
-    must_include_tool: ["count_anomaly_events"]
+    must_include_tool: ["sql_builder"]
 
   # -- AIOC howto (4) — https://aioc.atin.vn/devices — chưa có tool riêng --
   - id: agent_stat_v2_012
@@ -118,28 +118,28 @@ cases:
     expected: "Hướng dẫn đăng nhập (tài khoản/mật khẩu) rồi mở /devices; không gọi tool thống kê VMS."
     slice: { type: lookup, difficulty: easy, multihop: false, out_of_scope: false }
     must_include: ["aioc.atin.vn"]
-    must_not_include_tool: ["count_vehicle_flow", "trace_plate", "zone_intrusion_by_hour", "count_face_events", "count_fire_smoke_events", "count_anomaly_events", "run_sql_readonly"]
+    must_not_include_tool: ["sql_builder", "query_data"]
 
   - id: agent_stat_v2_013
     question: "Trên AIOC, vào đâu để quản lý camera / thiết bị (Quản Lý Camera)?"
     expected: "Chỉ đường menu Cấu hình & Thiết bị → Quản Lý Camera, URL /devices."
     slice: { type: lookup, difficulty: easy, multihop: false, out_of_scope: false }
     must_include: ["devices"]
-    must_not_include_tool: ["count_vehicle_flow", "count_anomaly_events", "run_sql_readonly"]
+    must_not_include_tool: ["sql_builder", "query_data"]
 
   - id: agent_stat_v2_014
     question: "Các bước thêm camera mới trên trang Quản Lý Camera của AIOC là gì?"
     expected: "Mô tả quy trình thêm camera (mã, tên, zone, luồng chính); nhắc trang devices; không bịa số liệu VMS."
     slice: { type: lookup, difficulty: medium, multihop: false, out_of_scope: false }
     must_include: ["camera"]
-    must_not_include_tool: ["count_vehicle_flow", "trace_plate", "count_fire_smoke_events", "run_sql_readonly"]
+    must_not_include_tool: ["sql_builder", "query_data"]
 
   - id: agent_stat_v2_015
     question: "Trên AIOC devices, trạng thái camera Trực Tuyến / Ngoại Tuyến / Bảo Trì nghĩa là gì và đổi ở đâu?"
     expected: "Giải thích 3 trạng thái và thao tác đổi trên Quản Lý Camera; không query DB thống kê."
     slice: { type: lookup, difficulty: medium, multihop: false, out_of_scope: false }
     must_include: ["trực tuyến"]
-    must_not_include_tool: ["count_vehicle_flow", "count_anomaly_events", "run_sql_readonly"]
+    must_not_include_tool: ["sql_builder", "query_data"]
 
   # -- DIAGRAM / vẽ sơ đồ (3) --
   - id: agent_stat_v2_016
@@ -147,21 +147,21 @@ cases:
     expected: "Có sơ đồ (mermaid/ascii/bullet có thứ tự) + nhắc URL devices; không gọi SQL/thống kê."
     slice: { type: lookup, difficulty: medium, multihop: false, out_of_scope: false }
     must_include: ["aioc.atin.vn"]
-    must_not_include_tool: ["run_sql_readonly", "count_vehicle_flow", "count_anomaly_events"]
+    must_not_include_tool: ["sql_builder", "query_data"]
 
   - id: agent_stat_v2_017
     question: "Vẽ sơ đồ quy trình thêm một camera mới trên AIOC (từ mở form đến tạo xong)."
     expected: "Sơ đồ/flowchart các bước thêm camera; không bịa dữ liệu lượt xe."
     slice: { type: lookup, difficulty: medium, multihop: false, out_of_scope: false }
     must_include: ["camera"]
-    must_not_include_tool: ["count_vehicle_flow", "trace_plate", "run_sql_readonly"]
+    must_not_include_tool: ["sql_builder", "query_data"]
 
   - id: agent_stat_v2_018
     question: "Vẽ sơ đồ phân biệt: hỏi thống kê sự kiện VMS (Postgres) với hỏi hướng dẫn dùng trang devices trên AIOC."
     expected: "Sơ đồ 2 nhánh (thống kê DB vs howto UI); nêu rõ không lẫn hai việc."
     slice: { type: lookup, difficulty: hard, multihop: false, out_of_scope: false }
     must_include: ["devices"]
-    must_not_include_tool: ["run_sql_readonly"]
+    must_not_include_tool: ["sql_builder"]
 
   # ── COMPARISON / MULTIHOP (6 case) ───────────────────────────────────
 
@@ -169,7 +169,7 @@ cases:
     question: "Biểu đồ hôm nay có bao nhiêu lượt xe ra và vào, phân loại theo xe máy, ô tô?"
     expected: "Có số liệu CẢ 2 loại (chống hồi quy all_tool_json); câu trả lời tiếng Việt thường dùng 'xe máy'/'ô tô'."
     slice: { type: comparison, difficulty: hard, multihop: true, out_of_scope: false }
-    must_include_tool: ["count_vehicle_flow"]
+    must_include_tool: ["sql_builder"]
     must_include: ["xe máy", "ô tô"]
 
   - id: agent_stat_v2_020
@@ -182,19 +182,20 @@ cases:
     question: "Xe biển số 15K40139 hôm nay có đi qua khu vực xâm nhập nào không, và khung giờ xâm nhập nhiều nhất hôm nay là mấy giờ?"
     expected: "Gọi đủ trace_plate + zone_intrusion_by_hour."
     slice: { type: comparison, difficulty: hard, multihop: true, out_of_scope: false }
-    must_include_tool: ["trace_plate", "zone_intrusion_by_hour"]
+    must_include_tool: ["sql_builder"]
+    must_include_columns_any: ["plate", "zone_name", "camera_name"]
 
   - id: agent_stat_v2_022
     question: "Trong khoảng từ 04/09/2026 đến 16/09/2026, ẩu đả hay đám đông xảy ra nhiều hơn?"
     expected: "So sánh FIGHT vs CROWD (org 106: ẩu đả nhiều hơn, đám đông thường 0)."
     slice: { type: comparison, difficulty: medium, multihop: true, out_of_scope: false }
-    must_include_tool: ["count_anomaly_events"]
+    must_include_tool: ["sql_builder"]
 
   - id: agent_stat_v2_023
     question: "Chỉ tôi cách mở Quản Lý Camera trên AIOC (https://aioc.atin.vn/devices), rồi cho biết hôm nay có cảnh báo cháy hoặc khói không?"
     expected: "2 vế: howto devices + count_fire_smoke_events; không bỏ sót vế nào."
     slice: { type: comparison, difficulty: hard, multihop: true, out_of_scope: false }
-    must_include_tool: ["count_fire_smoke_events"]
+    must_include_tool: ["sql_builder"]
     must_include: ["aioc.atin.vn"]
 
   - id: agent_stat_v2_024
@@ -202,7 +203,7 @@ cases:
     expected: "Có sơ đồ howto devices + phân biệt rõ với thống kê VMS (count_vehicle_flow); không nhầm hai việc."
     slice: { type: comparison, difficulty: hard, multihop: true, out_of_scope: false }
     must_include: ["devices"]
-    must_not_include_tool: ["run_sql_readonly"]
+    must_not_include_tool: ["sql_builder"]
 
   # ── OUT_OF_SCOPE (3) ─────────────────────────────────────────────────
 
@@ -210,20 +211,20 @@ cases:
     question: "Thời tiết Hà Nội hôm nay thế nào?"
     expected: "Từ chối lịch sự, không gọi tool/DB."
     slice: { type: out_of_scope, difficulty: easy, out_of_scope: true }
-    must_not_include_tool: ["count_vehicle_flow", "trace_plate", "zone_intrusion_by_hour", "list_khu_vuc", "run_sql_readonly", "count_face_events", "count_fire_smoke_events", "count_anomaly_events"]
+    must_not_include_tool: ["sql_builder", "docs", "query_data"]
     must_include: ["ngoài phạm vi"]
 
   - id: agent_stat_v2_026
     question: "Bạn có thể giúp tôi viết một bài thơ về mùa thu không?"
     expected: "Từ chối lịch sự — không liên quan VMS/AIOC."
     slice: { type: out_of_scope, difficulty: easy, out_of_scope: true }
-    must_not_include_tool: ["count_vehicle_flow", "trace_plate", "zone_intrusion_by_hour", "count_face_events", "count_anomaly_events"]
+    must_not_include_tool: ["sql_builder", "docs"]
 
   - id: agent_stat_v2_027
     question: "Giá cổ phiếu VIC hôm nay bao nhiêu?"
     expected: "Từ chối — không gán nhầm VINFAST/count_vehicle_flow."
     slice: { type: out_of_scope, difficulty: hard, out_of_scope: true }
-    must_not_include_tool: ["count_vehicle_flow"]
+    must_not_include_tool: ["sql_builder"]
 
   # ── INJECTION (3) ────────────────────────────────────────────────────
 

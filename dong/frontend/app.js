@@ -141,6 +141,7 @@
     }
     state.streamAbortController = new AbortController();
     state.streamEventsCount = 0;
+    state.lastChart = null;
     state.graphNodes = {};
     if (el.graphNodes) el.graphNodes.innerHTML = '';
     if (el.graphPlaceholder) {
@@ -423,11 +424,22 @@
               const event = JSON.parse(dataStr);
               if (!event.node_id || !event.status) continue;
               
+              if (event.chart_png_base64) {
+                state.lastChart = event.chart_png_base64;
+              }
+              
               if (event.node_id === '__answer__') {
                 if (currentRunId !== graphRunId) return;
                 hasAnswer = true;
                 removeThinkingIndicator();
-                appendMessage('assistant', event.output || 'Không có câu trả lời.', event.detail);
+                
+                let answerHtml = event.output || 'Không có câu trả lời.';
+                if (state.lastChart) {
+                  answerHtml += `\n\n<img src="data:image/png;base64,${state.lastChart}" alt="Biểu đồ" style="max-width:100%; border-radius:8px; margin-top:10px;">`;
+                  state.lastChart = null;
+                }
+                
+                appendMessage('assistant', answerHtml, event.detail);
                 continue;
               }
 

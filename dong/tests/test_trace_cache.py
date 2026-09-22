@@ -7,8 +7,6 @@ from unittest.mock import MagicMock, patch
 import pytest
 from langchain_core.messages import AIMessage, ToolMessage
 
-from src.agent.graph import _pack
-from src.agent.react import _tools_node, agent_node
 from src.agent.tools import QueryResult
 
 from src.monitoring.tracing import (
@@ -220,78 +218,6 @@ def test_full_pipeline_trace_step_tree(monkeypatch):
     mock_parent.end.assert_called_once()
     mock_langfuse.flush.assert_called_once()
 
-
-def test_react_nodes_trace_step_input_not_question(monkeypatch):
-    """Mỗi nested span phải ghi input đúng ngữ cảnh node, không lặp question gốc."""
-    captured: list[tuple[str, object]] = []
-
-    @contextmanager
-    def _capture(parent_span, name, input=None, metadata=None):
-        captured.append((name, input))
-        yield {}
-
-    monkeypatch.setattr("src.agent.react.trace_step", _capture)
-    monkeypatch.setattr("src.agent.graph.trace_step", _capture)
-    monkeypatch.setattr("src.llm.use_offline_tools", lambda: True)
-
-    question = "Hôm nay có bao nhiêu xe vào?"
-    parent_span = MagicMock()
-    state = {
-        "question": question,
-        "messages": [{"role": "user", "content": question}],
-        "_trace_span": parent_span,
-    }
-
-    def offline_call(_state):
-        return "count_vehicle_flow", {"direction": "IN"}
-
-    agent_node(state, tools=[], system_prompt="system prompt", offline_call=offline_call)
-    chon_name, chon_input = captured[-1]
-    assert chon_name == "chon_tool"
-    assert chon_input != question
-    assert chon_input[0]["role"] == "system"
-    assert chon_input[-1]["content"] == question
-
-    state_tools = {
-        "question": question,
-        "messages": [
-            AIMessage(
-                content="",
-                tool_calls=[
-                    {"name": "count_vehicle_flow", "args": {"direction": "IN"}, "id": "1", "type": "tool_call"}
-                ],
-            )
-        ],
-        "_trace_span": parent_span,
-    }
-    with patch("src.agent.react.ToolNode") as mock_tool_node:
-        mock_tool_node.return_value.invoke.return_value = {
-            "messages": [ToolMessage(content="{}", name="count_vehicle_flow", tool_call_id="1")]
-        }
-        _tools_node(state_tools, tools=[])
-    chay_name, chay_input = captured[-1]
-    assert chay_name == "chay_tool"
-    assert chay_input == [{"name": "count_vehicle_flow", "args": {"direction": "IN"}}]
-
-    query_json = QueryResult(
-        tool="count_vehicle_flow", columns=["cnt"], rows=[[10]], row_count=1
-    ).model_dump_json()
-    state_pack = {
-        "question": question,
-        "messages": [
-            AIMessage(content="", tool_calls=[{"name": "count_vehicle_flow", "args": {}, "id": "1"}]),
-            ToolMessage(content=query_json, name="count_vehicle_flow", tool_call_id="1"),
-            AIMessage(content="ok"),
-        ],
-        "_trace_span": parent_span,
-    }
-    with patch("src.agent.graph.build_answer", return_value="10 xe"):
-        _pack(state_pack)
-    dien_name, dien_input = captured[-1]
-    assert dien_name == "dien_giai"
-    assert dien_input != question
-    assert dien_input["tools"] == ["count_vehicle_flow"]
-    assert dien_input["queries"][0]["row_count"] == 1
 
 
 def test_trace_answer_with_self_hosted_metadata(monkeypatch):

@@ -1,0 +1,122 @@
+schema_version: "1.0.0"
+id: "how-to.ai.search-plate-history"
+type: how_to
+status: published
+locale: vi
+version: 1
+title: "Tra cứu lịch sử nhận diện biển số"
+intent: "search_plate_history"
+aliases:
+  - "tra cứu lịch sử biển số"
+  - "tìm sự kiện biển số xe"
+  - "xem camera đã nhận diện biển số"
+  - "xem số lượng xe máy"
+  - "xem bao nhiêu xe máy"
+  - "thống kê xe máy"
+  - "xem ô tô xe máy theo ngày"
+  - "lịch sử phương tiện"
+  - "làm thế nào để xem xe máy"
+module: "ai"
+tags:
+  - "biển số"
+  - "lịch sử nhận diện"
+  - "phương tiện"
+  - "PLATE"
+roles:
+  - "authenticated_user"
+features:
+  - "ai_module_PLATE_enabled_for_organization"
+  - "PLATE_history_tab_enabled"
+route: "/ai-modules/plate?tab=history"
+menu_path:
+  - "Dịch Vụ"
+  - "Hệ thống giám sát phương tiện"
+  - "Lịch sử nhận diện"
+preconditions:
+  - "Người dùng đã đăng nhập vào VMS."
+  - "Module PLATE đang được bật cho tổ chức và tab history không bị tắt."
+summary: "Mở lịch sử nhận diện của module giám sát phương tiện, đặt các bộ lọc cần thiết rồi tìm các sự kiện biển số trong khoảng thời gian đã chọn."
+steps:
+  - order: 1
+    say: "Trong nhóm Dịch Vụ, mở Hệ thống giám sát phương tiện."
+    ui:
+      label: "Hệ thống giám sát phương tiện"
+      i18n_key: "modules.PLATE.label"
+      element_id: null
+  - order: 2
+    say: "Chọn tab Lịch sử nhận diện."
+    ui:
+      label: "Lịch sử nhận diện"
+      i18n_key: "modules.tabs.history"
+      element_id: null
+  - order: 3
+    say: "Nhập biển số hoặc camera cần tìm; nếu cần, lọc thêm theo hãng xe, màu xe, thiết bị hoặc đối tượng."
+    fields:
+      - label: "Tìm kiếm"
+        i18n_key: null
+        required: false
+        constraints:
+          - "Có thể nhập biển số hoặc camera."
+      - label: "Hãng xe"
+        i18n_key: null
+        required: false
+      - label: "Màu xe"
+        i18n_key: null
+        required: false
+      - label: "Thiết bị"
+        i18n_key: null
+        required: false
+      - label: "Đối tượng"
+        i18n_key: null
+        required: false
+        constraints:
+          - "Có thể chọn Tất cả đối tượng, Blacklist hoặc Whitelist."
+  - order: 4
+    say: "Chọn Ngày, Tuần, Tháng hoặc Khoảng thời gian; với khoảng tùy chọn, đặt thời điểm bắt đầu và kết thúc."
+    ui:
+      label: "Khoảng thời gian"
+      i18n_key: null
+      element_id: null
+  - order: 5
+    say: "Nhấn Tìm kiếm để áp dụng các bộ lọc."
+    ui:
+      label: "Tìm kiếm"
+      i18n_key: null
+      element_id: null
+  - order: 6
+    say: "Đọc danh sách kết quả; dùng nút Xem chi tiết trên một dòng khi cần xem đầy đủ sự kiện."
+    ui:
+      label: "Xem chi tiết"
+      i18n_key: null
+      element_id: null
+verify: "Bảng hiển thị các sự kiện phù hợp; nếu không có kết quả, màn hình hiển thị Chưa có sự kiện biển số nào."
+errors:
+  - if: "Bảng hiển thị Chưa có sự kiện biển số nào."
+    then: "Thử nới rộng Khoảng thời gian, xóa bớt bộ lọc hoặc nhấn Làm mới; không kết luận camera lỗi chỉ từ trạng thái rỗng."
+  - if: "Màn hình hiển thị lỗi tải lịch sử."
+    then: "Nhấn Thử lại; nếu vẫn lỗi, liên hệ quản trị viên và cung cấp tên module cùng khoảng thời gian đã chọn."
+  - if: "Không thấy module hoặc tab Lịch sử nhận diện."
+    then: "Kiểm tra module PLATE và feature history của tổ chức với quản trị viên."
+sources:
+  - path: "frontend/src/App.jsx"
+    kind: route
+    note: "Xác minh route chi tiết module AI yêu cầu đăng nhập."
+  - path: "frontend/src/pages/AIModuleDetail/AIModuleDetail.jsx"
+    kind: component
+    note: "Xác minh tab lấy từ query, lọc feature bị tắt và trạng thái module không khả dụng."
+  - path: "frontend/src/utils/aiModuleTabs.js"
+    kind: component
+    note: "Xác minh module PLATE có tab history với nhãn modules.tabs.history."
+  - path: "frontend/src/core/registry/aiModuleRegistry.jsx"
+    kind: component
+    note: "Xác minh tab history của PLATE render PlateHistory."
+  - path: "frontend/src/pages/AIModuleDetail/components/its/PlateHistory.jsx"
+    kind: component
+    note: "Xác minh field, bộ lọc thời gian, nút, kết quả, lỗi và empty state."
+  - path: "frontend/src/i18n/locales/vi/modules.json"
+    kind: i18n
+    note: "Xác minh nhãn module, tab và tiêu đề lịch sử biển số."
+  - path: "frontend/src/pages/AIModuleDetail/components/its/__tests__/PlateHistory.test.jsx"
+    kind: test
+    note: "Xác minh các tab thời gian và tải lịch sử khi đổi khoảng thời gian."
+last_verified: "2026-09-16"

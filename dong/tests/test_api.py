@@ -100,6 +100,20 @@ def test_format_error_message_clickhouse_error():
     assert "clickhouse" in msg.lower()
 
 
+def test_format_error_message_structured_parse_fail():
+    exc = RuntimeError("LLM structured output parse failed: schema ValidationError")
+    msg = _format_error_message(exc)
+    assert "định dạng" in msg.lower()
+    assert "select " not in msg.lower()
+
+
+def test_format_error_message_sql_validate_does_not_leak_sql():
+    exc = ValueError("Lỗi validate SQL: chỉ cho phép SELECT. Got: SELECT * FROM t WHERE id=1")
+    msg = _format_error_message(exc)
+    assert "truy vấn dữ liệu" in msg.lower() or "không thể tạo" in msg.lower()
+    assert "select * from" not in msg.lower()
+
+
 
 def test_api_chat_handles_database_error_gracefully():
     from src.main import _cache
@@ -394,11 +408,17 @@ def test_api_agent_stream_running_before_done_timing():
     
     events_received = []
     
+    from src.agent.intent import IntentResult
     def slow_classify(*args, **kwargs):
         time.sleep(0.5)
-        return "query_data"
-        
-    with patch("src.agent.graph.classify_intent", side_effect=slow_classify):
+        return IntentResult(intent="query_data", reason="")
+
+    from src.llm.schemas import RewrittenQuestion
+    def mock_rewrite(*args, **kwargs):
+        return RewrittenQuestion(text="test", intent_hint=None)
+
+    with patch("src.agent.graph.classify_intent", side_effect=slow_classify), \
+         patch("src.agent.graph.rewrite_question", side_effect=mock_rewrite):
         stream = run_agent_stream(Agent_Input(question="Hôm nay có bao nhiêu lượt xe vào?"))
         
         # Pull the first event
@@ -407,18 +427,26 @@ def test_api_agent_stream_running_before_done_timing():
         events_received.append(first_event)
         
         # It should be "running" and should arrive immediately
-        assert first_event["node_id"] == "classify_intent"
+        assert first_event["node_id"] == "rewrite"
         assert first_event["status"] == "running"
         assert time.time() - start_time < 0.2  # Should not have waited 0.5s
         
-        # Pull the next event
+        # Pull the next event (rewrite done)
         second_event = next(stream)
         events_received.append(second_event)
-        
-        # It should be "done" and should take ~0.5s
-        assert second_event["node_id"] == "classify_intent"
+        assert second_event["node_id"] == "rewrite"
         assert second_event["status"] == "done"
-        assert second_event["output"] == "query_data"
+
+        # Pull next event (classify running)
+        third_event = next(stream)
+        assert third_event["node_id"] == "classify"
+        assert third_event["status"] == "running"
+
+        # Pull next event (classify done)
+        fourth_event = next(stream)
+        assert fourth_event["node_id"] == "classify"
+        assert fourth_event["status"] == "done"
+        assert fourth_event["output"] == "query_data"
         assert time.time() - start_time >= 0.4
 
         # Exhaust the rest of the stream to let the background thread finish
@@ -440,3 +468,132 @@ def test_agent_graph_stream_thread_exception():
         assert len(answer_events) == 1
         assert "cơ sở dữ liệu phân tích" in answer_events[0]["output"].lower()
         assert answer_events[0]["status"] == "error"
+
+
+# ── Frontend UI Assets & Stream integration (từ test_ui_graph) ────────────────
+
+
+def test_frontend_assets_served_and_valid():
+    """Kiểm tra Frontend HTML được phục vụ đúng và chứa các thành phần cốt lõi."""
+    res = client.get("/")
+    assert res.status_code == 200
+    html = res.text
+    assert 'href="style.css"' in html
+    assert 'src="app.js"' in html
+    assert "Phương tiện (ITS)" in html
+    assert "Vùng cấm (Fence)" in html
+    assert "Khuôn mặt (Face)" in html
+    assert "Ẩu đả (Fight)" in html
+    assert "Đám đông (Crowd)" in html
+    assert "Leo trèo (Intrusion)" in html
+    assert "Cháy khói (Fire)" in html
+    assert "Mực nước (Water)" in html
+
+
+def test_api_chat_contract_for_frontend():
+    """Kiểm tra hợp đồng dữ liệu /api/chat khớp chính xác cấu trúc mà app.js yêu cầu."""
+    payload = {
+        "question": "Hôm nay có bao nhiêu lượt xe vào?",
+        "model_provider": "openai",
+    }
+    res = client.post("/api/chat", json=payload)
+    assert res.status_code == 200
+    data = res.json()
+    assert "question" in data
+    assert "answer" in data
+    assert "tool" in data
+    assert "detail" in data
+    assert isinstance(data["detail"], dict)
+
+
+def test_frontend_app_js_stream():
+    """Kiểm tra app.js đã chuyển sang dùng stream thực, thay vì mock graph."""
+    res = client.get("/app.js")
+    if res.status_code == 404:
+        with open("frontend/app.js", "r", encoding="utf-8") as f:
+            js = f.read()
+    else:
+        js = res.text
+
+    assert "/api/agent/stream" in js
+    assert "getReader" in js or "ReadableStream" in js
+    assert "runMockGraph(question);" not in js
+    assert "upsertGraphNode(event.node_id" in js
+
+    assert "function showNodeIo" in js
+    assert "addEventListener('click', () => showNodeIo" in js
+    assert "addEventListener('mouseenter', () => showNodeIo" in js
+    assert "IO_MAX_CHARS" in js or "2000" in js
+    assert "status !== 'done'" in js
+
+    handle_send = js.split("function handleSendMessage")[1]
+    assert "resetGraph()" in handle_send
+    assert "Backend chưa bắt buộc" not in js
+    assert "Graph bên phải đang chạy mock" not in js
+    assert "getApiEndpoint('/api/chat')" not in handle_send
+    assert "event.node_id === '__answer__'" in handle_send
+    assert "removeThinkingIndicator()" in handle_send
+    assert "appendMessage('assistant'" in handle_send
+    assert "detail.row_count > 0" in js
+
+
+def test_frontend_settings_api_url_wiring():
+    """Kiểm tra input-api-url / getApiEndpoint / agent_api_base_url wiring."""
+    res = client.get("/")
+    assert res.status_code == 200
+    html = res.text
+    assert 'id="input-api-url"' in html
+    assert 'FastAPI (src.main:app)' in html
+
+    res = client.get("/app.js")
+    if res.status_code == 404:
+        with open("frontend/app.js", "r", encoding="utf-8") as f:
+            js = f.read()
+    else:
+        js = res.text
+
+    assert "agent_api_base_url" in js
+    assert "getApiEndpoint(" in js
+    assert "state.apiBaseUrl.replace(/\\/+$/, '')" in js
+
+
+def test_eval_run_help():
+    import subprocess
+    import sys
+    result = subprocess.run([sys.executable, "eval/run.py", "--help"], capture_output=True, text=True)
+    assert result.returncode == 0
+    assert "--judge" in result.stdout
+    assert "--offline" in result.stdout
+
+
+def test_eval_v5_tool_extraction_from_agent_output():
+    """v5: tools set = detail (+ query.tool) — không còn prefix 'tool: '."""
+    from eval.run import PipelineResult, check_case
+    from src.agent.graph import Agent_Output
+    from src.agent.tools import QueryResult
+
+    # Simulate what run_pipeline builds after v5 fix
+    query = QueryResult(tool="sql_builder", columns=["direction"], rows=[["IN"]], row_count=1)
+    tools = {"query_data", "sql_builder"}
+    result = PipelineResult(answer="Có 10 lượt xe vào.", tools=tools, columns=["direction"])
+    fails = check_case(
+        {"must_include_tool": ["sql_builder"], "must_include_columns_any": ["direction"]},
+        result,
+    )
+    assert fails == []
+
+    docs_result = PipelineResult(answer="Mở menu Quản lý camera.", tools={"docs"}, columns=[])
+    fails_docs = check_case(
+        {"must_not_include_tool": ["sql_builder", "query_data"]},
+        docs_result,
+    )
+    assert fails_docs == []
+
+    # Old ReAct prefix must not be required
+    out = Agent_Output(question="q", answer="a", detail="query_data", query=query)
+    extracted = set()
+    if out.detail:
+        extracted.add(out.detail)
+    if out.query and out.query.tool:
+        extracted.add(out.query.tool)
+    assert extracted == {"query_data", "sql_builder"}

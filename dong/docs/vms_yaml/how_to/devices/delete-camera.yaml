@@ -1,0 +1,71 @@
+schema_version: "1.0.0"
+id: devices.delete_camera
+type: how_to
+status: published
+locale: vi
+version: 1
+title: "Xóa camera"
+intent: delete_camera
+aliases:
+  - "xóa camera"
+  - "loại bỏ camera"
+  - "xóa thiết bị camera"
+  - "gỡ camera khỏi hệ thống"
+module: devices
+tags:
+  - camera
+  - thiết bị
+  - xóa
+roles:
+  - authenticated_user
+features:
+  - devices
+route: "/devices"
+menu_path:
+  - "Cấu hình & Thiết bị"
+  - "Quản Lý Camera"
+preconditions:
+  - "Người dùng đã đăng nhập và feature devices được bật."
+  - "Camera cần xóa xuất hiện trong phạm vi tổ chức hoặc hierarchy của tài khoản."
+summary: "Kiểm tra đúng camera trong danh sách, mở xác nhận xóa, đọc cảnh báo dữ liệu bản ghi nếu có rồi xác nhận Xóa camera."
+steps:
+  - order: 1
+    say: "Đối chiếu Tên Camera và Mã của đúng dòng camera cần xóa, sau đó bấm Xóa ở cột Hành động."
+    ui:
+      label: "Xóa"
+      i18n_key: "common.delete"
+      element_id: null
+  - order: 2
+    say: "Trong hộp thoại Xác nhận xóa camera, kiểm tra lại tên camera trong nội dung xác nhận."
+    ui:
+      label: "Xác nhận xóa camera"
+      i18n_key: "devices.deleteConfirmTitle"
+      element_id: null
+    note: "Nếu camera có dữ liệu record, hộp thoại cảnh báo rằng lịch sử record liên quan có thể bị ảnh hưởng."
+  - order: 3
+    say: "Nếu đúng camera và chấp nhận ảnh hưởng được cảnh báo, bấm Xóa camera. Bấm Hủy nếu chưa chắc chắn."
+    ui:
+      label: "Xóa camera"
+      i18n_key: "devices.deleteCamera"
+      element_id: null
+verify: "Khi xóa thành công, thông báo Đã xóa camera \"[tên camera]\" xuất hiện, hộp thoại đóng và camera không còn trong danh sách camera đang hoạt động sau khi dữ liệu được tải lại."
+errors:
+  - if: "Thông báo Xóa camera thất bại xuất hiện."
+    then: "Camera chưa được xác nhận là đã xóa; ghi lại nội dung lỗi và nhờ quản trị viên kiểm tra quyền hoặc dữ liệu liên quan."
+sources:
+  - path: "frontend/src/App.jsx"
+    kind: route
+    note: "Khai báo route /devices với RequireAuth và RequireFeature featureKey devices."
+  - path: "frontend/src/pages/Devices/Devices.jsx"
+    kind: component
+    note: "Xác minh nút Xóa, nội dung xác nhận theo tình trạng bản ghi, nút xác nhận, tải lại danh sách và thông báo kết quả."
+  - path: "frontend/src/services/apiClient.js"
+    kind: route
+    note: "Xác minh phương thức DELETE gửi yêu cầu và xóa cache API sau khi thành công."
+  - path: "frontend/src/i18n/locales/vi/common.json"
+    kind: i18n
+    note: "Cung cấp nhãn Xóa, Hủy, Xóa camera, tiêu đề xác nhận và thông báo thành công hoặc thất bại."
+  - path: "backend/routers/cameras.py"
+    kind: route
+    note: "Xác minh endpoint xóa theo phạm vi camera, đánh dấu deleted_at, chuyển trạng thái OFFLINE và loại camera khỏi truy vấn đang hoạt động."
+last_verified: "2026-09-16"

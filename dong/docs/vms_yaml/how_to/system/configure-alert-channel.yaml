@@ -1,0 +1,92 @@
+schema_version: "1.0.0"
+id: "system.configure-alert-channel"
+type: "how_to"
+status: "needs_review"
+locale: "vi"
+version: 1
+title: "Cấu hình kênh nhận cảnh báo"
+intent: "configure_alert_channel"
+aliases:
+  - "bật kênh thông báo"
+  - "cấu hình nhận cảnh báo"
+  - "chọn phương tiện nhận thông báo"
+module: "system"
+tags:
+  - "cảnh báo"
+  - "thông báo"
+  - "kênh nhận"
+roles:
+  - "Quản trị viên hệ thống"
+  - "Quản trị viên tổ chức"
+features:
+  - "system_management"
+  - "alert_preferences"
+route: "/system?tab=alerts&subtab=preferences"
+menu_path:
+  - "Quản Trị Hệ Thống"
+  - "Cấu hình thông báo"
+  - "Kênh nhận (Email/Telegram)"
+preconditions:
+  - "Đã đăng nhập bằng tài khoản được phép mở Quản Trị Hệ Thống."
+  - "Không sử dụng workspace ngân hàng vì tab Cấu hình thông báo bị ẩn tại đó."
+  - "Kênh ngoài hệ thống đã được quản trị viên có thẩm quyền chuẩn bị cấu hình cần thiết."
+summary: "Card này chỉ xác minh thao tác bật hoặc tắt Telegram, Zalo Bot hay Web / Bell rồi lưu. Cấu hình kết nối riêng của kênh ngoài hệ thống chưa được mô tả an toàn đầy đủ nên cần review trước khi dùng production."
+steps:
+  - order: 1
+    say: "Mở Quản Trị Hệ Thống."
+    ui:
+      label: "Quản Trị Hệ Thống"
+      i18n_key: "sidebar.systemManagement"
+      element_id: null
+  - order: 2
+    say: "Chọn tab Cấu hình thông báo."
+    ui:
+      label: "Cấu hình thông báo"
+      i18n_key: "system.alerts"
+      element_id: null
+  - order: 3
+    say: "Chọn Kênh nhận (Email/Telegram)."
+    ui:
+      label: "Kênh nhận (Email/Telegram)"
+      i18n_key: "system.alertsTabPreferences"
+      element_id: null
+  - order: 4
+    say: "Trong Cấu hình cá nhân, bật hoặc tắt kênh Telegram, Zalo Bot hay Web / Bell theo nhu cầu."
+    ui:
+      label: "Phương tiện nhận thông báo"
+      i18n_key: "system.alertChannelsTitle"
+      element_id: null
+    note: "Việc bật một kênh ngoài hệ thống không tự tạo cấu hình kết nối cho kênh đó."
+  - order: 5
+    say: "Chọn Lưu."
+    ui:
+      label: "Lưu"
+      i18n_key: "common.save"
+      element_id: null
+verify: "Giao diện hiển thị Lưu thành công; cần kiểm tra riêng việc nhận cảnh báo thực tế trên kênh đã được cấu hình."
+sources:
+  - path: "frontend/src/App.jsx"
+    kind: "route"
+    note: "SystemRoute bảo vệ trang /system bằng canViewSystem."
+  - path: "frontend/src/contexts/UserContext.jsx"
+    kind: "component"
+    note: "Xác minh guard dành cho quản trị viên hệ thống hoặc quản trị viên tổ chức."
+  - path: "frontend/src/pages/System/System.jsx"
+    kind: "component"
+    note: "Query tab=alerts kết xuất Alerts; tab bị ẩn và được chuyển về tab me trong workspace ngân hàng."
+  - path: "frontend/src/pages/System/Alerts/Alerts.jsx"
+    kind: "component"
+    note: "Xác minh subtab=preferences và nhãn tab Kênh nhận; subtab không hợp lệ cũng fallback về preferences."
+  - path: "frontend/src/pages/System/Alerts/components/AlertsPreferencesPanel.jsx"
+    kind: "component"
+    note: "Xác minh các công tắc Telegram, Zalo Bot, Web / Bell và nút Lưu. Luồng thiết lập kết nối riêng của kênh ngoài hệ thống có nhiều điều kiện nên card giữ trạng thái needs_review."
+  - path: "frontend/src/i18n/locales/vi/common.json"
+    kind: "i18n"
+    note: "Nguồn nhãn tiếng Việt của tab, nhóm kênh và nút lưu."
+  - path: "frontend/src/pages/System/Alerts/Alerts.test.jsx"
+    kind: "test"
+    note: "Kiểm tra route subtab=preferences và giới hạn subtab chỉ dành cho quản trị viên hệ thống."
+  - path: "frontend/src/pages/System/Alerts/components/AlertsPreferencesPanel.test.jsx"
+    kind: "test"
+    note: "Kiểm tra công tắc kênh có thể thao tác và việc lưu trạng thái Telegram; test không đủ chứng minh toàn bộ quy trình kết nối thực tế của mọi kênh."
+last_verified: "2026-09-16"

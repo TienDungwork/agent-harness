@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from functools import lru_cache
+from pathlib import Path
 
 from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -12,7 +13,7 @@ class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
 
     # ── LLM Backend ──────────────────────────────────────────────────────────
-    # "openai" = OpenAI Cloud | "self_hosted" = Model tự host (vd. qwen3-4b)
+    # "openai" = OpenAI Cloud | "self_hosted" = vLLM qua gateway OpenAI-compatible
     llm_backend: str = Field(default="openai", alias="LLM_BACKEND")
     llm_base_url: str = Field(default="", alias="LLM_BASE_URL")
     openai_api_keys: str = Field(default="", alias="OPENAI_API_KEYS")
@@ -20,8 +21,9 @@ class Settings(BaseSettings):
     llm_temperature: float = Field(default=0.2, alias="LLM_TEMPERATURE")
     llm_max_retries: int = Field(default=3, alias="LLM_MAX_RETRIES")
     llm_api_key: str = Field(default="", alias="LLM_API_KEY")
+    llm_request_timeout_s: float = Field(default=15.0, alias="LLM_REQUEST_TIMEOUT_S")
 
-    # Cấu hình model tự host (khi LLM_BACKEND=self_hosted)
+    # vLLM gateway (khi LLM_BACKEND=self_hosted)
     model_base_url: str = Field(default="http://192.168.1.196:18083/v1", alias="MODEL_BASE_URL")
     model_name: str = Field(default="qwen3-4b", alias="MODEL_NAME")
     model_api_key: str = Field(default="", alias="MODEL_API_KEY")
@@ -29,6 +31,12 @@ class Settings(BaseSettings):
 
     # Bước "Answer" (diễn giải số liệu -> câu tiếng Việt)
     answer_use_llm: bool = Field(default=True, alias="ANSWER_USE_LLM")
+
+    # v5 QueryPlan repair loop
+    sql_repair_max: int = Field(default=1, alias="SQL_REPAIR_MAX")
+
+    # v5 Docs YAML corpus (duy style)
+    docs_root: str = Field(default="docs/vms_yaml", alias="DOCS_ROOT")
 
     # ── Database Nguồn Thống Kê (Postgres, Read-Only) ─────────────────────────
     db_host: str = Field(default="", alias="DB_HOST")
@@ -88,6 +96,21 @@ class Settings(BaseSettings):
     @property
     def db_configured(self) -> bool:
         return bool(self.db_host and self.db_user)
+
+    @property
+    def effective_docs_root(self) -> Path:
+        """Thư mục chứa tài liệu YAML VMS (index.yaml + cards)."""
+        raw = self.docs_root or "docs/vms_yaml"
+        p = Path(raw)
+        if not p.is_absolute():
+            project_root = Path(__file__).resolve().parent.parent
+            p = (project_root / p).resolve()
+        if p.exists() and (p / "index.yaml").exists():
+            return p
+        duy_path = Path(__file__).resolve().parent.parent.parent / "duy" / "VMS_doc" / "VMS_documentation"
+        if duy_path.exists():
+            return duy_path.resolve()
+        return p
 
 
 @lru_cache

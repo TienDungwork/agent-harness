@@ -1,22 +1,30 @@
 # AGENTS.md
 
-Quy tắc cho coding agent trên `agent-harness/dong` (v4).
+Quy tắc cho coding agent trên `agent-harness/dong`.
 
-**Phase 1–4 xong.** Phase tiếp theo: **5 — Trace, tối ưu, stream sự kiện node**.
+**Trạng thái:** v4 legacy ReAct đã thay trên đường chính; Phase 1–**7** xong; Dự án đã sẵn sàng để demo.
 
 ## Rules
 
-1. **Always read the specs before coding** — `specs/product-spec.md`, `implementation-plan.md`, `test-plan.md`.
-2. **Implement only one phase or task at a time** — theo checklist Phase 1→10 trong `implementation-plan.md`. Không nhảy phase.
-3. **Keep the app simple** — code ngắn kiểu `llm-engineer-demo`. Một việc một chỗ.
-4. **Do not add unnecessary libraries** — chỉ thêm package khi spec yêu cầu rõ.
-5. **Do not change architecture unless the spec is updated** — sau Phase 3: chỉ `src/` (+ `frontend/`). Không tạo lại `backend/`. Không web search / text-to-SQL / ghi DB trừ khi đổi product-spec.
-6. **After each implementation, update `specs/change-log.md`** — Added/Changed/Verified; đánh `[x]` checklist phase.
-7. **After each implementation, explain how to test** — lệnh cụ thể cho người dùng chạy (agent không tự chạy app theo project policy).
+1. **Đọc spec trước khi code** — `specs/product-spec.md`, `specs/implementation-plan.md`, `specs/test-plan.md`.
+2. **Một phase hoặc một task** — checklist Phase 1→7; đánh `[x]` khi xong.
+3. **Giữ app đơn giản** — module mỏng, ít layer; config một chỗ (`src/config.py`).
+4. **Không thêm thư viện không cần thiết** — dùng stack hiện có trừ khi spec yêu cầu.
+5. **Không đổi kiến trúc** nếu chưa cập nhật `specs/product-spec.md`.
+6. **Sau mỗi lần implement:** cập nhật `specs/change-log.md`.
+7. **Sau mỗi lần implement:** ghi rõ lệnh test cho user (theo `specs/test-plan.md`).
 
-## Project notes (ngắn)
+## Dong v5 (tóm tắt)
 
-- LLM: `LLM_*` → Ollama `192.168.1.196:11434` / `qwen3-16k-nothink:latest` (đã ghi `.env.example`).
-- Dữ liệu chỉ đọc. How-to từ tài liệu local. Live graph: stream node, UI ~50%, hover → input/output.
-- `tests/` dưới 10 file. Phase 8: `eval/results/golden-30.md` đủ 30 câu.
-- Không commit `.env`.
+- Mọi LLM call → Pydantic structured (`invoke_structured`).
+- DB read-only: `QueryPlan` → SQL parameterized → validator.
+- Graph: `rewrite → classify → query|docs|out` (thay ReAct tool cố định).
+- Deploy đường chính: Docker Compose only; không `.venv` trong quick start.
+
+## Tests
+
+- `tests/` < 10 file. `pytest -q` offline trước khi đánh phase xong.
+
+## Antigravity (tuỳ chọn)
+
+Cursor review; agy implement — `./scripts/antigravity-delegate.sh` (xem repo root `AGENTS.md`).

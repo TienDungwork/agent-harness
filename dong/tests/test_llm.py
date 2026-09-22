@@ -77,7 +77,6 @@ from pathlib import Path
 import pytest
 
 from src.agent.answer import _get_system_prompt
-from src.agent.graph import _system_prompt
 from src.prompts import PromptRegistry, registry
 
 
@@ -127,42 +126,9 @@ def test_prompt_registry_non_existent_prompt_raises_file_not_found():
         reg.get("non_existent_prompt", 1)
 
 
-def test_agent_graph_system_prompt_integration():
-    sys_prompt = _system_prompt()
-    assert "Bạn là trợ lý thống kê xe ra/vào" in sys_prompt
-    assert "Thời điểm hiện tại" in sys_prompt
-
 
 def test_agent_answer_system_prompt_integration():
     ans_prompt = _get_system_prompt()
     assert "Bạn viết câu trả lời tiếng Việt ngắn gọn cho câu hỏi thống kê" in ans_prompt
 
 
-def test_prompt_registry_switch_production_alias_and_rollback():
-    """Test 3 & 4 trong test-plan.md:
-    Đổi production.txt từ '1' sang '2' (không sửa code) -> agent dùng v2.
-    Revert production.txt về '1' (rollback) -> agent quay lại v1.
-    """
-    prod_file = Path(__file__).resolve().parent.parent / "prompts" / "agent_system" / "production.txt"
-    original_version = prod_file.read_text("utf-8").strip()
-
-    try:
-        # Step 1: Đổi production.txt sang version 2 (KHÔNG sửa code Python)
-        prod_file.write_text("2\n", encoding="utf-8")
-
-        # Verify: _system_prompt() load ngay prompt v2
-        sys_prompt_v2 = _system_prompt()
-        assert "[v2]" in sys_prompt_v2
-        assert "xâm nhập khu vực v2" in sys_prompt_v2
-
-        # Step 2: Rollback = trỏ production.txt về version 1
-        prod_file.write_text("1\n", encoding="utf-8")
-
-        # Verify: _system_prompt() quay lại prompt v1
-        sys_prompt_v1 = _system_prompt()
-        assert "[v2]" not in sys_prompt_v1
-        assert "Bạn là trợ lý thống kê xe ra/vào" in sys_prompt_v1
-
-    finally:
-        # Đảm bảo file production.txt luôn được khôi phục về trạng thái ban đầu
-        prod_file.write_text(f"{original_version}\n", encoding="utf-8")

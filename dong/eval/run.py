@@ -12,10 +12,6 @@ Dùng (LIVE — cần .env LLM 196 + DB read-only; không dùng PYTEST_CURRENT_T
 
 Assertion rule-based đủ cho pass/fail; `--judge` bật LLM chấm nhẹ 1-5 (tuỳ chọn).
 Chỉ dùng `--offline` khi mock nhanh (pytest/CI) — không phản ánh chất lượng product.
-Case nào dùng tool domain mới
-(count_face_events/count_fire_smoke_events/count_anomaly_events) sẽ FAIL
-cho tới khi Phase 3 + Phase 5 xong (tool chưa tồn tại) — đây là chủ ý, đã
-ghi rõ trong header của v2.yaml, không phải lỗi của script này.
 """
 
 from __future__ import annotations
@@ -66,7 +62,7 @@ def _preflight_live() -> None:
         print("Lỗi: eval product yêu cầu LLM live nhưng đang offline.")
         print(f"  LLM_BACKEND={settings.llm_backend!r}")
         if settings.llm_backend.strip().lower() == "openai" and not settings.api_keys:
-            print("  Thiếu OPENAI_API_KEYS — đặt LLM_BACKEND=ollama hoặc self_hosted + LLM_* trong .env")
+            print("  Thiếu OPENAI_API_KEYS — đặt LLM_BACKEND=self_hosted + MODEL_* trong .env")
         sys.exit(1)
 
     url = settings.llm_base_url or settings.model_base_url or "(default)"
@@ -121,8 +117,12 @@ def run_pipeline(question: str) -> PipelineResult:
     tool_empty = _is_tool_empty(query)
     result = check_output(out.answer, evidence_parts, tool_empty=tool_empty)
 
-    prefix = "tool: "
-    tools = {t for t in out.detail[len(prefix) :].split(",") if t} if out.detail.startswith(prefix) else set()
+    tools = set()
+    if out.detail:
+        tools.add(out.detail)
+    if out.query and out.query.tool:
+        tools.add(out.query.tool)
+
     return PipelineResult(
         answer=result.answer,
         tools=tools,
@@ -310,7 +310,12 @@ def main() -> None:
         help="Mock offline (pytest/CI) — KHÔNG dùng cho đánh giá product thật",
     )
     args = parser.parse_args()
-    sys.exit(run(args.dataset, output_path=args.output, use_judge=args.judge, offline=args.offline))
+    
+    output_path = args.output
+    if args.offline and output_path == GOLDEN_30_PATH:
+        output_path = output_path.with_name("golden-30-offline.md")
+        
+    sys.exit(run(args.dataset, output_path=output_path, use_judge=args.judge, offline=args.offline))
 
 
 if __name__ == "__main__":

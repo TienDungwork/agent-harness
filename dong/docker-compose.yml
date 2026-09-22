@@ -1,5 +1,4 @@
-# Demo / production dong (frontend + backend). Langfuse: langfuse/docker-compose.yml
-# Một lệnh cả hai: ./scripts/setup-langfuse.sh
+# Demo / production dong (frontend + backend). Langfuse riêng: langfuse/docker-compose.yml
 
 name: kcn-hungphu-agent
 

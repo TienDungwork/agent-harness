@@ -10,7 +10,20 @@ cp .env.example .env   # nếu chưa có
 docker compose up -d
 ```
 
-Hoặc từ thư mục `dong`: `./scripts/setup-langfuse.sh` (khởi động cả Langfuse + app).
+Container/volume đều có prefix `kcn_hungphu_langfuse_*` (vd. `kcn_hungphu_langfuse_web`, `kcn_hungphu_langfuse_redis`) — dễ nhận trong `docker ps`.
+
+Dừng:
+
+```bash
+docker compose down
+```
+
+Reset data (xóa volume):
+
+```bash
+docker compose down -v
+docker compose up -d
+```
 
 ## Đăng nhập UI
 
@@ -26,14 +39,14 @@ API keys (khớp `../.env`):
 
 ## Kết nối backend dong
 
-| Chạy backend | `LANGFUSE_HOST` trong `.env` |
-|---|---|
-| Docker (`docker compose up`) | `http://host.docker.internal:3000` (mặc định trong compose) |
-| Local (`uvicorn`) | `http://localhost:3000` |
+| Chạy backend | `LANGFUSE_HOST` | Ghi chú |
+|---|---|---|
+| Docker (`docker compose up`) | `http://host.docker.internal:3000` | Override trong `docker-compose.yml` gốc |
+| Local dev (`uvicorn`) | `http://localhost:3000` | Trong `.env` thư mục gốc `dong` |
 
-## Reset data (init lại user + keys)
+App dong (frontend + backend) chạy riêng từ thư mục gốc:
 
 ```bash
-docker compose down -v
-docker compose up -d
+cd agent-harness/dong
+docker compose up --build -d
 ```

@@ -182,7 +182,14 @@ def _format_error_message(exc: Exception) -> str:
         return "Lỗi kết nối mô hình AI: Quá thời gian chờ (timeout) hoặc máy chủ mô hình AI không phản hồi. Vui lòng thử lại sau."
     if any(k in err_str for k in ("rate limit", "429", "quota", "too many requests")):
         return "Mô hình AI đang bận hoặc đạt giới hạn lượt gọi (Rate Limit). Vui lòng thử lại sau giây lát."
-    return f"Không thể xử lý câu hỏi: {exc}"
+    if any(k in err_str for k in ("llm structured", "parse", "schema", "validationerror")):
+        return "Mô hình AI trả về kết quả không đúng định dạng. Vui lòng thử lại với cách diễn đạt khác."
+    if any(k in err_str for k in ("lỗi tạo sql", "lỗi validate sql", "vượt quá số lần sửa", "select ", " from ")):
+        return "Rất tiếc, hệ thống không thể tạo truy vấn dữ liệu phù hợp. Vui lòng thử lại với câu hỏi đơn giản hơn."
+    if any(k in err_str for k in ("lỗi truy vấn cơ sở dữ liệu", "lỗi execute")):
+        return "Lỗi khi thực thi truy vấn. Hệ thống tạm thời không thể lấy số liệu. Vui lòng thử lại sau."
+    # Không dump exception thô (có thể chứa SQL) ra UI.
+    return "Không thể xử lý câu hỏi lúc này. Vui lòng thử lại hoặc diễn đạt khác."
 
 
 
@@ -203,7 +210,10 @@ def chat(req: ChatRequest) -> ChatResponse:
 
         question = redact_pii(req.question)
         
-        cached = get_cached_answer(question)
+        from src.agent.rewrite import rewrite_question
+        rewritten = rewrite_question(question)
+        cache_key = rewritten.text # Cache key: use rewritten question text
+        cached = get_cached_answer(cache_key)
         if cached:
             logger.info("cache hit")
             detail_payload = {
@@ -228,7 +238,7 @@ def chat(req: ChatRequest) -> ChatResponse:
             return response
 
         try:
-            out = run_agent(Agent_Input(question=question), parent_span=t.get("_span"))
+            out = run_agent(Agent_Input(question=question, rewritten=rewritten), parent_span=t.get("_span"))
         except Exception as exc:
             friendly_msg = _format_error_message(exc)
             raise HTTPException(status_code=503, detail=friendly_msg) from exc
@@ -249,7 +259,7 @@ def chat(req: ChatRequest) -> ChatResponse:
             "row_count": query.row_count if query else 0,
             "agent_detail": out.detail,
         }
-        set_cached_answer(question, cache_data)
+        set_cached_answer(cache_key, cache_data)
 
         detail_payload: dict[str, Any] = {
             "tool": query.tool if query else "",
@@ -285,7 +295,10 @@ def ask(req: AskRequest) -> AskResponse:
 
         question = redact_pii(req.question)
         
-        cached = get_cached_answer(question)
+        from src.agent.rewrite import rewrite_question
+        rewritten = rewrite_question(question)
+        cache_key = rewritten.text # Cache key: use rewritten question text
+        cached = get_cached_answer(cache_key)
         if cached:
             logger.info("cache hit")
             response = AskResponse(
@@ -305,7 +318,7 @@ def ask(req: AskRequest) -> AskResponse:
             return response
 
         try:
-            out = run_agent(Agent_Input(question=question), parent_span=t.get("_span"))
+            out = run_agent(Agent_Input(question=question, rewritten=rewritten), parent_span=t.get("_span"))
         except Exception as exc:
             friendly_msg = _format_error_message(exc)
             raise HTTPException(status_code=503, detail=friendly_msg) from exc
@@ -326,7 +339,7 @@ def ask(req: AskRequest) -> AskResponse:
             "row_count": query.row_count if query else 0,
             "agent_detail": out.detail,
         }
-        set_cached_answer(question, cache_data)
+        set_cached_answer(cache_key, cache_data)
 
         response = AskResponse(
             question=out.question,
@@ -376,7 +389,10 @@ def stream_agent(req: ChatRequest) -> StreamingResponse:
 
             question = redact_pii(req.question)
 
-            cached = get_cached_answer(question)
+            from src.agent.rewrite import rewrite_question
+            rewritten = rewrite_question(question)
+            cache_key = rewritten.text # Cache key: use rewritten question text
+            cached = get_cached_answer(cache_key)
             if cached:
                 t["output"] = {
                     "status": "ok",
@@ -398,7 +414,7 @@ def stream_agent(req: ChatRequest) -> StreamingResponse:
 
             try:
                 from src.agent.graph import run_agent_stream, Agent_Input
-                for event in run_agent_stream(Agent_Input(question=question), parent_span=t.get("_span")):
+                for event in run_agent_stream(Agent_Input(question=question, rewritten=rewritten), parent_span=t.get("_span")):
                     if "__final_result__" in event:
                         out = event["__final_result__"]
                         query = getattr(out, "query", None)
@@ -417,7 +433,7 @@ def stream_agent(req: ChatRequest) -> StreamingResponse:
                             "row_count": getattr(query, "row_count", 0) if query else 0,
                             "agent_detail": out.detail,
                         }
-                        set_cached_answer(question, cache_data)
+                        set_cached_answer(cache_key, cache_data)
 
                         detail_payload = {
                             "tool": getattr(query, "tool", "") if query else "",
@@ -449,7 +465,7 @@ def stream_agent(req: ChatRequest) -> StreamingResponse:
             except Exception as exc:
                 t["output"] = {"status": "error", "error": str(exc)}
                 friendly_msg = _format_error_message(exc)
-                yield f'data: {json.dumps({"node_id": "error", "status": "done", "output": str(exc)}, ensure_ascii=False)}\n\n'
+                yield f'data: {json.dumps({"node_id": "error", "status": "done", "output": friendly_msg}, ensure_ascii=False)}\n\n'
                 yield f'data: {json.dumps({"node_id": "__answer__", "status": "error", "output": friendly_msg, "detail": {"status": "error"}}, ensure_ascii=False)}\n\n'
 
     return StreamingResponse(event_generator(), media_type="text/event-stream")

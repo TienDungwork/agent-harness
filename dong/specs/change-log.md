@@ -1,3 +1,585 @@
+## 2026-09-22 (LLM — gỡ backend Ollama, chỉ openai + self_hosted/vLLM)
+
+### Changed
+- **`src/llm/client.py`**: xóa backend `ollama` và `:11434`; `self_hosted` = vLLM qua gateway OpenAI-compatible (`MODEL_*`).
+- **`eval/run.py`**, **`src/config.py`**, **`.env.example`**, **README**: bỏ wording Ollama; mô tả rõ vLLM gateway `196:18083`.
+
+### Verify
+```bash
+pytest tests/test_llm.py -q
+grep -ri ollama src/ eval/ tests/ .env.example README.md   # không còn match
+```
+
+## 2026-09-22 (LLM — gateway 196:18083, sửa ping)
+
+### Changed
+- **`.env` / `.env.example` / README**: demo `self_hosted` → gateway `http://192.168.1.196:18083/v1`, model `qwen3-4b`, `MODEL_API_KEY` gateway (không Ollama thẳng `:11434`).
+- **`src/llm/client.py` `ping()`**: dùng `settings.effective_base_url` + token đúng backend (`model_api_key` khi self_hosted).
+
+### Verify
+```bash
+docker compose up --build -d
+curl -s http://localhost:8000/api/llm/ping
+```
+
+## 2026-09-22 (Langfuse — đặt tên container/volume có prefix langfuse)
+
+### Changed
+- `langfuse/docker-compose.yml`: `clickhouse`/`redis`/`minio` → `kcn_hungphu_langfuse_*`; volume có `name: kcn_hungphu_langfuse_*`.
+
+## 2026-09-22 (Langfuse — dừng stack, bỏ setup-langfuse.sh)
+
+### Changed
+- Dừng + xóa 6 container Langfuse (web, worker, postgres, clickhouse, redis, minio).
+- Xóa `scripts/setup-langfuse.sh`; doc chỉ `docker compose` trực tiếp.
+- Cập nhật README, langfuse/README, `.env.example`, compose comments, test-plan, implementation-plan.
+
+### Chạy lại Langfuse
+```bash
+cd agent-harness/dong/langfuse && docker compose up -d
+```
+
+## 2026-09-22 (README — SDD Bước 9 local dev + Docker deploy)
+
+### Changed
+- **`README.md`**: mục **Local development** (prerequisites, install, env, backend/frontend commands, URLs, troubleshooting) và **Docker deploy** tách riêng; không đổi app logic.
+
+## 2026-09-21 (Phase 7 — review vs product-spec / test-plan)
+
+### Pass
+- README **Demo checklist (5 phút)** đủ 7 bước; **Current state** demo-ready + link acceptance.
+- Cleanup inventory đã xóa: `ai/`, `static/`, `manual_test.sh`, `prep_changelog.sh`, `docs/vms/`, `agent-canvas.md`; giữ `docs/vms_yaml/`.
+- `Dockerfile` COPY `docs/vms_yaml/`; `DOCS_ROOT=docs/vms_yaml`.
+- Phase 7 checklist `[x]`; status Phase 1–7 trên product-spec / test-plan / AGENTS / plan.
+- `pytest -q` → 193 passed; 9 test files; không `backend/`.
+
+### Fail (đã fix — Cursor review)
+- Phase 1 note vẫn ghi “chưa xóa” / product-spec còn “trong phase cleanup” → đánh đã xóa Phase 7.
+- Demo checklist bước 2–6 hơi mơ hồ (thiếu `curl`, credentials Langfuse, gợi ý `vehicle_type=CAR`) → siết wording copy-paste.
+
+### Missing
+- Không còn phase unchecked trong plan v5 MVP.
+- Live golden-30 v2.2 / AIOC asserts (đã ghi ở Phase 6) — ngoài scope demo cleanup.
+
+### Verified
+- `pytest -q` → 193 passed
+- Legacy paths gone; `docs/vms_yaml/how_to/ai/*.yaml` còn nguyên
+
+## 2026-09-21 (Phase 7 — Demo setup / Cleanup)
+
+### Added / Changed
+- Thêm **Demo checklist (5 phút)** vào `README.md` với 7 bước copy-pasteable.
+- Cập nhật dòng trạng thái **Current state** trong `README.md` xác nhận hoàn tất v5 (Phase 1–7) và đạt trạng thái demo-ready.
+- Dọn dẹp legacy code: xóa `ai/`, `static/`, `manual_test.sh`, `prep_changelog.sh`, `docs/vms/` (chỉ giữ YAML), `agent-canvas.md`.
+- Sửa `Dockerfile` chuyển `COPY docs/vms/` thành `COPY docs/vms_yaml/`.
+- Cập nhật checklist trong `specs/implementation-plan.md` (Phase 7 done) và trạng thái đồng bộ ở các file test-plan, product-spec, AGENTS.
+- Milestone **v5 demo-ready**.
+
+## 2026-09-21 (Phase 6 — review vs product-spec / test-plan)
+
+### Pass
+- `eval/run.py` trích `detail` + `query.tool` (v5); offline không ghi đè `golden-30.md`.
+- Dataset v2.2: `must_include_tool` → `sql_builder` / chặn `sql_builder` trên how-to; giữ 30 case 18/6/3/3.
+- `--judge` + pop `PYTEST_CURRENT_TEST` trên live; README/test-plan ghi ~15–30 phút + LAN 196.
+- `pytest -q` xanh; 9 file test; không `backend/`; Phase 6 checklist `[x]`.
+
+### Fail (đã fix — Cursor review)
+- `product-spec` / `AGENTS` / `test-plan` header vẫn Phase 1–5 → sync Phase 1–6.
+- `test_eval_run_pipeline_offline` empty `pass` → thay bằng unit test extraction/assertions v5.
+- change-log ghi nhầm “10 file tests”.
+
+### Missing (đúng scope — Phase 7 / live)
+- Chưa re-run live `python eval/run.py --judge` với dataset v2.2 (cần LAN 196 + DB) → `golden-30.md` hiện còn báo cáo cũ.
+- Một số case AIOC/`aioc.atin.vn` vẫn assert nội dung web AIOC trong khi docs v5 là YAML VMS — có thể fail live cho tới khi chỉnh expected/docs (không thêm feature ở review này).
+
+### Verified
+- `pytest -q` (sau fix).
+
+## Phase 6 (2026-09-21)
+
+- Hoàn tất test và đánh giá (Phase 6).
+- Sửa `eval/run.py` để tương thích v5: parse `detail` (query_data, docs, out_of_scope) và `query.tool` (`sql_builder`) thay vì các tool ReAct cũ.
+- Cập nhật bộ test dataset `eval/datasets/agent_stat/v2.yaml` (bump lên v2.2):
+  - Đổi các `must_include_tool` từ legacy ReAct (count_vehicle_flow, v.v) thành `sql_builder`/`docs`/`query_data`.
+  - Giữ vững 30 case và tỉ lệ 18/6/3/3.
+- Bổ sung test `--help` + extraction v5 vào `test_api.py`.
+- `pytest -q` offline; **9** file `test_*.py` (< 10); không thư mục `backend/`.
+- Update specs thành "Phase 1–6 xong".
+- Document thời gian chạy `golden-30` (~15-30 phút), cần DB/LAN 196 cho bản live.
+
+## 2026-09-21 (Phase 5 — review vs product-spec / test-plan)
+
+### Pass
+- README Deploy = Docker Compose only; quick start không dùng `.venv` / `pip`.
+- Env table: LLM / DB / Langfuse / `DOCS_ROOT` / `SQL_REPAIR_MAX` / ports.
+- Lệnh `./scripts/setup-langfuse.sh` vs `docker compose up --build -d`; URL + credentials Langfuse khớp `langfuse/README.md`.
+- `LANGFUSE_HOST` local vs `host.docker.internal` documented; compose override khớp file thật.
+- `docker-compose.yml` chỉ `frontend` + `ai_backend`; Langfuse tách `langfuse/`.
+- Troubleshooting + Dev local uvicorn tách khỏi quick start.
+- Checklist Phase 5 `[x]`; status Phase 1–5 trên product-spec / test-plan / AGENTS.
+- `docker compose config` exit 0; pytest compose structure tests còn xanh.
+
+### Fail (đã fix — Cursor review)
+- README chưa nhấn `LLM_BACKEND=self_hosted` khi demo Ollama 196 (`.env.example` mặc định `openai`) → bổ sung ghi chú ngay sau `cp .env.example .env`.
+
+### Missing (đúng scope — Phase 6+)
+- Gom pytest / golden-30 — Phase 6.
+- Demo checklist 5 phút / dọn legacy — Phase 7.
+
+### Verified
+- `docker compose config` → OK
+- `pytest -q` → 191 passed (offline)
+
+## 2026-09-21 (Phase 5 — Docker run instructions: docs & compose alignment)
+
+### Added / Changed
+- **`README.md`**:
+  - Viết lại toàn bộ phần **Deploy (Docker Compose)** làm đường dẫn chính (quick start): chỉ yêu cầu Docker + Docker Compose, không chứa bất kỳ chỉ dẫn nào về Python hay `.venv` / `pip install`.
+  - Cập nhật dòng trạng thái dự án: Phase 1–5 hoàn tất (Setup, Core logic, LangGraph v5 pipeline, Error handling, Docker docs & compose alignment).
+  - Cập nhật mục **Kiến trúc v5** phản ánh chính xác cấu trúc thực tế đang hoạt động (`src/llm/`, `src/agent/`, `src/db/`, `src/knowledge/`, `src/chart/`, `frontend/`, `langfuse/`).
+  - Hướng dẫn chuẩn bị file môi trường từ `cp .env.example .env` kèm bảng biến môi trường chi tiết cho 5 nhóm: LLM (OpenAI / Ollama LAN 196), Postgres VMS read-only, ClickHouse (tuỳ chọn), Langfuse observability, v5 Core (`DOCS_ROOT`, `SQL_REPAIR_MAX`), và cổng kết nối (`FRONTEND_PORT`, `BACKEND_PORT`).
+  - Làm rõ hai tùy chọn khởi động bằng lệnh: `./scripts/setup-langfuse.sh` (khởi động trọn gói cả app + Langfuse stack độc lập) và `docker compose up --build -d` (chỉ khởi động app dong: `frontend` + `ai_backend`).
+  - Bảng tổng hợp URL dịch vụ (Frontend UI `:8080`, Backend Health `/api/health` `:8000`, Langfuse `:3000`) cùng thông tin tài khoản mặc định `admin@agent-atin.local` / `Atin@123#`.
+  - Giải thích cơ chế `LANGFUSE_HOST`: local dev uvicorn dùng `http://localhost:3000`; container Docker backend tự động kết nối `http://host.docker.internal:3000` thông qua override trong `docker-compose.yml` và `extra_hosts`.
+  - Mục **Troubleshooting ngắn** súc tích: xử lý lỗi UI sai API URL, không thấy trace trên Langfuse, LLM ping thất bại và xử lý khi DB chưa cấu hình / read-only.
+  - Tách riêng mục **Dev local uvicorn** thành phần tuỳ chọn cho developer, không lẫn vào quick start.
+- **`docker-compose.yml`**: Xác nhận compose chỉ chứa 2 services của app (`frontend` + `ai_backend`), không nhúng stack Langfuse (độc lập tại `langfuse/docker-compose.yml`); cổng và biến môi trường khớp tài liệu.
+- **`langfuse/README.md`**: Cập nhật đồng bộ lệnh one-shot `./scripts/setup-langfuse.sh` và reset dữ liệu `./scripts/setup-langfuse.sh --reset` từ thư mục gốc `dong`.
+- **`specs/implementation-plan.md`**: Đánh dấu hoàn thành toàn bộ 9 mục checklist Phase 5 `[x]`, cập nhật tiêu đề tiến độ Phase 1–5 xong.
+- **`specs/product-spec.md`**, **`specs/test-plan.md`**, **`AGENTS.md`**: Đồng bộ dòng trạng thái tiến độ Phase 1–5 hoàn tất.
+
+### Verified
+- Cấu trúc YAML của `docker-compose.yml` (services: `frontend`, `ai_backend`) và `langfuse/docker-compose.yml` (services: `langfuse-web`, `langfuse-worker`, `clickhouse`, `minio`, `redis`, `postgres`) hợp lệ cú pháp, khớp spec.
+- Cổng kết nối và biến môi trường đồng bộ: `FRONTEND_PORT` (8080), `BACKEND_PORT` (8000), `LANGFUSE_HOST` (`host.docker.internal:3000` trong container).
+- `pytest -q` → 191 passed, 1 warning (offline, 0 failed).
+- Quick start trong `README.md` hoàn toàn không có `.venv` hay `pip install`.
+
+### Not done
+- Phase 6: Tests & eval (gom pytest < 10 files, chạy eval dataset v2 golden-30 live).
+- Phase 7: Demo setup (checklist 5 phút, dọn code thừa).
+
+## 2026-09-21 (Phase 4 — review vs product-spec / test-plan)
+
+### Pass
+- Guardrail injection → 400; out-of-scope trước graph.
+- Validate/execute lỗi bubble lên catch-all; `_format_error_message` tiếng Việt (parse/DB/SQL/timeout).
+- Empty rows: `respond` trả “Không có dữ liệu…”; docs empty: “Không tìm thấy hướng dẫn…”.
+- Chart render fail: try/except bỏ chart, vẫn trả text.
+- FE AbortController + thông báo lỗi kết nối; SSE `__answer__` dùng friendly message.
+
+### Fail (đã fix — Cursor review)
+- Error-node SSE/`run_agent_stream` dump `str(exc)` (có thể chứa SQL) → chỉ còn friendly message.
+- Docs empty vẫn wording cũ “chưa có thông tin” → đồng bộ “Không tìm thấy hướng dẫn…”.
+- Trạng thái Phase 4 chưa sync product-spec / test-plan / AGENTS / implementation-plan header.
+
+### Missing (đúng scope — Phase 5+)
+- README Docker-only quick start — Phase 5.
+- Golden-30 / gom pytest — Phase 6.
+
+### Verified
+- `pytest -q` (sau fix).
+
+## 2026-09-21 (Phase 4 — Validation and error states)
+
+### Added / Changed
+- **`src/main.py`**: Cập nhật `_format_error_message` để trả về câu lỗi tiếng Việt thân thiện khi gặp lỗi LLM structured output (parse/schema/validation) và lỗi sinh SQL / thực thi DB. Cập nhật để hỗ trợ bắt các lỗi này và không crash luồng stream (`stream_agent`).
+- **`src/agent/graph.py`**: Chuyển đổi `{"error": ...}` thành `raise ValueError(error)` trong `validate_node` và `raise RuntimeError(...)` trong `execute_node` để các lỗi được bubble up lên catch-all của agent. Điều này giúp Langfuse span ghi nhận error level và trả về câu báo lỗi thân thiện thay vì leak SQL/error nội bộ hoặc tạo kết quả sai.
+- **`src/agent/graph.py`**: `respond_node` không gọi LLM nếu `not rows` (trả về trực tiếp "Không có dữ liệu..."), tránh bịa số khi empty.
+- **`specs/implementation-plan.md`**: Đánh dấu Phase 4 `[x]`.
+
+### Verified
+- `pytest -q` → 34 passed cho `test_api.py`.
+- `pytest -q -k "guardrail or validator or error or empty or docs or query"` → 98 passed (offline).
+- Không rò rỉ SQL; trace lỗi báo đúng cấu trúc; parse error không crash stream.
+
+### Not done
+- Phase 5 (Docker run instructions).
+- Phase 6-7.
+
+## 2026-09-21 (Phase 3 — review vs product-spec / test-plan)
+
+### Pass (phạm vi Phase 3)
+- StateGraph: `rewrite → classify → query|docs|out`; không còn node `react` / `chon_tool` trên đường chính.
+- Query: schema → plan → validate → execute → optional chart → respond (`StatAnswer` + template fallback).
+- Docs / OOS nhánh đúng; SSE `running`/`done`; FE `<img>` khi có `chart_png_base64`.
+- Cache key = câu **sau rewrite** (`main.py`).
+- `graph.mmd` cập nhật pipeline v5.
+- Acceptance **#5** (chart UI path), **#6** (node rewrite SSE) ở mức code; pytest offline **189 passed**.
+
+### Fail (đã fix — Cursor review)
+- Checklist Phase 3 vẫn `[ ]` dù code đã wire → đánh `[x]`.
+- Langfuse nested span per node thiếu (`_trace_span` không dùng) → `_wrap_node` gọi `trace_step(parent, node_id, ...)`.
+- Import lộn schema/builder; thiếu entry change-log Phase 3; status docs lệch → sync.
+- `test_graph_nodes_and_structure` chưa assert `rewrite` / không còn `react`.
+
+### Missing (đúng scope — Phase 4+)
+- Error matrix đầy đủ (parse fail UX, empty rows polish, disconnect) — Phase 4.
+- Live verify 3 câu + Langfuse UI — manual/live.
+- Xóa hẳn `react.py` / 9 tools — để Phase 7 cleanup (đã deprecate khỏi đường chính).
+
+### Fixed
+- `src/agent/graph.py`: `trace_step` trong `_wrap_node`; import sạch.
+- Checklist + status `implementation-plan` / `product-spec` / `test-plan` / `AGENTS`.
+- `tests/test_intent.py` structure assert v5.
+
+## 2026-09-21 (Phase 3 — Graph v5 thay ReAct + SSE chart)
+
+### Added / Changed
+- **`src/agent/graph.py`**: pipeline LangGraph v5 (rewrite/classify/query/docs/out); gỡ ReAct khỏi đường chính; SSE events + `chart_png_base64`.
+- **`src/main.py`**: cache key = rewritten text; stream nhận rewritten trước khi chạy graph.
+- **`frontend/app.js`**: hiển thị PNG chart dưới câu trả lời.
+- **`graph.mmd`**: sơ đồ pipeline v5.
+
+### Verified
+- `pytest -q` → 189 passed (offline).
+- Nodes: rewrite, classify, retrieve_schema, plan_query, validate, execute, render_chart, respond, retrieve_docs, answer_from_docs, out_of_scope.
+
+### Not done
+- Phase 4 error states; Phase 5–7.
+
+## 2026-09-21 (Phase 2.5 — review vs product-spec / test-plan)
+
+### Pass (phạm vi 2.5)
+- `render_chart`: matplotlib Agg → PNG base64 non-empty (`iVBOR` / `\x89PNG`); bar/line/pie; empty rows → `""`.
+- `should_render_chart`: keyword + `StatAnswer.chart_requested`.
+- `plan_chart`: structured online + offline heuristic + LLM fail fallback.
+- test-plan **Chart**; product-spec Chart module (acceptance **#5** phần render — chưa UI/SSE).
+- `matplotlib` trong `requirements.txt`; `pytest -q` → 192 passed; 9 test files.
+
+### Fail (đã fix — Cursor review)
+- `test-plan.md` / `AGENTS.md` status còn «2.4» dù Phase 2.5 đã xong → sync.
+
+### Missing (đúng scope — Phase 3)
+- SSE `node_id=render_chart` + `chart_png_base64`.
+- Frontend `<img>` dưới câu trả lời (acceptance **#5** full).
+- Graph wire `execute → [render_chart] → respond`.
+
+### Fixed
+- Sync status `specs/test-plan.md`, `AGENTS.md`.
+
+## 2026-09-21 (Phase 2.5 — Chart PNG: matplotlib Agg -> base64, detection, plan_chart)
+
+### Added
+- **`src/chart/render.py`**: Module thuần tạo và vẽ biểu đồ độc lập:
+  - `render_chart(rows, spec) -> str`: sử dụng backend matplotlib non-GUI `Agg`, hỗ trợ các kiểu biểu đồ `bar`, `line`, `pie`, xuất ảnh PNG dạng chuỗi base64 thuần (không kèm prefix `data:image/png;base64,`); xử lý tự động `rows` rỗng trả về `""`, giải phóng figure an toàn qua `try...finally: plt.close(fig)`.
+  - `should_render_chart(question, stat_answer=None) -> bool`: phát hiện từ khóa biểu đồ tiếng Việt/tiếng Anh (`biểu đồ`, `bieu do`, `chart`, `plot`, `vẽ`, `đồ thị`, `thống kê theo`, `tỷ lệ`, `cơ cấu`, `phân bố`) hoặc khi `stat_answer.chart_requested` là True.
+  - `plan_chart(rows, question) -> ChartSpec`: xác định cấu hình biểu đồ thông qua `invoke_structured(messages, ChartSpec)` khi online, và thuật toán heuristic chọn 2 cột (danh mục + số liệu) khi offline (`use_offline_tools()`) hoặc khi LLM gặp lỗi.
+- **`src/chart/__init__.py`**: Re-export `render_chart`, `should_render_chart`, `plan_chart`.
+
+### Changed
+- **`requirements.txt`**: Bổ sung thư viện `matplotlib>=3.8.0` cho tính năng render biểu đồ.
+- **`src/agent/__init__.py`**: Re-export `plan_chart`, `render_chart`, `should_render_chart` sẵn sàng cho Phase 3 nối vào LangGraph pipeline.
+- **`tests/test_structured.py`**: Mở rộng thêm 9 offline unit test cases cho module chart:
+  - `test_render_chart_bar_success`: xác nhận chuỗi base64 không rỗng, bắt đầu bằng `iVBOR` và magic number `\x89PNG`.
+  - `test_render_chart_line_and_pie`: kiểm tra biểu đồ đường và biểu đồ tròn.
+  - `test_render_chart_empty_rows_and_invalid_spec`: kiểm tra rows rỗng và spec None trả về `""`.
+  - `test_render_chart_fallback_column_selection`: kiểm tra tự động fallback chọn cột khả dụng.
+  - `test_should_render_chart_keywords_true_and_false`: kiểm thử các trường hợp từ khóa true/false.
+  - `test_should_render_chart_with_stat_answer`: kiểm thử cờ `chart_requested` trong `StatAnswer`.
+  - `test_plan_chart_offline_heuristics`: kiểm thử heuristic chọn cột và chart_type offline.
+  - `test_plan_chart_mock_structured_online`: mock `invoke_structured` khi online.
+  - `test_plan_chart_llm_failure_falls_back_to_offline`: kiểm thử fallback sang offline khi LLM lỗi.
+- **`specs/implementation-plan.md`**: Đánh dấu hoàn thành toàn bộ checklist của Phase 2.5 (`[x]`); cập nhật mục tiêu Phase 2 "Xong khi" đã bao gồm offline cover cho chart.
+- **`specs/product-spec.md`**: Cập nhật trạng thái Phase 2 (2.1–2.5) hoàn thành.
+
+### Verified
+- `pytest -q` → 192 passed, 1 warning (offline, 0 failed).
+- `pytest -q -k "chart or structured"` → 20 passed, 172 deselected, 1 warning.
+- `pytest -q -k "structured or rewrite or query or docs or chart or validator"` → 54 passed, 138 deselected, 1 warning.
+- `find tests -name 'test_*.py' | wc -l` → 9 (< 10).
+- Matplotlib backend `Agg` thuần non-GUI, không phát sinh lỗi display/thread, không rò rỉ figure.
+
+### Not done
+- Phase 3: Nối `render_chart` vào StateGraph LangGraph mới, phát event SSE `render_chart` kèm `chart_png_base64`, render thẻ `<img>` phía frontend.
+- Phase 4–7: Theo implementation plan.
+
+## 2026-09-21 (Phase 2.4 — review vs product-spec / test-plan)
+
+### Pass (phạm vi 2.4)
+- `DOCS_ROOT` + corpus `docs/vms_yaml/` (40 published cards); loader chỉ ingest `published`.
+- Keyword `retrieve_docs` khớp how-to (thêm camera / playback / reset password).
+- `answer_from_docs` → `DocsAnswer` (structured + offline + LLM fail fallback).
+- How-to **không gọi DB**; graph v4 `handle_docs_intent` vẫn chạy.
+- test-plan Docs; acceptance **#4** (how-to bám card YAML) ở tầng module.
+- `pytest -q` → 183+ passed; 9 test files `< 10`.
+
+### Fail (đã fix — Cursor review)
+- `test_intent_routing` vẫn patch `src.agent.docs.invoke_text` dù adapter không còn dùng → gỡ patch; assert answer docs.
+- `src/agent/docs.py` giữ import/`invoke_text` chết → dọn adapter mỏng.
+- Header `implementation-plan` / status `product-spec` / `test-plan` / `AGENTS` chưa ghi 2.4 xong → sync.
+
+### Missing (đúng scope)
+- Graph SSE node `answer_from_docs` riêng (Phase 3).
+- Chart PNG — Phase 2.5.
+- Không còn grep `docs/vms/*.md` trên đường chính (đã thay; file md legacy còn trong cleanup Phase 7).
+
+### Fixed
+- `tests/test_intent.py`, `src/agent/docs.py`, sync status docs.
+
+## 2026-09-21 (Phase 2.4 — Docs YAML: DOCS_ROOT, loader, keyword retrieval, structured answer_from_docs)
+
+### Added
+- **`docs/vms_yaml/`**: Bản sao tài liệu YAML VMS từ `agent-harness/duy` (40 task cards published, `index.yaml`, `glossary.yaml`, `schema.yaml`, `walkthrough.md`) đặt trực tiếp trong repository `dong` để đảm bảo hoạt động độc lập, tự chủ khi chạy offline và build Docker container (không phụ thuộc relative path bên ngoài repo).
+- **`src/knowledge/loader.py`**: Module nạp task cards YAML: hàm `docs_root()` lấy thư mục tài liệu từ `settings.effective_docs_root`, `load_index()`, `load_published_cards()` đọc `index.yaml` và chỉ tải các cards có `status: published` (đúng 40 cards), cùng `clear_docs_cache()` để quản lý bộ nhớ đệm.
+- **`src/knowledge/retrieval.py`**: Keyword retrieval top-k cards dựa trên danh sách cụm từ nghiệp vụ (`_PHRASES`), từ dừng (`_STOP`), trọng số alias, title, tag và hay (id/intent/summary/module); hàm `card_excerpt_for_llm` rút gọn các trường phục vụ prompt.
+- **`src/knowledge/answer.py`**: Hàm `answer_from_docs(question, cards) -> DocsAnswer` qua `invoke_structured` với prompt tiếng Việt hướng dẫn VMS; hỗ trợ nhánh offline (`use_offline_tools()`) sinh `DocsAnswer` từ dữ liệu text của card (điền đầy đủ `card_ids`, `steps` khi tìm thấy card; gán `card_ids=[]` và câu giải thích tiếng Việt rõ ràng khi rỗng); tự động fallback sang offline khi `invoke_structured` gặp lỗi.
+- **`src/knowledge/__init__.py`**: Re-export các hàm cốt lõi `docs_root`, `load_index`, `load_published_cards`, `clear_docs_cache`, `retrieve_docs`, `card_excerpt_for_llm`, `answer_from_docs`.
+- **`tests/test_docs.py`**: 11 offline unit tests bao phủ `docs_root`, `load_published_cards` (chỉ load 40 published cards, bỏ qua `needs_review`), `clear_docs_cache`, keyword retrieval cho câu hỏi how-to phổ biến ("thêm camera", "xem lại", "quên mật khẩu"), câu hỏi ngoài lề / rỗng trả về rỗng, `card_excerpt_for_llm`, `answer_from_docs` offline có card và rỗng, mock `invoke_structured` cho `DocsAnswer`, fallback khi LLM lỗi, adapter `handle_docs_intent`, và kiểm tra nhánh how-to không gọi database.
+
+### Changed
+- **`src/config.py`**: Bổ sung cấu hình `docs_root: str = Field(default="docs/vms_yaml", alias="DOCS_ROOT")` và thuộc tính `effective_docs_root` (hỗ trợ đường dẫn tuyệt đối, tương đối, kiểm tra `index.yaml`, và fallback sang sibling `duy` nếu cần).
+- **`.env.example`**: Bật biến `DOCS_ROOT=docs/vms_yaml`.
+- **`src/agent/docs.py`**: Cập nhật sang dùng `retrieve_docs` và `answer_from_docs` từ `src.knowledge`; hàm `handle_docs_intent(question) -> str` đóng vai trò adapter gọi retrieval + structured answer và trả về chuỗi `answer_vi` giúp giữ tương thích hoàn toàn cho đồ thị LangGraph v4 hiện tại.
+- **`src/agent/__init__.py`**: Re-export thêm `retrieve_docs`, `answer_from_docs`, `handle_docs_intent`.
+- **`tests/test_api.py`**: Gộp các test case frontend UI và streaming từ `tests/test_ui_graph.py` vào `tests/test_api.py` (cùng phạm vi kiểm thử FastAPI endpoints), sau đó gỡ bỏ `tests/test_ui_graph.py` để giữ tổng số file test là 9 (< 10 theo `specs/test-plan.md`).
+- **`specs/implementation-plan.md`**: Đánh dấu hoàn thành toàn bộ 4 checklist items của Phase 2.4 (`[x]`).
+
+### Verified
+- `pytest -q` → 183 passed, 1 warning (offline, 0 failed).
+- `pytest -q -k "docs or structured"` → 22 passed, 161 deselected, 1 warning.
+- `find tests -name 'test_*.py' | wc -l` → 9 (< 10).
+- Nhánh how-to tài liệu VMS hoạt động độc lập, không import/gọi tới kết nối DB hoặc SQL executor.
+
+### Not done
+- Phase 2.5 (Chart: matplotlib Agg → PNG base64 từ rows + ChartSpec).
+- Phase 3 (LangGraph v5 wiring: thay thế ReAct loop bằng pipeline StateGraph rewrite -> classify -> plan/docs -> respond/stream).
+
+## 2026-09-21 (Phase 2.3 — review vs product-spec / test-plan)
+
+### Pass (phạm vi 2.3)
+- Catalog + `describe_table` + `build_schema_excerpt`; `plan_query` → `QueryPlan` (structured + offline).
+- `build_sql`: parameterized `%s`; thêm filter (`vehicle_type`, `direction`) vào WHERE/params.
+- `validate_sql`: SELECT-only; reject DELETE/INSERT/UPDATE/DROP/…; unknown table; multi-statement.
+- `execute_sql`: validate trước; mock DB OK; lỗi rõ khi DB chưa cấu hình.
+- Repair loop tôn trọng `SQL_REPAIR_MAX` (`plan_and_execute`).
+- test-plan QueryPlan + Validator + Read-only (module); acceptance **#3** (filter→query), **#7** (DELETE chặn) ở tầng module.
+- `pytest -q` → 172 passed; 9 test files `< 10`.
+
+### Fail (đã fix — Cursor review)
+- `test_build_sql_short_filters_and_numeric` không pin `db_organization_id=0` → phụ thuộc `.env` local. Đã monkeypatch.
+- Status `product-spec` / `test-plan` / `AGENTS` chưa ghi 2.3 → sync.
+
+### Missing (đúng scope)
+- ClickHouse path trong `execute_sql` (spec: tuỳ chọn).
+- Whitelist cột tuyệt đối (alias-aware) — hiện chặn trộn cột cross-table kiểu duy; đủ MVP.
+- Graph/SSE wire plan→validate→execute — Phase 3.
+- Docs YAML / chart — Phase 2.4–2.5.
+
+### Fixed
+- `tests/test_query_plan.py`: pin org id trong short-filters test.
+- Sync status docs.
+
+## 2026-09-21 (Phase 2.3 — Schema catalog + QueryPlan builder + validator + executor + repair)
+
+### Added
+- **`src/db/catalog.py`**: Catalog dataset 5 bảng VMS (`plate_event`, `zone_event`, `smf_face_events`, `fire_smoke_event`, `anomaly_event`) kèm mô tả, cột thời gian, kiểu dữ liệu và sample values; hàm `describe_table` (offline-friendly, hỗ trợ introspect DB nếu kết nối sẵn sàng), `build_schema_excerpt(tables)` sinh context schema cho LLM prompt, cùng các helper whitelist `get_allowed_tables()`, `get_allowed_columns(table)`, `get_database_for_table(table)`.
+- **`src/db/query_builder.py`**: Chuyển đổi `QueryPlan` (structured) thành câu SQL tham số hoá với placeholder `%s` (chuẩn psycopg2); hỗ trợ SELECT, FROM whitelist tables, WHERE từ filters (tự động trích xuất chuỗi, số, unquoted identifier, `organization_id`), GROUP BY, ORDER BY, LIMIT (không vượt quá `settings.db_max_rows`).
+- **`src/db/validator.py`**: Hàm `validate_sql(sql)` trả về `ValidationResult` (ok, reason); kiểm tra SELECT/WITH-only, chặn multi-statement (`;`), chặn toàn bộ từ khóa DML/DDL (DELETE, INSERT, UPDATE, DROP, ALTER, TRUNCATE,...), đối chiếu whitelist bảng và phát hiện trộn lẫn cột giữa các bảng trong catalog.
+- **`src/db/executor.py`**: Hàm `execute_sql(sql, params, dbname=None) -> list[dict]` thực thi SQL đọc-only trên Postgres thông qua `get_connection`; tự động định tuyến database theo bảng; kiểm tra `settings.db_configured` và raise `RuntimeError` rõ ràng khi DB chưa được cấu hình.
+- **`src/agent/query_plan.py`**: `plan_query(question, schema_excerpt) -> QueryPlan` qua `invoke_structured` (hỗ trợ heuristic offline khi `use_offline_tools()`); `repair_plan_query` replan khi validate/execute lỗi; `plan_and_execute` thực thi pipeline thuần kèm vòng lặp sửa lỗi tối đa `settings.sql_repair_max` lần.
+- **`tests/test_query_plan.py`**: 23 offline unit tests bao phủ catalog, `describe_table`, `build_schema_excerpt`, `build_sql` tham số hóa, `validate_sql` chặn DML/DDL & unknown tables, `execute_sql` kiểm tra cấu hình & mock kết nối, `plan_query` & repair loop.
+
+### Changed
+- **`src/db/__init__.py`**: Re-export `get_catalog`, `describe_table`, `build_schema_excerpt`, `build_sql`, `validate_sql`, `ValidationResult`, `execute_sql`.
+- **`src/agent/__init__.py`**: Re-export `plan_query`, `repair_plan_query`, `plan_and_execute`.
+- **`specs/implementation-plan.md`**: Đánh dấu hoàn thành toàn bộ 7 checklist items của Phase 2.3 (`[x]`).
+
+### Verified
+- `pytest -q` → 172 passed, 1 warning (offline, 0 failed).
+- `pytest -q -k "query or validator or structured"` → 32 passed, 140 deselected.
+- `find tests -name 'test_*.py' | wc -l` → 9 (< 10).
+
+### Not done
+- Phase 2.4 (Docs YAML duy: loader, keyword retrieval, `answer_from_docs`).
+- Phase 2.5 (Chart: matplotlib Agg → PNG base64 từ rows + ChartSpec).
+- Phase 3 (LangGraph wiring: nối `plan_query`, `validate`, `execute` vào StateGraph và SSE stream).
+
+## 2026-09-21 (Phase 2.2 — review vs product-spec / test-plan)
+
+### Pass (phạm vi 2.2)
+- `rewrite_question` → `RewrittenQuestion` (prompt VI + offline fallback + mock `invoke_structured`).
+- `classify_intent` → `IntentResult` structured; how_to ≠ query_data; offline heuristics cover 5 intent.
+- Graph v4 vẫn route qua `classify_node` dùng `res.intent` (không gắn node rewrite — đúng scope 2.2).
+- test-plan Intent (module): structured + routing mock.
+- Checklist 2.2 `[x]`; `pytest -q -k "rewrite or intent or structured"` xanh.
+
+### Fail (đã fix — Cursor review)
+- `test_intent_routing` patch `src.llm.use_offline_tools` không ảnh hưởng `src.agent.intent.use_offline_tools` → dưới pytest luôn offline heuristic, mock structured không chạy. Đổi patch + assert `call_count == 3`.
+
+### Missing (đúng scope — Phase 3+)
+- test-plan Rewrite SSE `node_id=rewrite`; product-spec acceptance **#6** — chưa wire graph.
+- Acceptance **#2** đầy đủ: ReAct/`invoke_text` answer/docs vẫn free-text.
+- Phase 2.3+ QueryPlan / docs / chart.
+
+### Fixed
+- `tests/test_intent.py` patch path + assert mock gọi 3 lần.
+- Sync status `product-spec.md`, `test-plan.md`, `AGENTS.md`.
+
+## 2026-09-21 (Phase 2.2 — Node rewrite & classify logic)
+
+### Added
+- **`src/agent/rewrite.py`**: `rewrite_question(raw: str) -> RewrittenQuestion` sử dụng `invoke_structured` với prompt tiếng Việt chuẩn hóa câu hỏi, trích xuất `filters`, `time_range`, `intent_hint`; hỗ trợ fallback offline hợp lệ không gọi LAN khi `use_offline_tools()` bật.
+- **`src/agent/__init__.py`**: Re-export `rewrite_question`, `classify_intent`, `classify_intent_str` cho callers.
+
+### Changed
+- **`src/agent/intent.py`**: Chuyển `classify_intent` sang structured output trả về `IntentResult` (intent ∈ `query_data|how_to|troubleshoot|concept|out_of_scope` kèm `reason`), loại bỏ parse free-text keyword từ `invoke_text`; thêm heuristic offline cho các intent; bổ sung helper `classify_intent_str`.
+- **`src/agent/graph.py`**: Cập nhật `classify_node` tương thích ngược: trích xuất `res.intent` từ `IntentResult` hoặc `str(res)` giữ nguyên routing và output event của graph v4.
+- **`tests/test_intent.py`**: Mock `invoke_structured` thay cho `invoke_text`; bổ sung test offline heuristics và mock structured cho `rewrite_question`, `classify_intent`, `classify_intent_str`.
+- **`specs/implementation-plan.md`**: Đánh dấu hoàn thành mục 2.2 (`[x]`).
+
+### Verified
+- `pytest -q` → 149 passed, 1 warning (offline, không gọi LAN).
+- `pytest -q -k "rewrite or intent or structured"` → 13 passed.
+- `find tests -name 'test_*.py' | wc -l` → 8 (< 10).
+- `from src.agent import rewrite_question` trả về `RewrittenQuestion`.
+- `from src.agent import classify_intent` trả về `IntentResult`.
+
+### Not done
+- Phase 2.3+ (Schema + QueryPlan builder, docs YAML, chart, nối graph rewrite node mới vào StateGraph / SSE stream).
+
+## 2026-09-21 (Phase 2.1 — review vs product-spec / test-plan)
+
+### Pass (phạm vi 2.1)
+- product-spec schema table: đủ 6 model + field khớp (`RewrittenQuestion` … `ChartSpec`).
+- Acceptance **#2** (phần layer): `invoke_structured` + pytest mock schema parse (offline).
+- test-plan **Structured LLM**: mock; schema validate; lỗi parse → `RuntimeError` tiếng Việt rõ.
+- Config: `LLM_REQUEST_TIMEOUT_S`, model, `SQL_REPAIR_MAX=1`.
+- `pytest -q -k structured` xanh; suite vẫn offline.
+
+### Fail (đã fix)
+- `invoke_structured` gọi `extract_token_usage` trên mọi non-BaseModel (kể cả dict schema) → nhiễu token 0; bỏ extract trên đường structured (token gắn AIMessage thuộc Phase khác nếu cần).
+- Thiếu test đường dict → `model_validate` thành công.
+- `product-spec` / `test-plan` status vẫn «Phase 2+ chưa» dù 2.1 đã code.
+
+### Missing (đúng scope — Phase 2.2+)
+- Acceptance **#2** đầy đủ: mọi LLM call **trong graph** dùng structured — graph/ReAct vẫn `invoke_text` (2.2 / 3).
+- test-plan «fallback» user-facing tiếng Việt khi parse fail trên stream — Phase 4.
+- Acceptance **#3–#8**, rewrite SSE, QueryPlan→SQL, docs, chart — chưa.
+
+### Fixed
+- `src/llm/structured.py`: validate schema trước; không extract usage từ payload structured.
+- `tests/test_structured.py`: `test_invoke_structured_coerces_dict_to_schema`.
+- Sync status `product-spec.md`, `test-plan.md`.
+
+## 2026-09-21 (Phase 2.1 — Structured output layer)
+
+### Added
+- **`src/llm/`** package (thay `src/llm.py`):
+  - `client.py` — API cũ (`base_llm`, `invoke_text`, …); timeout từ config.
+  - `schemas.py` — `RewrittenQuestion`, `IntentResult`, `QueryPlan`, `DocsAnswer`, `StatAnswer`, `ChartSpec`.
+  - `structured.py` — `invoke_structured(messages, schema) -> BaseModel` (LangChain `with_structured_output`).
+  - `__init__.py` — re-export để `from src.llm import …` không gãy.
+- **`tests/test_structured.py`**: mock `invoke_structured`; validate schema; lỗi parse/LLM rõ ràng (offline).
+
+### Changed
+- **`src/config.py`**: `LLM_REQUEST_TIMEOUT_S` (mặc định 15), `SQL_REPAIR_MAX` (mặc định 1).
+- **`.env.example`**: thêm `LLM_REQUEST_TIMEOUT_S=15`.
+- **`specs/implementation-plan.md`**: Phase 2.1 checklist `[x]`.
+
+### Verified
+- `pytest -q` → **144 passed** (không gọi LAN).
+- `find tests -name 'test_*.py' | wc -l` → 8 (`< 10`).
+
+### Not done
+- Phase 2.2+ (rewrite/classify nodes, QueryPlan builder, docs, chart, graph…).
+
+## 2026-09-21 (Phase 1 — review vs product-spec / test-plan)
+
+### Pass (phạm vi Phase 1)
+- Acceptance **#1** (phần Docker v4): compose hợp lệ; API `/api/health` → `ok`; UI phục vụ (port theo `FRONTEND_PORT` trong `.env`).
+- Acceptance **#9** (phần offline): `pytest -q` → 138 passed; `test ! -d backend`; `tests/` có 7 file `< 10`.
+- test-plan **Docker spec**: `docker compose config` + `langfuse/docker-compose.yml` OK.
+- Phase 1 checklist: `.env.example` có `DOCS_ROOT` / `SQL_REPAIR_MAX`; AGENTS + `.gitignore`; cleanup inventory; baseline không regress.
+
+### Fail (đã fix — chỉ sync doc Phase 1)
+- `product-spec.md` / `test-plan.md` vẫn ghi «chưa code» trong khi Phase 1 đã xong → lệch «Xong khi: Spec v5 đồng bộ».
+- README kiến trúc liệt kê `src/llm/…` như thể đã có → dễ hiểu nhầm «cấu trúc khớp» Phase 1.
+
+### Missing (đúng scope — Phase 2+)
+- Acceptance **#2–#8** (structured LLM, QueryPlan, docs YAML, chart, rewrite SSE, …): chưa implement.
+- Acceptance **#9** golden-30 live: Phase 6.
+- test-plan hàng Structured / Rewrite / QueryPlan / Docs / Chart: Phase 2–3.
+
+### Fixed
+- `specs/product-spec.md`, `specs/test-plan.md`: trạng thái Phase 1.
+- `README.md`: tách top-level hiện có vs path dự kiến Phase 2+.
+
+## 2026-09-21 (Phase 1 — Project setup)
+
+### Added / Changed
+- **`.env.example`**: nhóm v5 — `DOCS_ROOT=`, `SQL_REPAIR_MAX=1` (chưa wire vào `src/config.py`; Phase 2.1).
+- **`specs/implementation-plan.md`**: Phase 1 checklist `[x]`; bảng cleanup inventory cho Phase 7.
+- **`README.md`**: trạng thái Phase 1 done; ghi `DOCS_ROOT` / `SQL_REPAIR_MAX` đã có trong `.env.example`.
+
+### Verified (không đổi logic)
+- Cấu trúc `src/`, `frontend/`, `tests/`, `eval/`, `langfuse/` khớp README v5.
+- `AGENTS.md` + `.gitignore` đã đủ (một phase/task, structured, Docker-only; ignore `.env` / `.venv` / `venv` / `eval/results` / `__pycache__`).
+- Baseline: `pytest -q` → **138 passed**.
+- Docker app healthy: `GET /api/health` → `status: ok`; Langfuse web healthy trên `:3000`.
+
+### Cleanup list (Phase 7 — chưa xóa)
+- `ai/` (import `backend.config` gãy, không dùng)
+- `static/index.html` (UI legacy; dùng `frontend/`)
+- `manual_test.sh`, `prep_changelog.sh`
+- `docs/vms/*.md` (thay bằng YAML cards khi Phase 2.4)
+- `agent-canvas.md` (doc ngoài runtime)
+
+### Not done
+- Phase 2+ (structured LLM, rewrite, QueryPlan, docs, chart, graph…).
+
+## 2026-09-22 (README — SDD Bước 9 local dev + Docker deploy)
+
+### Changed
+- **`README.md`**: mục **Local development** (prerequisites, install, env, backend/frontend commands, URLs, troubleshooting) và **Docker deploy** tách riêng; không đổi app logic.
+
+## 2026-09-21 (AGENTS.md — SDD Bước 4)
+
+### Changed
+- **`AGENTS.md`**: rút gọn theo SDD guide — đọc spec, một phase/task, giữ đơn giản, không lib thừa, không đổi kiến trúc, change-log + hướng dẫn test sau mỗi implement.
+
+## 2026-09-21 (v5 spec — rewrite implementation-plan 7 phase)
+
+### Changed (spec only)
+- **`specs/implementation-plan.md`**: gom 10 phase cũ → **7 phase** có checklist rõ:
+  1. Project setup
+  2. Core backend & data logic (2.1 structured → 2.5 chart)
+  3. Graph mới thay ReAct
+  4. Validation and error states
+  5. Docker run instructions
+  6. Tests & eval
+  7. Demo setup
+- **`README.md`**, **`AGENTS.md`**, **`test-plan.md`**: tham chiếu Phase 1→7.
+
+### Not done
+- Toàn bộ checklist `[ ]` — chưa implement code v5.
+
+## 2026-09-21 (v5 spec — revert judge, giữ rewrite + classify tách)
+
+### Changed (spec only)
+- Hoàn nguyên spec v5: **`rewrite`** và **`classify_intent`** là hai node/LLM call riêng (bỏ node `judge` / schema `QuestionJudge`).
+- Đồng bộ lại `product-spec.md`, `implementation-plan.md`, `test-plan.md`, `README.md`, `AGENTS.md`.
+
+## 2026-09-21 (README — Local development instructions)
+
+### Changed
+- `README.md`: mục **Local development** — prerequisites, install, bảng biến môi trường (`LLM_BACKEND`/`MODEL_*`, DB, Langfuse), lệnh backend/frontend, local URLs, troubleshooting (UI API URL, cache, Langfuse trace, pytest).
+
+## 2026-09-21 (v5 planning — spec only, chưa code)
+
+### Added / Changed (spec)
+- **`specs/product-spec.md`** — v5 MVP: structured output bắt buộc, node rewrite, QueryPlan + schema DB, docs YAML (duy), chart PNG, pipeline thay ReAct, Docker-only deploy.
+- **`specs/implementation-plan.md`** — Phase 1→10 v5 (thay checklist v4).
+- **`specs/test-plan.md`** — pytest structured/rewrite/query/docs/chart; Docker live; golden regression v4→v5.
+- **`README.md`** — trạng thái v5 spec phase; Docker đường chính; kiến trúc dự kiến; tham chiếu llm-engineer-demo + duy.
+- **`AGENTS.md`** — quy tắc v5 (structured output, QueryPlan, không .venv quick start).
+
+### Not done (chờ implement)
+- Toàn bộ phase 1–10 implementation-plan v5 `[ ]`.
+- Code v4 vẫn chạy (ReAct, tool cố định) cho tới Phase 7.
+
+### App idea captured
+- Phong cách `llm-engineer-demo`; LLM structured output; DB linh hoạt theo biến + schema trong prompt; docs + chart từ duy; node rewrite; clean code; deploy docker compose only.
+
 ## Review (Cursor) — Langfuse trace feature vs product-spec / test-plan
 
 ### Pass
@@ -5047,3 +5629,11 @@ dependency trong `requirements.txt` import được.
   tạp hơn của `llm-engineer-demo`) được GIỮ LẠI theo yêu cầu, chưa xoá —
   quyết định xoá/tái cấu trúc sẽ làm ở Phase 1 implementation-plan khi thực
   sự bắt đầu code.
+
+## Phase 3 - Orchestration & Caching (Graph & SSE)
+- Thay thế hoàn toàn ReAct main path bằng LangGraph pipeline tĩnh (START → rewrite → classify → route).
+- Tích hợp các module từ Phase 2 (catalog, query_plan, executor, chart) vào các node tương ứng của pipeline.
+- Sửa đổi SSE `run_agent_stream` để emit các sự kiện từ các node mới (`retrieve_schema`, `plan_query`, `validate`, `execute`, `render_chart`, `respond`).
+- Cập nhật UI (`app.js`) xử lý hiển thị base64 ảnh biểu đồ từ sự kiện `render_chart` hoặc `__answer__`.
+- Nâng cấp Cache API để sử dụng **câu hỏi đã rewrite** làm cache key, giúp tăng độ bao phủ của cache và bỏ qua quá trình suy luận nội bộ lặp lại.
+- Thích ứng các file test (như `test_api.py`, `test_intent.py`) để verify pipeline graph mới, xoá bỏ các test liên quan đến tool ReAct cũ.

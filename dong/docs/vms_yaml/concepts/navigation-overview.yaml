@@ -1,0 +1,58 @@
+schema_version: "1.0.0"
+id: concept.navigation_overview
+type: concept
+status: published
+locale: vi
+version: 1
+title: "Tổng quan điều hướng trong VMS"
+intent: understand_navigation
+aliases:
+  - "các menu trong vms"
+  - "điều hướng vms như thế nào"
+  - "các màn hình chính của vms"
+  - "tìm chức năng trong vms"
+module: navigation
+tags:
+  - dieu-huong
+  - menu
+  - route
+  - quyen
+  - feature
+roles:
+  - authenticated_user
+features:
+  - unknown
+route: null
+preconditions:
+  - "Người dùng đã đăng nhập."
+summary: "VMS điều hướng bằng thanh menu và các route tương đối; mục hiển thị phụ thuộc loại tổ chức, feature, quyền và module được cấp cho tài khoản."
+answer: "Các màn hình vận hành chung có thể gồm Dashboard, Giám Sát Trực Tiếp, Phát Lại, Bản Đồ Quốc Gia và Quản lý sự kiện. Mỗi mục mở một route tương đối tương ứng như /dashboard, /monitoring, /playback, /map hoặc /events. Danh sách thực tế không cố định: Sidebar lọc mục theo loại hình nghiệp vụ của tổ chức, feature đang bật, quyền tài khoản và module AI được cấp. Riêng Quản lý sự kiện còn có thể bị ẩn bởi cờ giao diện dù route tồn tại. Vì vậy, nếu không thấy một mục, không nên tự nhập route hoặc kết luận hệ thống lỗi; hãy kiểm tra quyền, feature và cấu hình hiển thị với quản trị viên. Dashboard luôn dùng route /dashboard nhưng được phân giải theo business type và phạm vi tổ chức. Các tab, bộ lọc, chỉ số, camera, thiết bị và cảnh báo có thể khác theo tổ chức hoặc phạm vi Site, Area, Zone; không dùng giao diện Dashboard của tổ chức này để suy ra giao diện của tổ chức khác."
+sources:
+  - path: "frontend/src/components/layout/Sidebar.jsx"
+    kind: component
+    note: "Xác minh menu chung, route và việc lọc mục theo business type, feature, quyền và module AI."
+  - path: "frontend/src/App.jsx"
+    kind: route
+    note: "Xác minh các route chính, RequireAuth, RequireFeature và DashboardRoute."
+  - path: "frontend/src/core/registry/dashboardRegistry.js"
+    kind: component
+    note: "Xác minh Dashboard được phân giải theo business type."
+  - path: "frontend/src/features/platform/dashboard/PlatformDashboard.jsx"
+    kind: component
+    note: "Xác minh Dashboard giới hạn dữ liệu theo scope tài khoản và phạm vi Site, Area, Zone."
+  - path: "frontend/src/i18n/locales/vi/common.json"
+    kind: i18n
+    note: "Xác minh nhãn tiếng Việt của các mục điều hướng chính."
+  - path: "frontend/src/components/layout/HeaderTabs.test.jsx"
+    kind: test
+    note: "Kiểm tra tab Dashboard thay đổi theo danh sách khả dụng và giữ phạm vi Site."
+  - path: "frontend/src/features/platform/dashboard/PlatformDashboard.test.jsx"
+    kind: test
+    note: "Kiểm tra khác biệt phạm vi dữ liệu giữa quản trị tổ chức, quản trị Zone và Site được chọn."
+  - path: "frontend/tests/pages.spec.js"
+    kind: test
+    note: "Kiểm tra các route vận hành chính với phiên đã xác thực."
+  - path: "frontend/src/config/features.js"
+    kind: component
+    note: "Cờ FEATURE_EVENTS_ALERTS_VISIBLE kiểm soát việc hiển thị mục sự kiện trên sidebar."
+last_verified: "2026-09-16"
