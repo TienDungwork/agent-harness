@@ -201,7 +201,7 @@ def plan_chart(rows: list[dict[str, Any]], question: str) -> ChartSpec:
     ]
 
     try:
-        spec = invoke_structured(messages, ChartSpec)
+        spec = invoke_structured(messages, ChartSpec, substep="plan_chart")
         if isinstance(spec, ChartSpec):
             return spec
         return _offline_plan_chart(rows, question)

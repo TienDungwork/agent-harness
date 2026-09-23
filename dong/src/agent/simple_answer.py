@@ -126,10 +126,11 @@ def try_format_simple_answer(question: str, rows: list[dict[str, Any]] | None) -
             return f"Có {n} vụ ẩu đả{when}."
         if any(kw in q for kw in ("mực nước", "muc nuoc", "water", "ngập")):
             return f"Có {n} cảnh báo mực nước{when}."
-        if any(kw in q for kw in ("bất thường", "su kien", "sự kiện", "cảnh báo", "anomaly")):
-            return f"Có {n} sự kiện bất thường{when}."
 
-        # 3. Phương tiện / Lượt xe theo loại
+        # 3. Phương tiện / Lượt xe — trước nhánh "sự kiện" chung (tránh nhầm anomaly)
+        if any(kw in q for kw in ("phương tiện", "biển số", "bien so", "plate", "alpr", "nhận diện")):
+            if any(kw in q for kw in ("sự kiện", "su kien")):
+                return f"Có {n} sự kiện phương tiện{when}."
         if re.search(r"xe\s*máy|motorcycle|\bmoto\b", q):
             return f"Có {n} lượt xe máy{when}."
         if re.search(r"ô\s*tô|\bcar\b|xe\s*con", q):
@@ -145,7 +146,15 @@ def try_format_simple_answer(question: str, rows: list[dict[str, Any]] | None) -
         if any(kw in q for kw in ("lượt xe", "phương tiện", "bao nhiêu xe", "tổng số xe", "số xe")):
             return f"Có {n} lượt xe{when}."
 
-        # 4. Người / Khuôn mặt
+        # 4. Sự kiện bất thường — chỉ khi không hỏi phương tiện/xe
+        if any(kw in q for kw in ("bất thường", "anomaly")):
+            return f"Có {n} sự kiện bất thường{when}."
+        if any(kw in q for kw in ("sự kiện", "su kien", "cảnh báo")) and not any(
+            kw in q for kw in ("phương tiện", "xe", "biển số", "bien so", "plate", "lượt xe")
+        ):
+            return f"Có {n} sự kiện bất thường{when}."
+
+        # 5. Người / Khuôn mặt
         if any(kw in q for kw in ("người", "khuôn mặt", "face", "nhân sự")):
             return f"Có {n} lượt người/khuôn mặt ghi nhận{when}."
 

@@ -1,6 +1,12 @@
+"""Product test suite for API Gateway: Endpoints, Sessions CRUD, Message history, SSE streaming, Static UI wiring."""
+from __future__ import annotations
+
+# ==============================================================================
+# --- Sourced from test_api.py ---
+# ==============================================================================
+
 """Unit tests for FastAPI REST API Gateway endpoints (/api/health, /api/models, /api/config, /api/chat, /ask)."""
 
-from __future__ import annotations
 
 from fastapi.testclient import TestClient
 
@@ -672,3 +678,511 @@ def test_eval_v5_tool_extraction_from_agent_output():
     if out.query and out.query.tool:
         extracted.add(out.query.tool)
     assert extracted == {"query_data", "sql_builder"}
+
+# ==============================================================================
+# --- Sourced from test_sessions_api.py ---
+# ==============================================================================
+
+"""Unit and integration tests for Sessions API and in-memory store."""
+
+
+import pytest
+from fastapi.testclient import TestClient
+
+from src.main import app
+from src.sessions.store import (
+    clear_sessions_store,
+    create_session,
+    delete_session,
+    get_session,
+    list_sessions,
+    update_session_meta,
+)
+
+client = TestClient(app)
+
+
+@pytest.fixture(autouse=True)
+def clean_sessions():
+    """Ensure clean session store before and after each test."""
+    clear_sessions_store()
+    yield
+    clear_sessions_store()
+
+
+def test_list_sessions_empty():
+    """GET /api/sessions với user_id mới trả về danh sách rỗng."""
+    res = client.get("/api/sessions?user_id=user_empty")
+    assert res.status_code == 200
+    data = res.json()
+    assert data == {"sessions": []}
+
+
+def test_create_session():
+    """POST /api/sessions tạo session thành công với tiêu đề tuỳ chọn."""
+    res = client.post("/api/sessions", json={"user_id": "user_1", "title": "Giám sát camera"})
+    assert res.status_code == 200
+    sess = res.json()
+    assert "id" in sess and len(sess["id"]) > 0
+    assert sess["user_id"] == "user_1"
+    assert sess["title"] == "Giám sát camera"
+    assert sess["preview"] == ""
+    assert "created_at" in sess
+    assert "updated_at" in sess
+
+
+def test_create_session_default_title():
+    """POST /api/sessions không truyền title nhận title mặc định."""
+    res = client.post("/api/sessions", json={"user_id": "user_1"})
+    assert res.status_code == 200
+    sess = res.json()
+    assert sess["title"] == "Phiên chat mới"
+
+
+def test_list_sessions_sorted():
+    """GET /api/sessions trả về danh sách sắp xếp theo updated_at giảm dần."""
+    res1 = client.post("/api/sessions", json={"user_id": "user_sort", "title": "Session 1"})
+    assert res1.status_code == 200
+    s1 = res1.json()
+
+    res2 = client.post("/api/sessions", json={"user_id": "user_sort", "title": "Session 2"})
+    assert res2.status_code == 200
+    s2 = res2.json()
+
+    # Session 2 được tạo sau nên updated_at mới hơn Session 1
+    res_list = client.get("/api/sessions?user_id=user_sort")
+    assert res_list.status_code == 200
+    items = res_list.json()["sessions"]
+    assert len(items) == 2
+    assert items[0]["id"] == s2["id"]
+    assert items[1]["id"] == s1["id"]
+
+    # Cập nhật Session 1 để trở thành mới nhất
+    update_session_meta(s1["id"], user_id="user_sort", title="Session 1 Updated")
+    res_list2 = client.get("/api/sessions?user_id=user_sort")
+    items2 = res_list2.json()["sessions"]
+    assert items2[0]["id"] == s1["id"]
+    assert items2[1]["id"] == s2["id"]
+
+
+def test_delete_session_success():
+    """DELETE /api/sessions/{id}?user_id= xóa thành công và không còn trong danh sách."""
+    res_create = client.post("/api/sessions", json={"user_id": "user_del", "title": "To delete"})
+    sess_id = res_create.json()["id"]
+
+    res_del = client.delete(f"/api/sessions/{sess_id}?user_id=user_del")
+    assert res_del.status_code == 200
+    assert res_del.json() == {"deleted": True}
+
+    res_list = client.get("/api/sessions?user_id=user_del")
+    assert res_list.status_code == 200
+    assert res_list.json()["sessions"] == []
+
+
+def test_delete_session_wrong_user_404():
+    """DELETE /api/sessions/{id} với user_id sai trả về 404."""
+    res_create = client.post("/api/sessions", json={"user_id": "user_owner", "title": "Owner session"})
+    sess_id = res_create.json()["id"]
+
+    res_del = client.delete(f"/api/sessions/{sess_id}?user_id=other_user")
+    assert res_del.status_code == 404
+    assert res_del.json()["detail"] == "Session not found"
+
+
+def test_delete_session_nonexistent_404():
+    """DELETE /api/sessions/{id} không tồn tại trả về 404."""
+    res_del = client.delete("/api/sessions/nonexistent-session-id?user_id=any_user")
+    assert res_del.status_code == 404
+    assert res_del.json()["detail"] == "Session not found"
+
+
+def test_sessions_user_isolation():
+    """Cách ly dữ liệu phiên giữa các người dùng khác nhau."""
+    res_u1 = client.post("/api/sessions", json={"user_id": "user_alpha", "title": "Alpha Session"})
+    res_u2 = client.post("/api/sessions", json={"user_id": "user_beta", "title": "Beta Session"})
+
+    s1 = res_u1.json()
+    s2 = res_u2.json()
+
+    list_u1 = client.get("/api/sessions?user_id=user_alpha").json()["sessions"]
+    list_u2 = client.get("/api/sessions?user_id=user_beta").json()["sessions"]
+
+    assert len(list_u1) == 1 and list_u1[0]["id"] == s1["id"]
+    assert len(list_u2) == 1 and list_u2[0]["id"] == s2["id"]
+
+    # Xóa của user_alpha không làm mất của user_beta
+    client.delete(f"/api/sessions/{s1['id']}?user_id=user_alpha")
+    assert client.get("/api/sessions?user_id=user_alpha").json()["sessions"] == []
+    assert len(client.get("/api/sessions?user_id=user_beta").json()["sessions"]) == 1
+
+
+def test_missing_or_empty_user_id_validation():
+    """GET/POST/DELETE thiếu hoặc rỗng user_id trả về 422 hoặc 400."""
+    # GET missing query param
+    assert client.get("/api/sessions").status_code == 422
+    # GET empty query param
+    assert client.get("/api/sessions?user_id=").status_code in (400, 422)
+    assert client.get("/api/sessions?user_id=%20%20").status_code in (400, 422)
+
+    # POST missing user_id
+    assert client.post("/api/sessions", json={}).status_code == 422
+    # POST empty user_id
+    assert client.post("/api/sessions", json={"user_id": ""}).status_code in (400, 422)
+    assert client.post("/api/sessions", json={"user_id": "   "}).status_code in (400, 422)
+
+    # DELETE missing user_id
+    assert client.delete("/api/sessions/some-id").status_code == 422
+    assert client.delete("/api/sessions/some-id?user_id=").status_code in (400, 422)
+    assert client.delete("/api/sessions/some-id?user_id=%20%20").status_code in (400, 422)
+
+
+def test_session_store_direct_unit():
+    """Kiểm tra trực tiếp các hàm logic trong src.sessions.store."""
+    # List rỗng
+    assert list_sessions("u_test") == []
+    assert list_sessions("") == []
+
+    # Tạo
+    s = create_session("u_test", "Tiêu đề 1")
+    assert s["user_id"] == "u_test"
+    assert s["title"] == "Tiêu đề 1"
+
+    # Lấy thông tin
+    assert get_session(s["id"], "u_test") is not None
+    assert get_session(s["id"]) is not None
+    assert get_session("nonexistent") is None
+
+    # Update meta
+    up = update_session_meta(s["id"], "u_test", title="Tiêu đề mới", preview="Xem trước 123")
+    assert up is not None
+    assert up["title"] == "Tiêu đề mới"
+    assert up["preview"] == "Xem trước 123"
+
+    # Delete
+    assert delete_session(s["id"], "u_test") is True
+    assert delete_session(s["id"], "u_test") is False
+    assert get_session(s["id"]) is None
+
+# ==============================================================================
+# --- Sourced from test_session_messages.py ---
+# ==============================================================================
+
+"""Tests for session message history API (short-term UI persistence)."""
+
+
+from unittest.mock import patch
+
+import pytest
+from fastapi.testclient import TestClient
+
+from src.main import app
+from src.sessions.store import (
+    append_session_messages,
+    clear_sessions_store,
+    create_session,
+    get_session_messages,
+)
+
+client = TestClient(app)
+
+
+
+
+def test_create_session_has_empty_messages():
+    sess = create_session("user_a")
+    assert sess.get("messages") == []
+
+
+def test_append_and_get_messages_isolated_by_session():
+    s1 = create_session("user_a", "Session 1")
+    s2 = create_session("user_a", "Session 2")
+
+    append_session_messages(
+        s1["id"],
+        "user_a",
+        [
+            {"role": "user", "content": "Câu A", "timestamp": "2026-09-22T10:00:00Z"},
+            {"role": "assistant", "content": "Trả lời A", "timestamp": "2026-09-22T10:00:01Z"},
+        ],
+    )
+    append_session_messages(
+        s2["id"],
+        "user_a",
+        [
+            {"role": "user", "content": "Câu B", "timestamp": "2026-09-22T11:00:00Z"},
+            {"role": "assistant", "content": "Trả lời B", "timestamp": "2026-09-22T11:00:01Z"},
+        ],
+    )
+
+    msgs_a = get_session_messages(s1["id"], "user_a")
+    msgs_b = get_session_messages(s2["id"], "user_a")
+    assert len(msgs_a) == 2
+    assert len(msgs_b) == 2
+    assert msgs_a[0]["content"] == "Câu A"
+    assert msgs_b[0]["content"] == "Câu B"
+    assert "Trả lời A" in msgs_a[1]["content"]
+    assert "Trả lời B" in msgs_b[1]["content"]
+
+
+def test_get_messages_api_success():
+    sess = create_session("user_api", "Test")
+    append_session_messages(
+        sess["id"],
+        "user_api",
+        [
+            {"role": "user", "content": "Xin chào", "timestamp": "2026-09-22T12:00:00Z"},
+            {"role": "assistant", "content": "Chào bạn", "timestamp": "2026-09-22T12:00:01Z"},
+        ],
+    )
+
+    res = client.get(f"/api/sessions/{sess['id']}/messages?user_id=user_api")
+    assert res.status_code == 200
+    data = res.json()
+    assert len(data["messages"]) == 2
+    assert data["messages"][0]["role"] == "user"
+    assert data["messages"][1]["role"] == "assistant"
+
+
+def test_get_messages_api_wrong_user_404():
+    sess = create_session("owner", "Owner session")
+    res = client.get(f"/api/sessions/{sess['id']}/messages?user_id=other")
+    assert res.status_code == 404
+
+
+def test_get_messages_api_missing_user_422():
+    sess = create_session("user_x")
+    assert client.get(f"/api/sessions/{sess['id']}/messages").status_code == 422
+
+
+def test_stream_persists_messages(monkeypatch):
+    """Stream __answer__ lưu cặp user/assistant vào session store."""
+    from src.agent.graph import Agent_Output
+    from src.llm.schemas import QueryResult
+    from src.main import _cache
+
+    monkeypatch.setattr("src.monitoring.tracing.settings.monitoring_enabled", False)
+    _cache.clear()
+
+    sess = create_session("user_stream", "Stream test")
+    question = "Hôm nay có bao nhiêu xe vào?"
+
+    def _fake_stream(*_args, **_kwargs):
+        yield {"node_id": "recall", "status": "done", "input": {}, "output": {}}
+        out = Agent_Output(
+            question=question,
+            answer="Có 42 lượt xe vào.",
+            query=QueryResult(tool="t", columns=["n"], rows=[[42]], row_count=1),
+            detail="query_data",
+        )
+        yield {"__final_result__": out}
+
+    with patch("src.agent.graph.run_agent_stream", side_effect=_fake_stream):
+        res = client.post(
+            "/api/agent/stream",
+            json={
+                "question": question,
+                "session_id": sess["id"],
+                "user_id": "user_stream",
+            },
+        )
+        assert res.status_code == 200
+        list(res.iter_lines())
+
+    msgs = get_session_messages(sess["id"], "user_stream")
+    assert msgs is not None
+    assert len(msgs) == 2
+    assert msgs[0]["role"] == "user"
+    assert msgs[0]["content"] == question
+    assert msgs[1]["role"] == "assistant"
+    assert "42" in msgs[1]["content"]
+
+
+def test_frontend_loads_messages_from_api():
+    res = client.get("/app.js")
+    app_js = res.text if res.status_code == 200 else open("frontend/app.js", encoding="utf-8").read()
+    assert "async function loadCurrentSessionMessages" in app_js
+    assert "/api/sessions/" in app_js
+    assert "/messages?user_id=" in app_js
+    assert "await loadCurrentSessionMessages()" in app_js
+
+# ==============================================================================
+# --- Sourced from test_stream_session.py ---
+# ==============================================================================
+
+"""Tests for Phase 4 — POST /api/agent/stream nhận session_id, user_id, câu hỏi."""
+
+
+import json
+from unittest.mock import patch
+
+import pytest
+from fastapi.testclient import TestClient
+
+from src.agent.graph import Agent_Output
+from src.main import app, _cache
+
+client = TestClient(app)
+
+_VALID_QUESTION = "Hôm nay có bao nhiêu lượt xe vào?"
+
+
+# ---------------------------------------------------------------------------
+# Helper: mock generator factory
+# ---------------------------------------------------------------------------
+def _make_mock_stream(answer: str = "Test answer"):
+    def mock_generator(*args, **kwargs):
+        yield {"node_id": "classify_node", "status": "running"}
+        yield {
+            "node_id": "classify_node",
+            "status": "done",
+            "input": "test",
+            "output": "query_data",
+        }
+        yield {
+            "__final_result__": Agent_Output(
+                question=_VALID_QUESTION, answer=answer, detail="mock"
+            )
+        }
+
+    return mock_generator
+
+
+# ---------------------------------------------------------------------------
+# 1. Stream accepts explicit session_id and user_id
+# ---------------------------------------------------------------------------
+def test_api_agent_stream_accepts_session_and_user_id(monkeypatch):
+    """POST with explicit ids — mock run_agent_stream — assert kwargs propagated."""
+    monkeypatch.setattr("src.monitoring.tracing.settings.monitoring_enabled", False)
+    _cache.clear()
+
+    with patch("src.agent.graph.run_agent_stream") as mock_stream:
+        mock_stream.side_effect = _make_mock_stream()
+
+        res = client.post(
+            "/api/agent/stream",
+            json={
+                "question": _VALID_QUESTION,
+                "session_id": "sess-abc-123",
+                "user_id": "user-xyz-456",
+            },
+        )
+
+    assert res.status_code == 200
+    assert "text/event-stream" in res.headers["content-type"]
+
+    mock_stream.assert_called_once()
+    kwargs = mock_stream.call_args.kwargs
+    assert kwargs.get("session_id") == "sess-abc-123", (
+        f"Expected session_id='sess-abc-123', got: {kwargs}"
+    )
+    assert kwargs.get("user_id") == "user-xyz-456", (
+        f"Expected user_id='user-xyz-456', got: {kwargs}"
+    )
+
+
+# ---------------------------------------------------------------------------
+# 2. Reject empty session_id
+# ---------------------------------------------------------------------------
+def test_api_agent_stream_rejects_empty_session_id():
+    """HTTP 400 khi session_id='' hoặc chỉ toàn khoảng trắng."""
+    # Completely empty
+    res = client.post(
+        "/api/agent/stream",
+        json={"question": _VALID_QUESTION, "session_id": "", "user_id": "user-1"},
+    )
+    assert res.status_code == 400, f"Expected 400, got {res.status_code}: {res.text}"
+    data = res.json()
+    assert "session_id" in data.get("detail", "").lower()
+
+    # Whitespace only
+    res2 = client.post(
+        "/api/agent/stream",
+        json={"question": _VALID_QUESTION, "session_id": "   ", "user_id": "user-1"},
+    )
+    assert res2.status_code == 400, f"Expected 400, got {res2.status_code}: {res2.text}"
+    data2 = res2.json()
+    assert "session_id" in data2.get("detail", "").lower()
+
+
+# ---------------------------------------------------------------------------
+# 3. Reject empty user_id
+# ---------------------------------------------------------------------------
+def test_api_agent_stream_rejects_empty_user_id():
+    """HTTP 400 khi user_id='' hoặc chỉ toàn khoảng trắng."""
+    # Completely empty
+    res = client.post(
+        "/api/agent/stream",
+        json={"question": _VALID_QUESTION, "session_id": "sess-1", "user_id": ""},
+    )
+    assert res.status_code == 400, f"Expected 400, got {res.status_code}: {res.text}"
+    data = res.json()
+    assert "user_id" in data.get("detail", "").lower()
+
+    # Whitespace only
+    res2 = client.post(
+        "/api/agent/stream",
+        json={"question": _VALID_QUESTION, "session_id": "sess-1", "user_id": "  "},
+    )
+    assert res2.status_code == 400, f"Expected 400, got {res2.status_code}: {res2.text}"
+    data2 = res2.json()
+    assert "user_id" in data2.get("detail", "").lower()
+
+
+# ---------------------------------------------------------------------------
+# 4. Backend validates non-empty but non-UUID ids are also accepted
+# ---------------------------------------------------------------------------
+def test_api_agent_stream_accepts_non_uuid_ids(monkeypatch):
+    """Bất kỳ string không rỗng nào đều hợp lệ — không yêu cầu UUID format."""
+    monkeypatch.setattr("src.monitoring.tracing.settings.monitoring_enabled", False)
+    _cache.clear()
+
+    with patch("src.agent.graph.run_agent_stream") as mock_stream:
+        mock_stream.side_effect = _make_mock_stream()
+
+        res = client.post(
+            "/api/agent/stream",
+            json={
+                "question": _VALID_QUESTION,
+                "session_id": "my-custom-session",
+                "user_id": "admin",
+            },
+        )
+
+    assert res.status_code == 200
+
+    kwargs = mock_stream.call_args.kwargs
+    assert kwargs.get("session_id") == "my-custom-session"
+    assert kwargs.get("user_id") == "admin"
+
+
+# ---------------------------------------------------------------------------
+# 5. SSE __answer__ event contains session_id and user_id in meta
+# ---------------------------------------------------------------------------
+def test_api_agent_stream_sse_events_present(monkeypatch):
+    """SSE response must contain graph node events and __answer__ event."""
+    monkeypatch.setattr("src.monitoring.tracing.settings.monitoring_enabled", False)
+    _cache.clear()
+
+    with patch("src.agent.graph.run_agent_stream") as mock_stream:
+        mock_stream.side_effect = _make_mock_stream(answer="Có 42 lượt xe.")
+
+        res = client.post(
+            "/api/agent/stream",
+            json={
+                "question": _VALID_QUESTION,
+                "session_id": "sess-meta-test",
+                "user_id": "user-meta-test",
+            },
+        )
+
+    assert res.status_code == 200
+    text = res.text
+    events = [
+        json.loads(line.replace("data: ", ""))
+        for line in text.split("\n\n")
+        if line.strip() and line.strip().startswith("data: ")
+    ]
+    answer_events = [e for e in events if e.get("node_id") == "__answer__"]
+    assert len(answer_events) == 1
+    assert "Có 42 lượt xe." in answer_events[0]["output"]
+

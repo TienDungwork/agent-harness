@@ -132,6 +132,7 @@
 - [x] `./scripts/smoke-production.sh` pass (session, TTL, bar, pie, fire/AIOC) — 7/7.
 - [x] Smoke tay UI: chào hỏi nhanh + 1 chart đẹp — checklist `specs/smoke-manual-checklist.md` (bar/pie đã verify qua smoke API; UI tay: xin chào + biểu đồ cột trên `:3001`).
 - [x] `python eval/run.py` → `eval/results/golden-30.md`.
+- [x] Fix phản hồi “sự kiện phương tiện” + lọc `organization_id` SQL (bug live 2026-09-23).
 - [ ] Target ≥28/30; ghi delta vào change-log — **27/30** (residual: 018, 021, 023).
 - [x] Đối chiếu đủ acceptance criteria trong `product-spec.md` — xem change-log 2026-09-23 Phase 7 verify.
 - [x] Finalize README / AGENTS: trạng thái v7 production verified (eval residual ghi rõ).

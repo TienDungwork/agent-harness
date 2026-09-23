@@ -204,8 +204,16 @@ _FALLBACK = "Xin lỗi, tôi chưa đủ dữ liệu đáng tin để trả lờ
 _DISCLAIMER = " (Lưu ý: số liệu chưa xác minh được với dữ liệu tool trả về.)"
 
 
-def empty_stat_reply() -> str:
+def empty_stat_reply(question: str = "") -> str:
     """Câu trả lời chuẩn khi tool/SQL không có số liệu — luôn ghi rõ 0."""
+    q = (question or "").strip()
+    plate_match = re.search(r"\b\d{2}[A-Za-z]\d{4,6}\b", q)
+    if plate_match:
+        plate = plate_match.group(0).upper()
+        return (
+            f"Không có dữ liệu lịch sử di chuyển của biển số {plate} trong khoảng thời gian/điều kiện đã cho "
+            f"(ghi nhận 0 lượt / 0 kết quả)."
+        )
     return (
         "Không có dữ liệu khớp câu hỏi trong khoảng thời gian/điều kiện đã cho "
         "(ghi nhận 0 lượt / 0 kết quả)."
@@ -318,7 +326,8 @@ def check_output(answer: str, evidence: list[str], *, tool_empty: bool = False) 
     if unverified:
         if tool_empty:
             issues.append("fabricated_numbers_on_empty_tool")
-            text = EMPTY_TOOL_REPLY
+            q_text = str(evidence[0]) if evidence else ""
+            text = empty_stat_reply(q_text)
         else:
             issues.append("unverified_numbers")
             text = text.rstrip() + _DISCLAIMER

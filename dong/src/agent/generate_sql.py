@@ -3,12 +3,13 @@
 from __future__ import annotations
 
 import re
-from datetime import date
 
 from src.agent.node_io import node_event
 from src.agent.pre_sql import format_time_range_for_prompt, build_chart_sql_hint
+from src.agent.sql_scope import apply_organization_scope, format_org_scope_for_prompt
 from src.config import settings
 from src.llm.client import invoke_text, use_offline_tools
+from src.monitoring.tracing import trace_substep
 from src.prompts import registry
 
 # ── SQL extraction ────────────────────────────────────────────────────────────
@@ -81,6 +82,7 @@ def generate_sql_node(state: dict) -> dict:
             sql = "SELECT count(*) FROM plate_event WHERE event_time >= CURRENT_DATE"
         else:
             sql = "SELECT count(*) FROM plate_event"
+        sql = apply_organization_scope(sql)
         return {
             "sql": sql,
             "error": "",
@@ -95,38 +97,36 @@ def generate_sql_node(state: dict) -> dict:
     # ── Online path ───────────────────────────────────────────────────────
     system_prompt = registry().render("sql_agent")
 
-    # Build user message: time_range hint + chart hint + schema + question
-    user_parts: list[str] = []
-
-    # Time range hint
-    time_range = None
-    if rewritten is not None:
-        if hasattr(rewritten, "time_range"):
-            time_range = rewritten.time_range
-        elif isinstance(rewritten, dict):
-            time_range = rewritten.get("time_range")
-    tr_hint = format_time_range_for_prompt(time_range)
-    if tr_hint:
-        user_parts.append(tr_hint)
-
-    # Chart hint
-    chart_hint = build_chart_sql_hint(q_text)
-    if chart_hint:
-        user_parts.append(chart_hint)
-
-    # Schema excerpt
-    if schema_excerpt:
-        user_parts.append(f"Schema excerpt:\n{schema_excerpt}")
-
-    # Question
-    user_parts.append(f"Câu hỏi:\n{q_text}")
-
-    user_prompt = "\n\n".join(user_parts)
+    with trace_substep("build_prompt", kind="tool", input={"question": q_text}) as sub:
+        user_parts: list[str] = []
+        time_range = None
+        if rewritten is not None:
+            if hasattr(rewritten, "time_range"):
+                time_range = rewritten.time_range
+            elif isinstance(rewritten, dict):
+                time_range = rewritten.get("time_range")
+        tr_hint = format_time_range_for_prompt(time_range)
+        if tr_hint:
+            user_parts.append(tr_hint)
+        chart_hint = build_chart_sql_hint(q_text)
+        if chart_hint:
+            user_parts.append(chart_hint)
+        org_hint = format_org_scope_for_prompt()
+        if org_hint:
+            user_parts.append(org_hint)
+        if schema_excerpt:
+            user_parts.append(f"Schema excerpt:\n{schema_excerpt}")
+        user_parts.append(f"Câu hỏi:\n{q_text}")
+        user_prompt = "\n\n".join(user_parts)
+        sub["output"] = {"user_prompt_len": len(user_prompt), "schema_excerpt_len": len(schema_excerpt)}
 
     max_tokens = settings.sql_generate_max_tokens
 
-    raw = invoke_text(system_prompt, user_prompt, max_tokens=max_tokens)
-    sql = extract_sql(raw)
+    raw = invoke_text(system_prompt, user_prompt, max_tokens=max_tokens, substep="generate_sql")
+
+    with trace_substep("extract_sql", kind="tool", input={"raw_len": len(raw)}) as sub:
+        sql = extract_sql(raw)
+        sub["output"] = {"sql_len": len(sql), "empty": not bool(sql)}
 
     if not sql:
         return {
@@ -143,6 +143,10 @@ def generate_sql_node(state: dict) -> dict:
                 },
             )],
         }
+
+    with trace_substep("apply_org_scope", kind="tool", input={"sql": sql}) as sub:
+        sql = apply_organization_scope(sql)
+        sub["output"] = {"sql": sql}
 
     return {
         "sql": sql,

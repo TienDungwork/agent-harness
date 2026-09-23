@@ -31,6 +31,7 @@ template: |
   - xe tải → vehicle_type = 'TRUCK'; xe buýt → vehicle_type = 'BUS'
   - vào → direction = 'IN'; ra → direction = 'OUT'; ra vào = không lọc direction
   - biển số xe → license_plate_text hoặc normalized_license_plate = '...'
+  - danh sách camera / khu vực: SELECT DISTINCT camera_name FROM plate_event hoặc SELECT DISTINCT zone_name_cached, camera_name FROM zone_event LIMIT 30.
 
   Suy nghĩ ngắn gọn, sau đó trả về DUY NHẤT một khối:
 

@@ -17,7 +17,7 @@ _STRINGS = re.compile(r"('([^']|'')*')|(\"([^\"]|\"\")*\")", re.DOTALL)
 _LINE_COMMENT = re.compile(r"--[^\n]*")
 _BLOCK_COMMENT = re.compile(r"/\*.*?\*/", re.DOTALL)
 _TABLE_REF = re.compile(
-    r"\b(?:from|join)\s+(?:only\s+)?(?:[a-zA-Z_][\w]*\.)?([a-zA-Z_][\w]*)",
+    r'\b(?:from|join)\s+(?:only\s+)?(?:(?:"?[a-zA-Z_][\w]*"?)\.)?"?([a-zA-Z_][\w]*)"?',
     re.IGNORECASE,
 )
 _CTE_NAME = re.compile(r"\b([a-zA-Z_][\w]*)\s+as\s*\(", re.IGNORECASE)

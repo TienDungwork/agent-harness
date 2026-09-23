@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import argparse
 import os
+import re
 import sys
 import time
 from collections import Counter
@@ -93,6 +94,8 @@ class CaseEvalResult:
     tool: str
     note: str
     judge: str = ""
+    question: str = ""
+    answer: str = ""
 
 
 def run_pipeline(question: str) -> PipelineResult:
@@ -167,6 +170,19 @@ def check_case(case: dict, result: PipelineResult) -> list[str]:
                 f"thiếu must_include_columns_any: cần 1 trong {columns_any}, thật: {sorted(cols) or '(không có)'}"
             )
 
+    # Tự động fail nếu câu trả lời chứa lỗi thực thi SQL / DB crash
+    error_markers = [
+        "lỗi khi truy vấn:",
+        "không thể sửa câu sql",
+        "relation \"",
+        "does not exist",
+        "syntax error at or near",
+    ]
+    ans_lower = (result.answer or "").lower()
+    if any(m in ans_lower for m in error_markers):
+        if not any(allow in text for allow in case.get("must_include", [])):
+            failures.append("câu trả lời chứa lỗi thực thi SQL/DB")
+
     return failures
 
 
@@ -187,9 +203,15 @@ def write_golden_30(
     mode: str = "live",
     output_path: Path | None = None,
 ) -> Path:
-    """Ghi báo cáo markdown golden-30 — một dòng mỗi case."""
+    """Ghi báo cáo markdown golden-30 — gồm bảng tổng hợp và chi tiết từng case."""
     path = output_path or GOLDEN_30_PATH
     path.parent.mkdir(parents=True, exist_ok=True)
+
+    scores: list[int] = []
+    for r in results:
+        m = re.match(r"^(\d+)/5", (r.judge or "").strip())
+        if m:
+            scores.append(int(m.group(1)))
 
     lines = [
         "# Golden 30 — eval report",
@@ -198,15 +220,58 @@ def write_golden_30(
         f"- mode: {mode}",
         f"- generated: {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S')} UTC",
         f"- total: {total_pass}/{len(results)} pass",
+    ]
+
+    if scores:
+        avg = sum(scores) / len(scores)
+        cnt_5 = scores.count(5)
+        cnt_4 = scores.count(4)
+        cnt_3 = scores.count(3)
+        cnt_low = sum(1 for s in scores if s <= 2)
+        lines.extend([
+            f"- LLM as a Judge trung bình: **{avg:.2f}/5.0** ({len(scores)}/{len(results)} cases)",
+            f"  - Phân bổ: 5⭐ ({cnt_5}) | 4⭐ ({cnt_4}) | 3⭐ ({cnt_3}) | 1-2⭐ ({cnt_low})",
+        ])
+
+    lines.extend([
+        "",
+        "## Bảng tổng hợp kết quả",
         "",
         "| id | slice | pass/fail | latency_ms | tool | note | judge |",
         "| --- | --- | --- | ---: | --- | --- | --- |",
-    ]
+    ])
     for row in results:
         lines.append(
             f"| {row.case_id} | {row.slice_type} | {row.status} | {row.latency_ms} | "
             f"{_escape_md_cell(row.tool)} | {_escape_md_cell(row.note)} | {_escape_md_cell(row.judge)} |"
         )
+
+    lines.extend([
+        "",
+        "---",
+        "",
+        "## Chi tiết câu hỏi và câu trả lời thực tế (30 cases)",
+        "",
+    ])
+
+    for i, row in enumerate(results, 1):
+        status_icon = "✅ PASS" if row.status == "pass" else "❌ FAIL"
+        lines.append(f"### {i}. `{row.case_id}` — {status_icon} ({row.latency_ms} ms)")
+        lines.append(f"- **Slice:** `{row.slice_type}` | **Tool:** `{row.tool}`")
+        if row.question:
+            lines.append(f"- **Câu hỏi:** {row.question}")
+        if row.answer:
+            # Format answer with blockquote
+            answer_text = row.answer.strip()
+            answer_lines = answer_text.split("\n")
+            formatted_answer = "\n  > ".join(answer_lines)
+            lines.append(f"- **Câu trả lời:**\n  > {formatted_answer}")
+        if row.note:
+            lines.append(f"- **Ghi chú lỗi:** `{row.note}`")
+        if row.judge:
+            lines.append(f"- **LLM Judge:** {row.judge}")
+        lines.append("")
+
     path.write_text("\n".join(lines) + "\n", encoding="utf-8")
     return path
 
@@ -215,7 +280,7 @@ def run(
     dataset_path: Path,
     *,
     output_path: Path | None = None,
-    use_judge: bool = False,
+    use_judge: bool = True,
     offline: bool = False,
 ) -> int:
     if offline:
@@ -247,7 +312,7 @@ def run(
         tools = pipeline_result.tools if pipeline_result else set()
         
         judge_str = ""
-        if use_judge and pipeline_result:
+        if use_judge and not offline and pipeline_result:
             score_res = judge_answer(
                 question=case["question"],
                 answer=pipeline_result.answer,
@@ -263,6 +328,8 @@ def run(
                 status="fail" if failures else "pass",
                 latency_ms=latency_ms,
                 tool=_format_tool(tools),
+                question=case.get("question", ""),
+                answer=pipeline_result.answer if pipeline_result else "",
                 note="; ".join(failures),
                 judge=judge_str,
             )
@@ -305,7 +372,8 @@ def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--dataset", type=Path, default=DEFAULT_DATASET)
     parser.add_argument("--output", type=Path, default=GOLDEN_30_PATH, help="Đường dẫn golden-30.md")
-    parser.add_argument("--judge", action="store_true", help="Chạy judge bằng LLM cho từng case")
+    parser.add_argument("--judge", dest="judge", action="store_true", default=True, help="Bật LLM as a Judge (mặc định: bật)")
+    parser.add_argument("--no-judge", dest="judge", action="store_false", help="Tắt LLM as a Judge")
     parser.add_argument(
         "--offline",
         action="store_true",

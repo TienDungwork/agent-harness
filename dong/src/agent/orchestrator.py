@@ -173,6 +173,6 @@ def plan_orchestration(question: str) -> OrchestratorPlan:
             {"role": "system", "content": registry().render("orchestrator")},
             {"role": "user", "content": f"Câu hỏi của người dùng:\n{clean_q}"},
         ]
-        return invoke_structured(messages, OrchestratorPlan)
+        return invoke_structured(messages, OrchestratorPlan, substep="orchestrator")
     except Exception:
         return _offline_plan_orchestration(clean_q)

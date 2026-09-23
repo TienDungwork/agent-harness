@@ -1,6 +1,12 @@
+"""Product test suite for Observability & Error Handling: Langfuse tracing, Trace caching & metrics telemetry, Error state acceptance & LLM/DB resilience."""
+from __future__ import annotations
+
+# ==============================================================================
+# --- Sourced from test_trace_cache.py ---
+# ==============================================================================
+
 """Unit tests for Phase 5: Langfuse Observability & Token Metrics."""
 
-from __future__ import annotations
 
 from contextlib import contextmanager
 from unittest.mock import MagicMock, patch
@@ -372,6 +378,71 @@ def test_v5_graph_trace_rewrite_input_not_parent_question(monkeypatch):
     assert update_kwargs["output"]["rewritten"]["text"] == "Thống kê xe IN hôm nay"
 
 
+def test_graph_node_nested_substeps(monkeypatch):
+    """Substep agent/tool lồng dưới span graph node (Langfuse tree)."""
+    monkeypatch.setattr("src.monitoring.tracing.settings.monitoring_enabled", True)
+
+    mock_root = MagicMock()
+    mock_node_span = MagicMock()
+    mock_tool = MagicMock()
+    mock_agent = MagicMock()
+    mock_root.start_observation.return_value = mock_node_span
+    mock_node_span.start_observation.side_effect = [mock_tool, mock_agent]
+
+    def fake_generate(state):
+        from src.monitoring.tracing import trace_substep
+
+        with trace_substep("build_prompt", kind="tool", input={"question": state["question"]}) as sub:
+            sub["output"] = {"user_prompt_len": 42}
+        with trace_substep("generate_sql", kind="agent", input={"user_prompt_len": 42}) as sub:
+            sub["output"] = {"text_len": 10}
+        return {
+            "sql": "SELECT 1",
+            "events": [{
+                "node_id": "generate_sql",
+                "input": {"question": state["question"]},
+                "output": {"sql": "SELECT 1"},
+                "meta": {},
+            }],
+        }
+
+    with patch("src.monitoring.tracing._get_langfuse"):
+        from src.agent.graph import _wrap_node
+
+        wrapped = _wrap_node("generate_sql", fake_generate)
+        wrapped({"question": "Hôm nay có bao nhiêu xe?", "_trace_span": mock_root})
+
+    mock_root.start_observation.assert_called_once()
+    assert mock_node_span.start_observation.call_count == 2
+    names = [c[1]["name"] for c in mock_node_span.start_observation.call_args_list]
+    assert names == ["tool:build_prompt", "agent:generate_sql"]
+    mock_tool.end.assert_called_once()
+    mock_agent.end.assert_called_once()
+
+
+def test_validate_and_repair_sql_nested_validate_substep(monkeypatch):
+    """Orchestrator helper validate_and_repair_sql cũng ghi tool:validate_sql substep."""
+    monkeypatch.setattr("src.monitoring.tracing.settings.monitoring_enabled", True)
+
+    mock_parent = MagicMock()
+    mock_validate = MagicMock()
+
+    from src.monitoring.tracing import trace_active_parent
+
+    with trace_active_parent(mock_parent):
+        from src.agent.validate_sql import validate_and_repair_sql
+
+        from src.db.validator import ValidationResult
+
+        with patch("src.agent.validate_sql.validate_sql", return_value=ValidationResult(ok=True)):
+            mock_parent.start_observation.return_value = mock_validate
+            validate_and_repair_sql("SELECT 1", "test", user_id="u1", session_id="s1")
+
+    mock_parent.start_observation.assert_called_once()
+    assert mock_parent.start_observation.call_args[1]["name"] == "tool:validate_sql"
+    mock_validate.end.assert_called_once()
+
+
 def test_strip_thinking_removes_qwen_block():
     from src.agent.graph import _strip_thinking
 
@@ -585,4 +656,242 @@ def test_trace_observation_receives_session_and_user_metadata(monkeypatch):
     assert meta.get("session_id") == "sess-langfuse-test"
 
 
+
+
+# ==============================================================================
+# --- Sourced from test_phase5_error_states_acceptance.py ---
+# ==============================================================================
+
+"""Phase 5 Acceptance Tests — Validation and Error States.
+
+Kiểm tra 5 tiêu chí của Phase 5:
+1. SQL invalid / hết lần repair -> message ngắn tiếng Việt; không crash stream.
+2. LLM timeout / DB fail -> message ngắn, không leak SQL/traceback.
+3. Classify lỗi -> fallback an toàn, không im lặng.
+4. Empty số liệu -> trả lời đúng chuẩn (chứa số "0").
+5. SSE stream __answer__ trả về status error kèm thông báo thân thiện.
+"""
+
+
+import json
+from unittest.mock import patch
+
+import pytest
+from fastapi.testclient import TestClient
+
+from src.agent.graph import Agent_Input, run_agent, run_agent_stream
+from src.agent.intent import classify_intent_safe
+from src.db.validator import ValidationResult
+from src.guardrails import empty_stat_reply
+from src.main import USER_ERROR_MAX_LEN, _format_error_message, app
+
+client = TestClient(app)
+
+
+def test_sql_repair_max_exhausted_yields_friendly_message_no_crash():
+    """1. SQL invalid / hết lần repair: trả về message ngắn tiếng Việt trong stream mà không crash."""
+    from src.main import _cache
+    _cache.clear()
+    inp = Agent_Input(question="Hôm nay có bao nhiêu xe vào?")
+
+    # Mock validate_sql luôn trả về lỗi để hết số lần repair (settings.sql_repair_max)
+    with (
+        patch("src.llm.client.use_offline_tools", return_value=True),
+        patch(
+            "src.agent.validate_sql.validate_sql",
+            return_value=ValidationResult(ok=False, reason="Cú pháp không hợp lệ"),
+        ),
+    ):
+        res = client.post(
+            "/api/agent/stream",
+            json={"question": inp.question, "session_id": "test-repair-fail"},
+        )
+
+    assert res.status_code == 200
+    events = []
+    for line in res.text.splitlines():
+        if line.startswith("data: "):
+            raw = line[6:].strip()
+            if raw and raw != "[DONE]":
+                events.append(json.loads(raw))
+
+    node_ids = [e.get("node_id") for e in events]
+    assert "generate_sql" in node_ids
+    assert "validate_sql" in node_ids
+    assert "repair_sql" in node_ids
+    assert "__answer__" in node_ids
+
+    answer_ev = next(e for e in events if e.get("node_id") == "__answer__")
+    ans_text = answer_ev.get("output", "")
+    assert "Lỗi" in ans_text or "không hợp lệ" in ans_text or "Không thể" in ans_text
+    assert len(ans_text) <= 300
+
+
+def test_llm_timeout_and_db_fail_message_no_leak():
+    """2. LLM timeout / DB fail: message ngắn thân thiện, không leak traceback hay raw SQL."""
+    exc_timeout = TimeoutError("Request timed out after 30s to http://192.168.1.196:11434")
+    exc_db = RuntimeError("psycopg2.OperationalError: could not connect to server 192.168.1.196 port 5432")
+
+    msg_timeout = _format_error_message(exc_timeout)
+    msg_db = _format_error_message(exc_db)
+
+    assert len(msg_timeout) <= USER_ERROR_MAX_LEN
+    assert len(msg_db) <= USER_ERROR_MAX_LEN
+    assert "192.168.1.196" not in msg_timeout
+    assert "192.168.1.196" not in msg_db
+    assert "traceback" not in msg_timeout.lower()
+    assert "traceback" not in msg_db.lower()
+
+
+def test_classify_error_safe_fallback_not_silent():
+    """3. Classify lỗi: fallback an toàn sang query_data, không trả về rỗng hay im lặng."""
+    from src.llm.schemas import RewrittenQuestion
+
+    q = RewrittenQuestion(text="Hôm nay có cảnh báo cháy hoặc khói không?")
+    with (
+        patch("src.agent.intent.use_offline_tools", return_value=False),
+        patch("src.agent.intent.invoke_structured", side_effect=Exception("LLM down")),
+    ):
+        res = classify_intent_safe(q)
+
+    assert res.intent in ("query_data", "docs", "chat", "out_of_scope")
+    assert res.intent == "query_data"  # Domain cháy khói -> query_data fallback
+
+
+def test_empty_statistical_data_contains_zero():
+    """4. Empty số liệu: trả lời chuẩn tiếng Việt có chứa số '0'."""
+    ans = empty_stat_reply()
+    assert "0" in ans
+    assert "không có" in ans.lower() or "không tìm thấy" in ans.lower()
+
+
+def test_stream_error_emits_friendly_answer_status_error():
+    """5. Lỗi stream phát ra __answer__ status error với câu thông báo ngắn gọn."""
+    from src.main import _cache
+    _cache.clear()
+
+    with patch(
+        "src.agent.graph.run_agent_stream",
+        side_effect=RuntimeError("Database connection lost"),
+    ):
+        res = client.post(
+            "/api/agent/stream",
+            json={"question": "Hôm nay có bao nhiêu xe vào?"},
+        )
+
+    assert res.status_code == 200
+    events = []
+    for line in res.text.splitlines():
+        if line.startswith("data: "):
+            raw = line[6:].strip()
+            if raw and raw != "[DONE]":
+                events.append(json.loads(raw))
+
+    answer_ev = next(e for e in events if e.get("node_id") == "__answer__")
+    assert answer_ev.get("status") == "error"
+    ans_text = answer_ev.get("output", "")
+    assert "Lỗi" in ans_text or "không thể" in ans_text.lower()
+    assert "Database connection lost" not in ans_text  # Sanitized
+
+# ==============================================================================
+# --- Sourced from test_phase5_llm_db_errors.py ---
+# ==============================================================================
+
+"""Phase 5 — Lỗi LLM/DB: message ngắn trên UI, stream không crash."""
+
+
+import json
+from unittest.mock import patch
+
+import pytest
+from fastapi.testclient import TestClient
+
+from src.main import USER_ERROR_MAX_LEN, _format_error_message, _short_user_error, app
+
+client = TestClient(app)
+
+
+def test_short_user_error_truncates():
+    long_msg = "x" * 300
+    out = _short_user_error(long_msg)
+    assert len(out) <= USER_ERROR_MAX_LEN
+    assert out.endswith("…")
+
+
+def test_format_error_message_no_stack_or_sql_leak():
+    exc = RuntimeError("Traceback (most recent call last): SELECT * FROM secret_table")
+    msg = _format_error_message(exc)
+    assert "traceback" not in msg.lower()
+    assert "select *" not in msg.lower()
+    assert len(msg) <= USER_ERROR_MAX_LEN
+
+
+@pytest.mark.parametrize(
+    "exc,keyword",
+    [
+        (RuntimeError("clickhouse connect error: refused"), "clickhouse"),
+        (RuntimeError("psycopg2.OperationalError: connection refused"), "database"),
+        (TimeoutError("Request timed out"), "thời gian"),
+        (RuntimeError("openai.RateLimitError: 429"), "rate limit"),
+    ],
+)
+def test_format_error_messages_short_vietnamese(exc, keyword):
+    msg = _format_error_message(exc)
+    assert keyword.lower() in msg.lower()
+    assert len(msg) <= USER_ERROR_MAX_LEN
+
+
+def test_stream_db_error_yields_answer_not_crash(monkeypatch):
+    monkeypatch.setattr("src.monitoring.tracing.settings.monitoring_enabled", False)
+    from src.main import _cache
+
+    _cache.clear()
+    with patch(
+        "src.agent.graph.run_agent_stream",
+        side_effect=RuntimeError("clickhouse connect error: connection refused"),
+    ):
+        res = client.post(
+            "/api/agent/stream",
+            json={"question": "Hôm nay có bao nhiêu lượt xe vào?"},
+        )
+    assert res.status_code == 200
+    events = []
+    for line in res.text.splitlines():
+        if line.startswith("data: "):
+            payload = line[6:].strip()
+            if payload and payload != "[DONE]":
+                events.append(json.loads(payload))
+    answer = next(ev for ev in events if ev.get("node_id") == "__answer__")
+    assert answer.get("status") == "error"
+    assert "clickhouse" in str(answer.get("output", "")).lower()
+    assert "traceback" not in str(answer.get("output", "")).lower()
+
+
+def test_stream_graph_thread_error_yields_friendly_answer(monkeypatch):
+    """Lỗi trong graph thread → __answer__ error, không crash generator."""
+    monkeypatch.setattr("src.monitoring.tracing.settings.monitoring_enabled", False)
+    from src.main import _cache
+
+    _cache.clear()
+
+    def _boom(*_args, **_kwargs):
+        yield {"node_id": "recall", "status": "running"}
+        raise RuntimeError("LLM API timeout after 30s")
+
+    with patch("src.agent.graph.run_agent_stream", side_effect=_boom):
+        res = client.post(
+            "/api/agent/stream",
+            json={"question": "Hôm nay có bao nhiêu xe vào?"},
+        )
+    assert res.status_code == 200
+    assert "__answer__" in res.text
+    assert "mô hình ai" in res.text.lower() or "thời gian" in res.text.lower()
+
+
+def test_frontend_stream_error_handling_wiring():
+    res = client.get("/app.js")
+    js = res.text if res.status_code == 200 else open("frontend/app.js", encoding="utf-8").read()
+    assert "lastStreamError" in js
+    assert "event.status === 'error'" in js or "event.status === \"error\"" in js
+    assert "event.node_id === 'error'" in js or 'event.node_id === "error"' in js
 

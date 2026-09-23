@@ -1,6 +1,146 @@
+"""Product test suite for Deployment & Smoke Verification: Docker configuration, Self-hosted backend verification, Smoke test acceptance suite, Eval harness integration."""
+from __future__ import annotations
+
+# ==============================================================================
+# --- Sourced from test_phase7_docker_self_hosted.py ---
+# ==============================================================================
+
+"""Unit & integration tests for Phase 7: Docker + LLM_BACKEND=self_hosted (196)."""
+
+
+import os
+from pathlib import Path
+from unittest.mock import patch
+
+import pytest
+import yaml
+from fastapi.testclient import TestClient
+
+from src.config import Settings, settings
+from src.main import app
+
+client = TestClient(app)
+
+
+def test_docker_compose_ai_backend_self_hosted_environment():
+    """docker-compose.yml ai_backend environment phải có đầy đủ passthrough self_hosted @ 196."""
+    compose_path = Path(__file__).resolve().parent.parent / "docker-compose.yml"
+    assert compose_path.exists(), "docker-compose.yml phải tồn tại"
+
+    data = yaml.safe_load(compose_path.read_text(encoding="utf-8"))
+    services = data.get("services", {})
+    assert "ai_backend" in services, "ai_backend service phải có trong docker-compose.yml"
+
+    backend = services["ai_backend"]
+    env = backend.get("environment", {})
+
+    # Kiểm tra các biến LLM self_hosted với default production
+    assert "LLM_BACKEND" in env
+    assert env["LLM_BACKEND"] == "${LLM_BACKEND:-self_hosted}"
+
+    assert "MODEL_BASE_URL" in env
+    assert env["MODEL_BASE_URL"] == "${MODEL_BASE_URL:-http://192.168.1.196:18083/v1}"
+
+    assert "MODEL_NAME" in env
+    assert env["MODEL_NAME"] == "${MODEL_NAME:-qwen3-4b}"
+
+    assert "MODEL_API_KEY" in env
+    assert env["MODEL_API_KEY"] == "${MODEL_API_KEY:-}"
+
+    assert "MODEL_ENDPOINT" in env
+    assert env["MODEL_ENDPOINT"] == "${MODEL_ENDPOINT:-http://192.168.1.196:18083/v1/chat/completions}"
+
+    # Đảm bảo cấu hình mạng và host không bị ảnh hưởng
+    assert "host.docker.internal:host-gateway" in backend.get("extra_hosts", [])
+    assert "kcn_network" in backend.get("networks", [])
+
+
+def test_settings_self_hosted_defaults():
+    """Cấu hình Settings khi LLM_BACKEND=self_hosted phải trỏ đúng gateway 196 và qwen3-4b."""
+    s = Settings(
+        LLM_BACKEND="self_hosted",
+        MODEL_BASE_URL="http://192.168.1.196:18083/v1",
+        MODEL_NAME="qwen3-4b",
+    )
+    assert s.llm_backend == "self_hosted"
+    assert s.effective_base_url == "http://192.168.1.196:18083/v1"
+    assert s.effective_model == "qwen3-4b"
+    assert s.model_endpoint == "http://192.168.1.196:18083/v1/chat/completions"
+
+
+def test_api_health_self_hosted_backend(monkeypatch):
+    """GET /api/health trả về llm_backend=self_hosted và active_model=qwen3-4b."""
+    monkeypatch.setattr(settings, "llm_backend", "self_hosted")
+    monkeypatch.setattr(settings, "model_name", "qwen3-4b")
+
+    res = client.get("/api/health")
+    assert res.status_code == 200
+    data = res.json()
+    assert data["status"] == "ok"
+    assert data["llm_backend"] == "self_hosted"
+    assert data["active_model"] == "qwen3-4b"
+
+
+def test_api_llm_ping_self_hosted_success(monkeypatch):
+    """GET /api/llm/ping trả về backend self_hosted + model qwen3-4b khi gateway sẵn sàng."""
+    monkeypatch.setattr(settings, "llm_backend", "self_hosted")
+    monkeypatch.setattr(settings, "model_name", "qwen3-4b")
+    monkeypatch.setattr(settings, "model_base_url", "http://192.168.1.196:18083/v1")
+
+    with patch("src.main.llm_ping", return_value="OK"):
+        res = client.get("/api/llm/ping")
+        assert res.status_code == 200
+        data = res.json()
+        assert data["status"] == "OK"
+        assert data["backend"] == "self_hosted"
+        assert data["model"] == "qwen3-4b"
+        assert data["base_url"] == "http://192.168.1.196:18083/v1"
+
+
+def test_api_llm_ping_self_hosted_failure(monkeypatch):
+    """GET /api/llm/ping trả về HTTP 503 khi gateway 196 không phản hồi."""
+    monkeypatch.setattr(settings, "llm_backend", "self_hosted")
+    monkeypatch.setattr(settings, "model_name", "qwen3-4b")
+    monkeypatch.setattr(settings, "model_base_url", "http://192.168.1.196:18083/v1")
+
+    err_msg = "Lỗi kết nối tới LLM tại http://192.168.1.196:18083/v1/models: Connection refused"
+    with patch("src.main.llm_ping", side_effect=RuntimeError(err_msg)):
+        res = client.get("/api/llm/ping")
+        assert res.status_code == 503
+        data = res.json()
+        assert "Connection refused" in data["detail"]
+
+
+def test_verify_docker_script_exists_and_executable():
+    """Script scripts/verify-docker-self-hosted.sh tồn tại, executable và kiểm tra đúng logic."""
+    script_path = Path(__file__).resolve().parent.parent / "scripts" / "verify-docker-self-hosted.sh"
+    assert script_path.exists(), "scripts/verify-docker-self-hosted.sh phải tồn tại"
+    assert os.access(script_path, os.X_OK), "scripts/verify-docker-self-hosted.sh phải có quyền thực thi (executable)"
+
+    content = script_path.read_text(encoding="utf-8")
+    assert "/api/health" in content
+    assert "/api/llm/ping" in content
+    assert "self_hosted" in content
+
+
+def test_env_example_documentation_block():
+    """.env.example ghi rõ cấu hình production Docker self_hosted và các biến bắt buộc."""
+    env_example_path = Path(__file__).resolve().parent.parent / ".env.example"
+    assert env_example_path.exists()
+    content = env_example_path.read_text(encoding="utf-8")
+
+    assert "self_hosted" in content
+    assert "192.168.1.196:18083" in content
+    assert "MODEL_API_KEY" in content
+    assert "DB_HOST" in content
+    assert "LLM_BACKEND=openai" in content
+
+# ==============================================================================
+# --- Sourced from test_phase7_smoke_manual.py ---
+# ==============================================================================
+
 """Unit and integration tests for Phase 7 Smoke Manual Checklist and Production Smoke Script."""
 
-from __future__ import annotations
 
 import json
 import os
@@ -243,3 +383,125 @@ def test_smoke_sse_parser_offline_logic():
     assert has_chart is True
     assert chart_type == "bar"
     assert answer == "Biểu đồ cột xe vào hôm nay."
+
+# ==============================================================================
+# --- Sourced from test_phase7_eval.py ---
+# ==============================================================================
+
+"""Unit & Integration tests for Phase 7 — eval/run.py, judge rubric & golden-30 reports."""
+
+
+import os
+from pathlib import Path
+import pytest
+
+from eval.judge import JudgeScore, judge_answer
+from eval.run import (
+    CaseEvalResult,
+    PipelineResult,
+    check_case,
+    write_golden_30,
+    run,
+)
+
+
+def test_judge_answer_offline_skip():
+    """Khi môi trường offline/pytest, judge_answer trả về điểm 0 và lý do skipped."""
+    score = judge_answer("Câu hỏi test", "Câu trả lời test")
+    assert score.score == 0
+    assert "skipped" in score.reason.lower()
+
+
+def test_check_case_rule_validation():
+    """Kiểm tra logic check_case cho must_include, must_include_tool, must_not_include, columns_any."""
+    case = {
+        "id": "test_001",
+        "question": "Biển số 15K40139",
+        "must_include": ["15K40139", "xe"],
+        "must_not_include": ["không tìm thấy"],
+        "must_include_tool": ["trace_plate"],
+        "must_not_include_tool": ["count_fire_smoke_events"],
+        "must_include_columns_any": ["plate", "time_in"],
+    }
+
+    # Pass case
+    pass_res = PipelineResult(
+        answer="Xe biển số 15K40139 xuất hiện lúc 08:00",
+        tools={"trace_plate"},
+        columns=["plate", "camera_name"],
+    )
+    assert check_case(case, pass_res) == []
+
+    # Fail must_include
+    fail_include = PipelineResult(
+        answer="Xe xuất hiện lúc 08:00",
+        tools={"trace_plate"},
+        columns=["plate"],
+    )
+    fails = check_case(case, fail_include)
+    assert any("thiếu must_include: '15k40139'" in f.lower() for f in fails)
+
+    # Fail must_include_tool
+    fail_tool = PipelineResult(
+        answer="Xe biển số 15K40139",
+        tools={"count_vehicle_flow"},
+        columns=["plate"],
+    )
+    fails = check_case(case, fail_tool)
+    assert any("thiếu must_include_tool" in f for f in fails)
+
+
+def test_write_golden_30_markdown_format(tmp_path: Path):
+    """Kiểm tra định dạng file báo cáo markdown golden-30."""
+    out_file = tmp_path / "test_golden.md"
+    results = [
+        CaseEvalResult(
+            case_id="case_001",
+            slice_type="lookup",
+            status="pass",
+            latency_ms=120,
+            tool="trace_plate",
+            note="",
+            judge="5/5 — Xuất sắc",
+        ),
+        CaseEvalResult(
+            case_id="case_002",
+            slice_type="comparison",
+            status="fail",
+            latency_ms=80,
+            tool="-",
+            note="thiếu must_include: '0'",
+            judge="2/5 — Thiếu số 0",
+        ),
+    ]
+
+    path = write_golden_30(
+        results,
+        dataset="agent_stat",
+        version="2.2",
+        total_pass=1,
+        mode="live",
+        output_path=out_file,
+    )
+    assert path.exists()
+    content = path.read_text(encoding="utf-8")
+    assert "# Golden 30 — eval report" in content
+    assert "- dataset: `agent_stat` v2.2" in content
+    assert "- mode: live" in content
+    assert "- total: 1/2 pass" in content
+    assert "| case_001 | lookup | pass | 120 | trace_plate |" in content
+    assert "| case_002 | comparison | fail | 80 | - | thiếu must_include: '0' |" in content
+
+
+def test_eval_run_offline_execution(tmp_path: Path):
+    """Kiểm tra eval run với flag offline chạy hoàn tất và ghi báo cáo."""
+    dataset_file = Path(__file__).resolve().parent.parent / "eval" / "datasets" / "agent_stat" / "v2.yaml"
+    assert dataset_file.exists()
+
+    out_file = tmp_path / "golden_offline.md"
+    exit_code = run(dataset_file, output_path=out_file, use_judge=False, offline=True)
+    assert out_file.exists()
+    content = out_file.read_text(encoding="utf-8")
+    assert "- mode: offline" in content
+    assert "agent_stat_v2_001" in content
+

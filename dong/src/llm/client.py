@@ -139,26 +139,58 @@ def invoke_with_tools(
         raise RuntimeError(f"Lỗi kết nối tới LLM: Không thể sinh phản hồi. Chi tiết: {e}")
 
 
+def _llm_model_label(backend_override: str | None = None) -> str:
+    backend_name = (backend_override or settings.llm_backend).strip().lower()
+    if backend_name == "self_hosted":
+        return settings.model_name or "qwen3-4b"
+    return settings.llm_model or "gpt-4o-mini"
+
+
 def invoke_text(
     system_prompt: str,
     user_prompt: str,
     model_override: str | None = None,
     backend_override: str | None = None,
     max_tokens: int | None = None,
+    *,
+    substep: str | None = "llm_text",
 ) -> str:
     """Lời gọi LLM đơn giản không tool — dùng cho bước Answer (diễn giải số liệu)."""
-    from src.monitoring.tracing import extract_token_usage, add_request_tokens
-    llm = base_llm(model_override=model_override, backend_override=backend_override, max_tokens_override=max_tokens)
-    try:
+    from src.monitoring.tracing import add_request_tokens, extract_token_usage, trace_substep
+
+    trace_in = {
+        "system_len": len(system_prompt or ""),
+        "user_len": len(user_prompt or ""),
+        "max_tokens": max_tokens,
+    }
+    meta = {"model_name": _llm_model_label(backend_override), "temperature": settings.llm_temperature}
+
+    def _call() -> tuple[str, dict[str, int]]:
+        llm = base_llm(
+            model_override=model_override,
+            backend_override=backend_override,
+            max_tokens_override=max_tokens,
+        )
         response = llm.invoke([
             {"role": "system", "content": system_prompt},
             {"role": "user", "content": user_prompt},
         ])
         usage = extract_token_usage(response)
         add_request_tokens(usage)
-        return str(response.content or "")
+        return str(response.content or ""), usage
+
+    try:
+        if substep:
+            with trace_substep(substep, kind="agent", input=trace_in, metadata=meta) as box:
+                text, usage = _call()
+                box["usage"] = usage
+                box["output"] = {"text_len": len(text)}
+                box["model_name"] = meta["model_name"]
+                return text
+        text, _usage = _call()
+        return text
     except Exception as e:
-        raise RuntimeError(f"Lỗi kết nối tới LLM: Không thể sinh phản hồi. Chi tiết: {e}")
+        raise RuntimeError(f"Lỗi kết nối tới LLM: Không thể sinh phản hồi. Chi tiết: {e}") from e
 
 import urllib.request
 def ping() -> str:

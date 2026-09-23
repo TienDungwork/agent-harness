@@ -63,7 +63,7 @@ def rewrite_question(raw: str) -> RewrittenQuestion:
         {"role": "system", "content": registry().render("rewrite")},
         {"role": "user", "content": f"Câu hỏi gốc: {cleaned}"},
     ]
-    return invoke_structured(messages, RewrittenQuestion)
+    return invoke_structured(messages, RewrittenQuestion, substep="rewrite")
 
 
 def rewrite_question_safe(raw: str) -> RewrittenQuestion:

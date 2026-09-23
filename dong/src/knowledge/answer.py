@@ -148,7 +148,7 @@ def answer_from_docs(
     ]
 
     try:
-        ans = invoke_structured(messages, DocsAnswer)
+        ans = invoke_structured(messages, DocsAnswer, substep="answer_docs")
         if not ans.card_ids and cards:
             ans.card_ids = [str(c["id"]) for c in cards if c.get("id")]
         return ans

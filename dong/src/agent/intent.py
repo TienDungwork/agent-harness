@@ -159,7 +159,7 @@ def classify_intent(question: str | RewrittenQuestion) -> IntentResult:
         {"role": "system", "content": registry().render("classify")},
         {"role": "user", "content": f"Câu hỏi: {cleaned}"},
     ]
-    raw = invoke_structured(messages, IntentResult)
+    raw = invoke_structured(messages, IntentResult, substep="classify")
     return sanitize_intent_result(raw)
 
 
@@ -186,15 +186,27 @@ def _is_how_to_override(text: str) -> bool:
 
 def classify_intent_safe(question: str | RewrittenQuestion) -> IntentResult:
     """classify_intent với fallback offline khi LLM lỗi — tránh im lặng/crash."""
-    text = question.text if isinstance(question, RewrittenQuestion) else str(question)
-    cleaned = text.strip()
+    if hasattr(question, "text"):
+        cleaned = (question.text or "").strip()
+    elif isinstance(question, dict):
+        cleaned = (question.get("text") or "").strip()
+    else:
+        cleaned = str(question).strip()
+
     try:
         result = classify_intent(question)
-        # Override: nếu LLM trả clarify cho câu hỏi rõ ràng là how_to → sửa lại
+        low = cleaned.lower()
+        # Override 1: nếu LLM trả clarify cho câu hỏi rõ ràng là how_to → sửa lại
         if result.intent == "clarify" and _is_how_to_override(cleaned):
             return sanitize_intent_result(IntentResult(
                 intent="how_to",
                 reason="Override: câu hỏi rõ ràng là how_to (vẽ sơ đồ / AIOC / devices)",
+            ))
+        # Override 2: nếu LLM trả query_data cho câu hỏi vẽ sơ đồ AIOC / so sánh khái niệm
+        if result.intent == "query_data" and ("vẽ sơ đồ" in low or "sơ đồ" in low) and any(k in low for k in ("devices", "aioc", "phân biệt", "khác gì")):
+            return sanitize_intent_result(IntentResult(
+                intent="how_to",
+                reason="Override: câu hỏi sơ đồ phân biệt khái niệm / AIOC",
             ))
         return result
     except Exception:

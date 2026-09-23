@@ -3,11 +3,21 @@
 from __future__ import annotations
 
 from src.agent.generate_sql import extract_sql
+from src.agent.sql_scope import apply_organization_scope
 from src.agent.node_io import node_event
 from src.config import settings
 from src.db.validator import ValidationResult, validate_sql
 from src.llm.client import invoke_text, use_offline_tools
+from src.monitoring.tracing import trace_substep
 from src.prompts import registry
+
+
+def _trace_validate_sql(sql: str) -> ValidationResult:
+    """Validate SQL và ghi substep Langfuse ``tool:validate_sql``."""
+    with trace_substep("validate_sql", kind="tool", input={"sql": sql}) as sub:
+        val = validate_sql(sql)
+        sub["output"] = val.to_dict()
+        return val
 
 
 def validate_sql_node(state: dict) -> dict:
@@ -19,7 +29,7 @@ def validate_sql_node(state: dict) -> dict:
     user_id = state.get("user_id") or "default"
     session_id = state.get("session_id") or "default"
 
-    val: ValidationResult = validate_sql(sql)
+    val = _trace_validate_sql(sql)
     val_dict = val.to_dict()
 
     out: dict = {
@@ -55,7 +65,6 @@ def repair_sql_node(state: dict) -> dict:
     schema_excerpt = state.get("schema_excerpt", "")
     old_sql = state.get("sql") or ""
 
-    # Prefer rewritten.text
     if rewritten is not None:
         if hasattr(rewritten, "text"):
             q_text = rewritten.text or question
@@ -66,7 +75,6 @@ def repair_sql_node(state: dict) -> dict:
     else:
         q_text = question
 
-    # Check max repair limit
     max_repairs = settings.sql_repair_max
     if repair_count >= max_repairs:
         prev_err = state.get("error")
@@ -87,7 +95,6 @@ def repair_sql_node(state: dict) -> dict:
 
     new_repair_count = repair_count + 1
 
-    # ── Offline path ──────────────────────────────────────────────────────
     if use_offline_tools():
         q_lower = q_text.lower()
         has_today = any(kw in q_lower for kw in ("hôm nay", "hom nay", "today"))
@@ -95,6 +102,7 @@ def repair_sql_node(state: dict) -> dict:
             repaired_sql = "SELECT count(*) FROM plate_event WHERE event_time >= CURRENT_DATE"
         else:
             repaired_sql = "SELECT count(*) FROM plate_event"
+        repaired_sql = apply_organization_scope(repaired_sql)
         return {
             "sql": repaired_sql,
             "repair_count": new_repair_count,
@@ -109,30 +117,34 @@ def repair_sql_node(state: dict) -> dict:
             ],
         }
 
-    # ── Online path ───────────────────────────────────────────────────────
     system_prompt = registry().render("sql_agent")
-
     val_reason = (state.get("sql_validation") or {}).get("reason") or state.get("error") or "Câu SQL không hợp lệ."
-    user_parts: list[str] = [
-        "Câu SQL trước bị từ chối hoặc chạy lỗi.",
-        f"Lý do validation: {val_reason}",
-    ]
-    if state.get("error") and state.get("error") != val_reason:
-        user_parts.append(f"Lỗi execute: {state.get('error')}")
-    user_parts.append(f"SQL cũ:\n{old_sql}")
-    user_parts.append(f"Câu hỏi:\n{q_text}")
-    if schema_excerpt:
-        user_parts.append(f"Schema excerpt:\n{schema_excerpt}")
-    user_parts.append(
-        "Hãy viết lại một câu SELECT hợp lệ. Chỉ dùng bảng và cột có trong schema excerpt; "
-        "không gắn cột của bảng này vào bảng kia."
-    )
 
-    user_prompt = "\n\n".join(user_parts)
+    with trace_substep("build_repair_prompt", kind="tool", input={"repair_count": repair_count}) as sub:
+        user_parts: list[str] = [
+            "Câu SQL trước bị từ chối hoặc chạy lỗi.",
+            f"Lý do validation: {val_reason}",
+        ]
+        if state.get("error") and state.get("error") != val_reason:
+            user_parts.append(f"Lỗi execute: {state.get('error')}")
+        user_parts.append(f"SQL cũ:\n{old_sql}")
+        user_parts.append(f"Câu hỏi:\n{q_text}")
+        if schema_excerpt:
+            user_parts.append(f"Schema excerpt:\n{schema_excerpt}")
+        user_parts.append(
+            "Hãy viết lại một câu SELECT hợp lệ. Chỉ dùng bảng và cột có trong schema excerpt; "
+            "không gắn cột của bảng này vào bảng kia."
+        )
+        user_prompt = "\n\n".join(user_parts)
+        sub["output"] = {"user_prompt_len": len(user_prompt), "reason": val_reason}
+
     max_tokens = settings.sql_generate_max_tokens
 
-    raw = invoke_text(system_prompt, user_prompt, max_tokens=max_tokens)
-    repaired_sql = extract_sql(raw)
+    raw = invoke_text(system_prompt, user_prompt, max_tokens=max_tokens, substep="repair_sql")
+
+    with trace_substep("extract_sql", kind="tool", input={"raw_len": len(raw)}) as sub:
+        repaired_sql = extract_sql(raw)
+        sub["output"] = {"sql_len": len(repaired_sql), "empty": not bool(repaired_sql)}
 
     if not repaired_sql:
         err_msg = "Không thể sửa câu SQL từ phản hồi của mô hình."
@@ -149,6 +161,10 @@ def repair_sql_node(state: dict) -> dict:
                 )
             ],
         }
+
+    with trace_substep("apply_org_scope", kind="tool", input={"sql": repaired_sql}) as sub:
+        repaired_sql = apply_organization_scope(repaired_sql)
+        sub["output"] = {"sql": repaired_sql}
 
     return {
         "sql": repaired_sql,
@@ -185,7 +201,7 @@ def validate_and_repair_sql(
     repair_count = 0
     events: list[dict] = []
 
-    val = validate_sql(cur_sql)
+    val = _trace_validate_sql(cur_sql)
     events.append(
         node_event(
             "validate_sql",
@@ -210,7 +226,7 @@ def validate_and_repair_sql(
         repair_count = rep_out.get("repair_count", repair_count + 1)
         events.extend(rep_out.get("events") or [])
 
-        val = validate_sql(cur_sql)
+        val = _trace_validate_sql(cur_sql)
         events.append(
             node_event(
                 "validate_sql",

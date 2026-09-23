@@ -89,7 +89,7 @@ def extract_memories(
             f"Hãy trích xuất các thông tin cần ghi nhớ lâu dài (mỗi thông tin một dòng ngắn gọn). "
             f"Nếu không có thông tin nào cần ghi nhớ, trả về KHONG."
         )
-        raw = invoke_text(prompt, user_content)
+        raw = invoke_text(prompt, user_content, substep="memory_extract")
         for line in raw.splitlines():
             cleaned = line.strip()
             # Bỏ bullet numbering

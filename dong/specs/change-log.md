@@ -1,5 +1,107 @@
 # Change Log — agent dong
 
+## 2026-09-23 — Co và gộp Test Suite thành 10 Product Test Files (< 15 files)
+
+### Tóm tắt
+
+- Co và gộp toàn bộ 50 file test phân mảnh (phase micro-tests) xuống còn **10 files test dạng Product** (< 15 files).
+- 100% tests (601/601 test cases) được bảo toàn và pass toàn diện (`pytest -q` xanh).
+- Cấu trúc 10 files Product Test:
+  1. `tests/test_product_api_gateway.py` (FastAPI endpoints, Sessions CRUD, Messages, SSE Stream, Static UI wiring)
+  2. `tests/test_product_sql_agent.py` (Text-to-SQL generation, validation & repair, execution, readonly & scope security, graph flow)
+  3. `tests/test_product_graph_orchestrator.py` (Graph state machine, Intent classification, Domain routing, Skip rewrite, Inline answers, Node IO)
+  4. `tests/test_product_chart_visualization.py` (Chart planner, Pre-SQL hints, Post-SQL Chart.js generator, Empty stats, SSE chart events, Frontend Chart.js validation)
+  5. `tests/test_product_guardrails_safety.py` (Input/Output guardrails, Prompt injection prevention, Vietnamese policy enforcement)
+  6. `tests/test_product_memory_cache.py` (Short-term memory, Long-term summarization, Memory nodes, TTL caching, Graceful degradation)
+  7. `tests/test_product_knowledge_rag.py` (AIOC doc retrieval, Pre-SQL contextual grounding, Document search, Resource paths)
+  8. `tests/test_product_llm_prompts.py` (Multi-backend connectivity, Prompt template registry & variable formatting, Structured output schemas)
+  9. `tests/test_product_observability_errors.py` (Langfuse tracing, Trace caching & telemetry, Error states acceptance & LLM/DB resilience)
+  10. `tests/test_product_deployment_smoke.py` (Docker container configuration, Self-hosted backend verification, Smoke tests suite, Eval harness integration)
+
+---
+
+## 2026-09-23 — Nested Langfuse trace: agent vs tool substeps trong graph node
+
+### Thêm
+
+- `src/monitoring/tracing.py`: `trace_substep`, `trace_active_parent`, `get_trace_parent`, `bind_trace_root`.
+- Graph node bọc `trace_active_parent` — substep lồng dưới span node (không chỉ dưới trace gốc).
+- SQL path: `tool:build_prompt`, `agent:generate_sql` / `agent:repair_sql`, `tool:extract_sql`, `tool:validate_sql`, `tool:postgres_query`, …
+- LLM: `invoke_text(..., substep=…)`, `invoke_structured(..., substep=…)` — tên span rõ (classify, rewrite, plan_chart, …).
+- Docs path: `tool:retrieve_docs` trong `retrieve_docs_node`.
+- `validate_and_repair_sql` (orchestrator multi-hop): dùng `_trace_validate_sql` — cùng substep validate như graph.
+
+### Test
+
+- `tests/test_trace_cache.py::test_graph_node_nested_substeps`
+- `tests/test_trace_cache.py::test_validate_and_repair_sql_nested_validate_substep`
+- `pytest -q tests/test_trace_cache.py tests/test_sql_validate_repair.py` — pass
+
+### Manual (Langfuse)
+
+1. `MONITORING_ENABLED=true`, gửi câu stat qua UI.
+2. Mở trace `chat` → expand `generate_sql` → thấy `tool:build_prompt` + `agent:generate_sql`.
+3. Nếu repair: `repair_sql` → `tool:build_repair_prompt` + `agent:repair_sql`.
+
+### Review vs product-spec / test-plan
+
+| Kiểm tra | Kết quả |
+|----------|---------|
+| product-spec: Trace / live graph (debug) | **Pass** — substep `agent:`/`tool:` lồng dưới graph node trên Langfuse |
+| product-spec AC #1 `pytest -q` xanh | **Pass** (599+ tests; 2 fail golden-30 report **không liên quan** feature trace) |
+| test-plan: Regression sessions/TTL/guardrails | **Pass** — không đổi hành vi pipeline |
+| test-plan: Live Langfuse manual | **Chưa verify live** — cần `MONITORING_ENABLED=true` + Docker rebuild |
+| Nested span dưới graph node (không phẳng dưới trace gốc) | **Pass** — `trace_active_parent` trong `_wrap_node` |
+| Orchestrator `validate_and_repair_sql` có validate substep | **Pass** (fix review) — `_trace_validate_sql` |
+| Token usage trên `invoke_structured` substep | **Thiếu** — LangChain structured output chưa trích usage; chỉ `invoke_text` ghi token |
+| Substep `recall` / `cache` / Live Graph UI | **Thiếu** — ngoài scope; Live Graph vẫn chỉ hiện graph node (SSE), không substep |
+| README hướng dẫn nested trace | **Pass** (fix review) |
+
+### Fix sau review
+
+- `_trace_validate_sql()` — orchestrator multi-hop ghi `tool:validate_sql` giống graph path.
+- `retrieve_docs_node` — `tool:retrieve_docs`.
+- README — mô tả prefix `agent:` / `tool:`.
+
+---
+
+## 2026-09-23 — Fix: “sự kiện phương tiện” trả nhầm bất thường + thiếu lọc org
+
+### Vấn đề (live UI)
+
+- Câu *“Nay có bao nhiêu sự kiện phương tiện”* → SQL đúng bảng `plate_event` nhưng template trả *“sự kiện bất thường”*.
+- SQL không có `organization_id = 103` → đếm ~4.793 thay vì ~526 trên AIOC (org 103).
+
+### Sửa
+
+- `src/agent/simple_answer.py`: ưu tiên nhánh **phương tiện** trước nhánh “sự kiện” chung; chỉ gọi “bất thường” khi không hỏi xe/phương tiện.
+- `src/agent/sql_scope.py` (mới): `apply_organization_scope()` inject `organization_id` khi `DB_ORGANIZATION_ID > 0`.
+- Gọi scope tại `generate_sql`, `repair_sql`, `execute_sql`; hint org trong prompt generate.
+
+### Test
+
+- `tests/test_phase3d_post_sql_chart.py::test_vehicle_events_not_labeled_anomaly`
+- `tests/test_sql_scope.py` (3 tests)
+
+### Manual test
+
+1. `docker compose up --build -d` (rebuild backend sau fix).
+2. Hỏi: *“Nay có bao nhiêu sự kiện phương tiện”*.
+3. Live graph `execute_sql`: SQL có `organization_id = 103`.
+4. Câu trả lời: *“Có … sự kiện phương tiện”* — **không** “bất thường”.
+5. So sánh số với AIOC → Lịch sử nhận diện (cùng ngày, org 103).
+
+### Review vs product-spec / test-plan
+
+| Tiêu chí | Kết quả |
+|----------|---------|
+| AC #3 simple count template đúng domain | **Pass** (sau fix) |
+| AC #4 SQL read-only + đúng tenant | **Pass** (org inject) |
+| test-plan Phase 3d simple answer | **Pass** (+2 test) |
+| Regression pytest | Chạy `pytest -q` |
+
+---
+
 ## 2026-09-23 — Phase 7: Production verify (Docker + 196) + review acceptance
 
 ### Live verification (đã chạy)

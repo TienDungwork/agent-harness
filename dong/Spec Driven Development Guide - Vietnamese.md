@@ -20,7 +20,7 @@ https://ngrok.com/
 
 ---
 
-Lấy Auth Token để deploy: 
+Lấy Auth Token để deploy:
 
 https://dashboard.ngrok.com/get-started/your-authtoken
 
@@ -408,7 +408,7 @@ Create a final MVP status report with:
 - missing features
 - known bugs
 - how to run locally
-- how to demo with ngrok
+- how to demo
 - recommended next improvements
 
 Do not write code unless there is a critical bug.
@@ -558,16 +558,16 @@ Tạo file này tại `specs/change-log.md`:
 ## YYYY-MM-DD
 
 ### Added
-- 
+-
 
 ### Changed
-- 
+-
 
 ### Fixed
-- 
+-
 
 ### Notes
-- 
+-
 ```
 
 ---

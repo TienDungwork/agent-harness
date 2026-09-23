@@ -114,6 +114,12 @@ Checklist UI tay: [specs/smoke-manual-checklist.md](specs/smoke-manual-checklist
 2. Khởi động lại Docker: `docker compose up -d`
 3. Xem vết thực thi tại giao diện Langfuse: `http://192.168.1.196:13000`.
 
+Mỗi graph node (vd. `generate_sql`, `repair_sql`) có **substep lồng**:
+- `agent:*` — gọi LLM (sinh/sửa SQL, classify, rewrite, …)
+- `tool:*` — code/DB (validate, Postgres, extract SQL, retrieval docs, …)
+
+Expand node trên Langfuse để xem latency từng bước (vd. `agent:repair_sql` ~13–25s).
+
 ---
 
 ## Chạy kiểm thử tự động (Dev / Test)

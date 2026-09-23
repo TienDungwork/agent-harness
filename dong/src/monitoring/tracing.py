@@ -24,6 +24,68 @@ from src.config import settings
 logger = logging.getLogger(__name__)
 
 _request_tokens = contextvars.ContextVar("request_tokens", default=None)
+_trace_root_var = contextvars.ContextVar("trace_root", default=None)
+_trace_active_parent_var = contextvars.ContextVar("trace_active_parent", default=None)
+
+
+def bind_trace_root(span: Any):
+    """Gắn span gốc (từ trace_answer) cho pipeline hiện tại."""
+    return _trace_root_var.set(span)
+
+
+def reset_trace_root(token: contextvars.Token) -> None:
+    try:
+        _trace_root_var.reset(token)
+    except ValueError:
+        pass
+
+
+def get_trace_parent() -> Any:
+    """Span cha cho substep: ưu tiên node đang chạy, rồi trace gốc."""
+    active = _trace_active_parent_var.get()
+    if active is not None:
+        return active
+    return _trace_root_var.get()
+
+
+@contextmanager
+def trace_active_parent(span: Any) -> Iterator[None]:
+    """Đặt span node graph làm parent cho trace_substep bên trong node."""
+    if span is None:
+        yield
+        return
+    token = _trace_active_parent_var.set(span)
+    try:
+        yield
+    finally:
+        try:
+            _trace_active_parent_var.reset(token)
+        except ValueError:
+            pass
+
+
+@contextmanager
+def trace_substep(
+    name: str,
+    *,
+    kind: str = "tool",
+    input: Any = None,
+    metadata: dict[str, Any] | None = None,
+) -> Iterator[dict[str, Any]]:
+    """Substep lồng trong graph node — phân tách agent (LLM) vs tool (code/DB).
+
+    Tên span: ``agent:<name>`` hoặc ``tool:<name>`` (trừ khi ``name`` đã có prefix).
+    """
+    if not settings.monitoring_enabled:
+        yield {}
+        return
+    parent = get_trace_parent()
+    if parent is None:
+        yield {}
+        return
+    step_name = name if ":" in name else f"{kind}:{name}"
+    with trace_step(parent, step_name, input=input, metadata=metadata) as box:
+        yield box
 
 def add_request_tokens(usage: dict[str, int]):
     """Cộng dồn token vào request hiện tại."""

@@ -15,7 +15,7 @@ from src.db.connection import get_connection
 from src.db.validator import validate_sql
 
 _TABLE_REF = re.compile(
-    r"\b(?:from|join)\s+(?:only\s+)?(?:[a-zA-Z_][\w]*\.)?([a-zA-Z_][\w]*)",
+    r'\b(?:from|join)\s+(?:only\s+)?(?:(?:"?[a-zA-Z_][\w]*"?)\.)?"?([a-zA-Z_][\w]*)"?',
     re.IGNORECASE,
 )
 

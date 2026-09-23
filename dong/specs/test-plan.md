@@ -26,13 +26,18 @@ pytest -q
 | **Regression** | Sessions, TTL, guardrails, Docker spec vẫn pass |
 | **Cleanup** | Sau Phase 8: graph không import dead modules |
 
-### File test dự kiến (tạo khi implement)
+### Danh mục 10 Product Test Files (Consolidated)
 
-- `tests/test_classify_fast_path.py`
-- `tests/test_pre_sql_retrieval.py`
-- `tests/test_sql_generation.py`
-- `tests/test_post_sql_chart.py`
-- Giữ: `test_memory_*`, `test_phase5_*`, `test_phase7_*`
+1. `tests/test_product_api_gateway.py` — FastAPI server, routes fast-path, sessions CRUD, message history, SSE streaming session, static UI wiring.
+2. `tests/test_product_sql_agent.py` — End-to-end Text-to-SQL: generation, validation & repair, execution, readonly & scope security, graph flow.
+3. `tests/test_product_graph_orchestrator.py` — Graph state machine, Intent classification, Domain routing, Skip rewrite, Inline answers, Node I/O.
+4. `tests/test_product_chart_visualization.py` — Chart planner, Pre-SQL chart hint, Post-SQL Chart.js generation, Empty stats, SSE chart events, Frontend Chart.js validation.
+5. `tests/test_product_guardrails_safety.py` — Input/Output guardrails, Prompt injection prevention, Vietnamese policy enforcement.
+6. `tests/test_product_memory_cache.py` — Short-term session memory, Long-term summarization, Memory nodes, TTL caching, Graceful degradation.
+7. `tests/test_product_knowledge_rag.py` — AIOC doc retrieval, Pre-SQL contextual grounding, Document search, Resource path resolution.
+8. `tests/test_product_llm_prompts.py` — Multi-backend connectivity, Prompt template registry & variable formatting, Structured output schemas.
+9. `tests/test_product_observability_errors.py` — Langfuse tracing, Trace caching & metrics telemetry, Error state acceptance & LLM/DB resilience.
+10. `tests/test_product_deployment_smoke.py` — Docker configuration, Self-hosted backend verification, Smoke test acceptance suite, Eval harness integration.
 
 ---
 

@@ -46,9 +46,21 @@ def get_allowed_columns(table: str) -> set[str]:
     return set()
 
 
+_TABLE_ALIASES: dict[str, str] = {
+    "zone_events": "zone_event",
+    "plate_events": "plate_event",
+    "smf_face_event": "smf_face_events",
+    "fire_smoke_events": "fire_smoke_event",
+    "firesmoke_event": "fire_smoke_event",
+    "anomaly_events": "anomaly_event",
+    "water_events": "water_event",
+}
+
+
 def get_database_for_table(table: str) -> str:
     """Xác định tên database kết nối tương ứng với bảng."""
-    tbl = table.lower().strip()
+    tbl = table.lower().strip().strip('"')
+    tbl = _TABLE_ALIASES.get(tbl, tbl)
     entry = _load_catalog().get(tbl)
     if entry:
         db_key = entry["database"]

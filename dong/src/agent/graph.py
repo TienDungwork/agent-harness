@@ -34,7 +34,14 @@ from src.db.executor import execute_sql
 from src.chart.render import should_render_chart, plan_chart, render_chart
 from src.llm.schemas import ChartSpec, OrchestratorPlan, QueryResult, RewrittenQuestion, StatAnswer
 from src.guardrails import OUT_OF_SCOPE_REPLY
-from src.monitoring.tracing import trace_step
+from src.monitoring.tracing import (
+    bind_trace_root,
+    get_trace_parent,
+    reset_trace_root,
+    trace_active_parent,
+    trace_step,
+    trace_substep,
+)
 from src.prompts import registry
 from src.agent.node_io import json_safe, node_event
 from src.agent.generate_sql import generate_sql_node
@@ -82,20 +89,12 @@ class AgentState(TypedDict, total=False):
     _trace_span: Any
 
 _stream_queue = contextvars.ContextVar("_stream_queue", default=None)
-_trace_span_var = contextvars.ContextVar("_trace_span_var", default=None)
-
-
-def _reset_trace_span(token: contextvars.Token) -> None:
-    try:
-        _trace_span_var.reset(token)
-    except ValueError:
-        pass
 
 
 def _wrap_node(node_id: str, func):
     def wrapper(state: AgentState):
         q = _stream_queue.get()
-        parent = state.get("_trace_span") or _trace_span_var.get()
+        parent = state.get("_trace_span") or get_trace_parent()
         user_id = state.get("user_id") or "default"
         session_id = state.get("session_id") or "default"
         if q is not None:
@@ -107,7 +106,8 @@ def _wrap_node(node_id: str, func):
             metadata={"user_id": user_id, "session_id": session_id},
         ) as step:
             try:
-                res = func(state)
+                with trace_active_parent(step.get("_span")):
+                    res = func(state)
             except Exception as e:
                 err_io = {
                     "input": {"question": state.get("question", ""), "node_id": node_id},
@@ -491,6 +491,7 @@ def orchestrator_respond_node(state: AgentState) -> dict:
                         raw = invoke_text(
                             registry().render("respond_stat"),
                             f"{_memory_context_block(state)}Câu hỏi: {sub_q}\nDữ liệu:\n{template_ans}",
+                            substep="respond_stat",
                         )
                         polished = _strip_thinking(raw)
                         if polished:
@@ -567,7 +568,9 @@ def retrieve_docs_node(state: AgentState) -> dict:
     q = state.get("question", "")
     user_id = state.get("user_id") or "default"
     session_id = state.get("session_id") or "default"
-    cards = retrieve_docs(q)
+    with trace_substep("retrieve_docs", kind="tool", input={"question": q}) as sub:
+        cards = retrieve_docs(q)
+        sub["output"] = {"card_count": len(cards)}
     card_ids = [str(c.get("id")) for c in cards if isinstance(c, dict) and c.get("id")]
     titles = [str(c.get("title")) for c in cards if isinstance(c, dict) and c.get("title")]
     return {
@@ -633,8 +636,11 @@ def retrieve_schema_node(state: AgentState) -> dict:
     else:
         q_text = q
 
-    tables = select_relevant_tables(q_text, limit=4)
-    excerpt = build_schema_excerpt(tables)
+    with trace_substep("select_tables", kind="tool", input={"question": q_text}):
+        tables = select_relevant_tables(q_text, limit=4)
+    with trace_substep("build_schema_excerpt", kind="tool", input={"tables": tables}) as sub:
+        excerpt = build_schema_excerpt(tables)
+        sub["output"] = {"selected_tables": tables, "schema_length": len(excerpt)}
     return {
         "schema_excerpt": excerpt,
         "selected_tables": tables,
@@ -665,7 +671,8 @@ def render_chart_node(state: AgentState) -> dict:
     # Chart fallback retry nếu kết quả chưa đủ dòng
     fallback_applied = False
     if len(rows) < 2:
-        fb_res = fallback_chart_query(question=q, sql=sql, rows=rows)
+        with trace_substep("chart_fallback_query", kind="tool", input={"row_count": len(rows)}):
+            fb_res = fallback_chart_query(question=q, sql=sql, rows=rows)
         if fb_res and fb_res.get("rows"):
             rows = fb_res["rows"]
             columns = fb_res.get("columns") or list(rows[0].keys())
@@ -674,7 +681,9 @@ def render_chart_node(state: AgentState) -> dict:
 
     try:
         spec = plan_chart(rows, q)
-        png_base64 = render_chart(rows, spec)
+        with trace_substep("render_png", kind="tool", input={"chart_type": getattr(spec, "chart_type", "")}) as sub:
+            png_base64 = render_chart(rows, spec)
+            sub["output"] = {"rendered": bool(png_base64), "png_len": len(png_base64 or "")}
         meta = spec.model_dump() if spec else {}
         ok = bool(png_base64)
         node_meta = dict(meta)
@@ -765,8 +774,9 @@ def respond_node(state: AgentState) -> dict:
         ans = empty_stat_reply()
         answer_source = "empty"
     else:
-        # 1. Thử trả lời nhanh qua template tiếng Việt (skip LLM respond)
-        simple_ans = try_format_simple_answer(q, rows)
+        with trace_substep("simple_answer", kind="tool", input={"row_count": len(rows)}) as sub:
+            simple_ans = try_format_simple_answer(q, rows)
+            sub["output"] = {"matched": simple_ans is not None}
         if simple_ans is not None:
             ans = simple_ans
             if chart_png:
@@ -774,7 +784,6 @@ def respond_node(state: AgentState) -> dict:
             answer_source = "template_simple"
             llm_used = False
         else:
-            # 2. Dữ liệu phức tạp (nhiều dòng / nhiều cột)
             lines = [", ".join(f"{c}={r[c]}" for c in columns) for r in rows[:20]]
             template_ans = f"Kết quả ({len(rows)} dòng):\n" + "\n".join(lines)
             ans = template_ans
@@ -782,11 +791,13 @@ def respond_node(state: AgentState) -> dict:
             if not use_offline_tools():
                 llm_used = True
                 try:
-                    raw = invoke_text(
-                        registry().render("respond_stat"),
-                        f"{_memory_context_block(state)}Câu hỏi: {q}\nDữ liệu:\n{template_ans}",
-                        max_tokens=settings.sql_respond_max_tokens,
-                    )
+                    with trace_substep("respond_stat", kind="agent", input={"row_count": len(rows)}):
+                        raw = invoke_text(
+                            registry().render("respond_stat"),
+                            f"{_memory_context_block(state)}Câu hỏi: {q}\nDữ liệu:\n{template_ans}",
+                            max_tokens=settings.sql_respond_max_tokens,
+                            substep=None,
+                        )
                     polished = _strip_thinking(raw)
                     if polished:
                         ans = polished
@@ -992,7 +1003,7 @@ def run_agent(inp: Agent_Input, parent_span: Any = None, session_id: str = "defa
     question = (inp.question or "").strip()
     uid = user_id or getattr(inp, "user_id", "default") or "default"
     config = {"configurable": {"thread_id": session_id}}
-    token = _trace_span_var.set(parent_span)
+    token = bind_trace_root(parent_span)
     try:
         state = _get_graph().invoke(
             {
@@ -1019,7 +1030,7 @@ def run_agent(inp: Agent_Input, parent_span: Any = None, session_id: str = "defa
         ).start()
         return result
     finally:
-        _reset_trace_span(token)
+        reset_trace_root(token)
 
 
 def run_agent_stream(inp: Agent_Input, parent_span: Any = None, session_id: str = "default", user_id: str | None = None):
@@ -1029,7 +1040,7 @@ def run_agent_stream(inp: Agent_Input, parent_span: Any = None, session_id: str 
     
     q = queue.Queue()
     _stream_queue.set(q)
-    token = _trace_span_var.set(parent_span)
+    token = bind_trace_root(parent_span)
     ctx = contextvars.copy_context()
     
     def target():
@@ -1074,7 +1085,7 @@ def run_agent_stream(inp: Agent_Input, parent_span: Any = None, session_id: str 
                 break
             yield ev
     finally:
-        _reset_trace_span(token)
+        reset_trace_root(token)
     
     t.join()
 
