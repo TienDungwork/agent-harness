@@ -5,33 +5,51 @@ config:
 ---
 graph TD;
 	__start__([<p>__start__</p>]):::first
+	recall(recall)
 	rewrite(rewrite)
 	classify(classify)
+	respond_inline(respond_inline)
+	orchestrator(orchestrator)
+	orchestrator_respond(orchestrator_respond)
 	retrieve_schema(retrieve_schema)
-	plan_query(plan_query)
-	validate(validate)
-	execute(execute)
+	generate_sql(generate_sql)
+	validate_sql(validate_sql)
+	repair_sql(repair_sql)
+	execute_sql(execute_sql)
 	render_chart(render_chart)
 	respond(respond)
 	retrieve_docs(retrieve_docs)
 	answer_from_docs(answer_from_docs)
 	out_of_scope(out_of_scope)
 	__end__([<p>__end__</p>]):::last
-	__start__ --> rewrite;
-	classify -. &nbsp;out&nbsp; .-> out_of_scope;
-	classify -. &nbsp;docs&nbsp; .-> retrieve_docs;
-	classify -. &nbsp;query_data&nbsp; .-> retrieve_schema;
-	execute -.-> render_chart;
-	execute -.-> respond;
-	plan_query --> validate;
+	__start__ --> recall;
+	classify -.-> orchestrator;
+	classify -.-> out_of_scope;
+	classify -.-> respond_inline;
+	classify -.-> retrieve_docs;
+	classify -.-> retrieve_schema;
+	execute_sql -.-> render_chart;
+	execute_sql -.-> repair_sql;
+	execute_sql -.-> respond;
+	generate_sql --> validate_sql;
+	orchestrator -. &nbsp;multi&nbsp; .-> orchestrator_respond;
+	orchestrator -. &nbsp;out&nbsp; .-> out_of_scope;
+	orchestrator -. &nbsp;docs&nbsp; .-> retrieve_docs;
+	orchestrator -. &nbsp;query_data&nbsp; .-> retrieve_schema;
+	recall --> rewrite;
 	render_chart --> respond;
+	repair_sql --> validate_sql;
 	retrieve_docs --> answer_from_docs;
-	retrieve_schema --> plan_query;
+	retrieve_schema --> generate_sql;
 	rewrite --> classify;
-	validate --> execute;
+	validate_sql -.-> execute_sql;
+	validate_sql -.-> repair_sql;
+	validate_sql -.-> respond;
 	answer_from_docs --> __end__;
+	orchestrator_respond --> __end__;
 	out_of_scope --> __end__;
 	respond --> __end__;
+	respond_inline --> __end__;
 	classDef default fill:#f2f0ff,line-height:1.2
 	classDef first fill-opacity:0
 	classDef last fill:#bfb6fc

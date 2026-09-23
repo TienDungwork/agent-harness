@@ -645,7 +645,7 @@ def test_eval_v5_tool_extraction_from_agent_output():
     """v5: tools set = detail (+ query.tool) — không còn prefix 'tool: '."""
     from eval.run import PipelineResult, check_case
     from src.agent.graph import Agent_Output
-    from src.agent.tools import QueryResult
+    from src.llm.schemas import QueryResult
 
     # Simulate what run_pipeline builds after v5 fix
     query = QueryResult(tool="sql_builder", columns=["direction"], rows=[["IN"]], row_count=1)

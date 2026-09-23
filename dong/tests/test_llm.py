@@ -76,7 +76,6 @@ from pathlib import Path
 
 import pytest
 
-from src.agent.answer import _get_system_prompt
 from src.prompts import PromptRegistry, registry
 
 
@@ -89,43 +88,24 @@ def test_prompt_registry_default_dir_is_resource():
 
 def test_prompt_registry_get_by_version():
     reg = registry()
-    prompt = reg.get("agent_system", 1)
-    assert prompt.name == "agent_system"
+    prompt = reg.get("sql_agent", 1)
+    assert prompt.name == "sql_agent"
     assert prompt.version == 1
-    assert "{now}" in prompt.template
+    assert "PostgreSQL" in prompt.template
 
 
-def test_prompt_registry_get_answer_v1():
+def test_prompt_registry_get_classify_production():
     reg = registry()
-    prompt = reg.get("answer", version=1)
-    assert prompt.name == "answer"
-    assert prompt.version == 1
-
-    prompt_v_str = reg.get("answer", version="v1")
-    assert prompt_v_str.version == 1
-
-
-def test_prompt_registry_get_production():
-    reg = registry()
-    prompt = reg.get("agent_system", "production")
-    assert prompt.name == "agent_system"
-    assert prompt.version == 1
+    prompt = reg.get("classify", "production")
+    assert prompt.name == "classify"
+    assert "Phân loại ý định câu người dùng" in prompt.template
 
 
 def test_prompt_registry_render_success():
     reg = registry()
-    rendered = reg.render("agent_system", "production", now="2026-09-18 12:00:00")
-    assert "2026-09-18 12:00:00" in rendered
-    assert "Bạn là trợ lý thống kê xe ra/vào" in rendered
-
-
-def test_prompt_registry_render_missing_variable_raises_value_error():
-    reg = registry()
-    with pytest.raises(ValueError) as exc_info:
-        reg.render("agent_system", "production")
-    assert "agent_system" in str(exc_info.value)
-    assert "thiếu biến" in str(exc_info.value).lower()
-    assert "now" in str(exc_info.value)
+    rendered = reg.render("sql_agent", "production")
+    assert "PostgreSQL" in rendered
+    assert "SELECT" in rendered
 
 
 def test_prompt_registry_non_existent_prompt_raises_file_not_found():
@@ -134,25 +114,16 @@ def test_prompt_registry_non_existent_prompt_raises_file_not_found():
         reg.get("non_existent_prompt", 1)
 
 
-def test_agent_answer_system_prompt_integration():
-    ans_prompt = _get_system_prompt()
-    assert "Bạn viết câu trả lời tiếng Việt ngắn gọn cho câu hỏi thống kê" in ans_prompt
-
-
 ALL_PROMPT_NAMES = [
-    "agent_answer",
-    "agent_system",
-    "answer",
     "answer_docs",
     "classify",
     "judge_eval",
     "memory_extract",
     "orchestrator",
     "plan_chart",
-    "plan_query",
-    "plan_query_repair",
     "respond_stat",
     "rewrite",
+    "sql_agent",
 ]
 
 
@@ -166,14 +137,19 @@ def test_each_prompt_name_loads(prompt_name: str):
     assert len(prompt.template.strip()) > 0
 
 
-def test_render_missing_var_raises_value_error_for_prompt_with_vars():
-    """Kiểm tra render prompt có chứa biến mẫu (agent_system) khi thiếu biến sẽ raise ValueError."""
-    reg = registry()
-    with pytest.raises(ValueError) as exc_info:
-        reg.render("agent_system")
-    assert "agent_system" in str(exc_info.value)
-    assert "thiếu biến" in str(exc_info.value).lower()
-    assert "now" in str(exc_info.value)
+def test_render_missing_var_raises_value_error_for_prompt_with_vars(monkeypatch):
+    """Kiểm tra render prompt có chứa biến khi thiếu biến sẽ raise ValueError."""
+    from unittest.mock import patch
+    from src.prompts.registry import Prompt
+
+    reg = PromptRegistry()
+    fake_prompt = Prompt(name="test_vars", version=1, template="Xin chào {now}, user là {user}")
+    with patch.object(reg, "get", return_value=fake_prompt):
+        with pytest.raises(ValueError) as exc_info:
+            reg.render("test_vars")
+        assert "test_vars" in str(exc_info.value)
+        assert "thiếu biến" in str(exc_info.value).lower()
+        assert "now" in str(exc_info.value)
 
 
 def test_api_llm_ping_returns_metadata():

@@ -15,8 +15,9 @@ class RewrittenQuestion(BaseModel):
 
 
 class IntentResult(BaseModel):
-    intent: Literal["query_data", "how_to", "troubleshoot", "concept", "out_of_scope"]
+    intent: Literal["query_data", "how_to", "troubleshoot", "concept", "out_of_scope", "chat", "clarify"]
     reason: str
+    answer: str = ""
 
 
 class QueryPlan(BaseModel):
@@ -77,4 +78,13 @@ class OrchestratorPlan(BaseModel):
     steps: list[OrchestratorStep] = Field(default_factory=list)
     is_multi: bool = False
     reason: str = ""
+
+
+class QueryResult(BaseModel):
+    tool: str = "sql_builder"
+    columns: list[str] = Field(default_factory=list)
+    rows: list[list[Any]] = Field(default_factory=list)
+    row_count: int = 0
+    error: str = ""
+    reply_vi: str = ""
 

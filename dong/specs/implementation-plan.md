@@ -1,135 +1,148 @@
-# Implementation Plan — dong v6
+# Implementation Plan — agent dong v7
 
-**Trạng thái:** Hoàn thành toàn bộ Phase 1 → 7 (MVP v6 sẵn sàng production demo & eval).
-**Nguồn:** `specs/product-spec.md`. Một dòng checklist mỗi lần delegate; xong thì `[x]` + ghi `specs/change-log.md`.
+**Trạng thái:** Phase 1, 2, 3a, 3b **done**. Baseline v6 vẫn chạy.  
+**Nguồn:** `specs/product-spec.md` · pattern `agent-harness/duy`.  
+**Quy tắc:** làm **một dòng `[ ]`** mỗi lần → `[x]` + `change-log.md` + cách test ngắn.
 
-## Quy tắc
-
-- Đọc product-spec trước khi làm.
-- Chỉ làm **một dòng `[ ]`** mỗi lần (không gom cả phase).
-- Giữ app đơn giản; không thêm thư viện nếu không cần.
-- Không đổi kiến trúc ngoài spec.
-- Sau mỗi dòng: nói cách test ngắn.
+---
 
 ## Tổng quan
 
 | Phase | Tên | Mục tiêu ngắn |
 |-------|-----|----------------|
-| 1 | Project setup | `resource/`, dọn code, env/Docker sẵn sàng |
-| 2 | Core UI | Sidebar sessions + chỗ vẽ chart + live graph |
-| 3 | Core backend | Prompt LLMOps, LLM switch, memory, multi-agent graph |
-| 4 | Connect UI ↔ backend | Session API, stream, chart SSE |
-| 5 | Validation & errors | Guardrail, empty/fail, lỗi LLM/DB rõ |
-| 6 | Run instructions | README Docker-only + checklist chạy local stack |
-| 7 | Production demo & eval | Ping 196, golden-30 ≥28/30, báo cáo |
+| 1 | Project setup | Khóa hướng v7; baseline xanh |
+| 2 | Core UI | Chart trên chat dễ đọc hơn |
+| 3 | Core backend | Classify nhanh + pre/post SQL + text-to-SQL |
+| 4 | Connect UI ↔ data | SSE chart + live graph khớp backend |
+| 5 | Validation & errors | Lỗi rõ, không crash stream |
+| 6 | Local run instructions | README / script chạy Docker |
+| 7 | Production demo | Smoke + golden-30 trên LAN 196 |
 
-**Thứ tự:** 1 → 2 → 3 → 4 → 5 → 6 → 7 (trong phase 3: 3a → 3b → 3c).
+**Thứ tự:** 1 → 2 → 3 → 4 → 5 → 6 → 7.  
+*(Phase 7 thay “ngrok” trong guide — demo nội bộ qua Docker + gateway 196, không bắt buộc ngrok.)*
 
 ---
 
 ## Phase 1 — Project setup
 
-- [x] Tạo `resource/{prompts,docs,db,eval}`.
-- [x] Chuyển `docs/vms_yaml/` → `resource/docs/vms_yaml/`; cập nhật path docs.
-- [x] Chuyển `prompts/` → `resource/prompts/`; cập nhật registry default path.
-- [x] Gom catalog/schema tĩnh vào `resource/db/`.
-- [x] Xóa / ngắt dead path không dùng production (ReAct legacy, tool thừa khỏi entry).
-- [x] `.env.example`: `LLM_BACKEND`, self_hosted 196, `OPENAI_API_KEYS`, `MEMORY_TTL_SECONDS=300`.
-- [x] Dockerfile / compose COPY `resource/`; `pytest -q` vẫn xanh.
+- [x] Xác nhận `pytest -q` xanh trên baseline v6 (không đổi logic).
+- [x] Xác nhận `docker compose` + health vẫn OK (ghi lệnh vào change-log nếu cần).
+- [x] README / AGENTS: ghi rõ v7 = text-to-SQL + chart polish + classify nhanh (spec-first).
+- [x] Liệt kê file dead sẽ xóa ở cuối Phase 3/7 (`tools.py`, `queries.py`, prompts ReAct, …) — **chỉ list, chưa xóa**.
 
-**Done khi:** cấu trúc `resource/` đúng; app vẫn start được qua Docker/pytest.
+**Done khi:** điểm bắt đầu rõ; app v6 vẫn chạy.
 
 ---
 
 ## Phase 2 — Core UI
 
-- [x] Cột trái: danh sách session (thay 8 domain tag).
-- [x] Nút New session; chọn session; preview 1 dòng + thời gian.
-- [x] Domain chips chuyển vào khung chat (gợi ý nhanh).
-- [x] Layout giữ: `[Sessions] | [Chat] | [Live graph]`.
-- [x] Placeholder biểu đồ trong chat (sẵn chỗ render bar/pie).
-- [x] `localStorage`: `user_id` ổn định + `session_id` hiện tại.
+- [x] Rà soát chỗ hiện chart trong chat (slot / canvas / img PNG).
+- [x] Polish hiển thị bar: title, nhãn tiếng Việt, màu rõ, không méo / blank.
+- [x] Polish hiển thị pie: legend đọc được, tỷ lệ rõ.
+- [x] Placeholder / empty state khi chưa có chart (không che tin nhắn).
+- [x] Cập nhật checklist UI smoke (1 câu bar, 1 câu pie).
 
-**Done khi:** UI session dùng được (mock list OK nếu API chưa có); không còn domain tag chiếm sidebar.
+**Done khi:** UI sẵn sàng nhận payload chart đẹp hơn (có thể mock data trước khi backend xong).
 
 ---
 
 ## Phase 3 — Core backend / data logic
 
-### 3a — Prompt & LLM
-- [x] Chuẩn hóa YAML prompt (ngắn) + `production.txt` alias.
-- [x] Prompt tối thiểu: rewrite, classify, plan_query, answer_docs, respond_stat, plan_chart, orchestrator, memory_extract, judge_eval.
-- [x] Agent chỉ gọi `registry.render(...)` — không hardcode prompt dài.
-- [x] `LLM_BACKEND=openai|self_hosted`; rotation `OPENAI_API_KEYS`; `/api/llm/ping`.
+### 3a — Classify fast path
+- [x] Intent `chat` / clarify: LLM trả `answer` ngắn tiếng Việt.
+- [x] Có inline answer → route END (không SQL, không docs).
+- [x] Intent pipeline (`query_db`, docs, …): xóa `answer` sau parse (chống fake skip).
+- [x] Skip orchestrator khi câu đơn `query_db` hoặc docs.
+- [x] Skip rewrite khi `chat` hoặc TTL cache hit.
+- [x] Cập nhật prompt `resource/prompts/classify/`.
+- [x] Pytest: chào → 1 hop; câu số liệu → vẫn vào SQL path.
 
-### 3b — Memory
-- [x] Short-term theo `session_id` (checkpointer MVP).
-- [x] Long-term theo `user_id` (in-memory hoặc Qdrant MVP).
-- [x] TTL cache 300s: hit trước graph khi trùng câu.
-- [x] Node recall (đầu) + store/extract (cuối).
+### 3b — Pre-SQL
+- [x] Catalog retrieval scoped: chọn ≤4 bảng từ câu hỏi (học duy).
+- [x] `retrieve_schema` chỉ excerpt bảng đã chọn (không dump full catalog).
+- [x] Inject `time_range` (hôm nay / hôm qua / tháng) vào prompt generate.
+- [x] Chart hint pre-SQL khi có từ khóa biểu đồ (vd. GROUP BY đúng cột).
+- [x] Pytest: excerpt nhỏ hơn full catalog; time_range + chart hint có trong context.
 
-### 3c — Graph & quality
-- [x] Trace mỗi node: **full** input + output (Langfuse + metadata session/user).
-- [x] Chart planner: `ChartSpec` bar | pie (| line nếu dễ).
-- [x] Multi-agent orchestrator MVP cho fail golden: 008, 009–011, 015, 017, 023, 024.
-- [x] Docs AIOC / catalog dataset trong `resource/`.
+### 3c — Text-to-SQL core
+- [x] Prompt `resource/prompts/sql_agent/` (+ `production.txt`).
+- [x] Node `generate_sql`: LLM → extract SQL; `max_tokens` cap.
+- [x] Node `validate_sql` + repair ≤ `SQL_REPAIR_MAX` (default 2).
+- [x] Node `execute_sql`: validate lại trước execute; Postgres read-only.
+- [x] Graph: `query_db` → pre → generate → validate ↔ repair → execute (bỏ QueryPlan làm path chính).
+- [x] Một hàm validate/repair dùng chung (graph + multi nếu còn).
+- [x] Pytest: chặn DDL; repair mock; execute mock.
 
-**Done khi:** pytest memory/prompt/LLM mock xanh; 1 request stream có node I/O đầy đủ (test hoặc log).
+### 3d — Post-SQL & chart
+- [x] `try_format_simple_answer()`: COUNT 1 dòng → template VI; skip respond LLM.
+- [x] Chart detect (bar / pie / line nếu dễ).
+- [x] Chart fallback SQL (học duy) khi GROUP BY sai / thiếu hàng.
+- [x] Render chart đẹp: nhãn VI, title, màu/grid (PNG kiểu duy và/hoặc data cho Chart.js).
+- [x] `respond` chỉ gọi LLM khi template không đủ; `max_tokens` cap.
+- [x] Pytest: simple count không gọi respond LLM; chart meta / PNG không rỗng.
+
+### 3e — Cleanup backend (sau khi path mới xanh)
+- [x] Xóa / ngắt: `tools.py`, `queries.py`, `answer.py`, prompts ReAct không dùng.
+- [x] Gỡ QueryPlan / `query_builder` khỏi path production.
+- [x] Cập nhật `graph.mmd` / tên node Langfuse.
+
+**Done khi:** chào hỏi 1 hop; số liệu đi text-to-SQL; chart backend đẹp hơn; dead code path chính đã gỡ.
 
 ---
 
 ## Phase 4 — Connect UI to data
 
-- [x] API sessions: list / create / delete; UI gọi thật.
-- [x] `POST /api/agent/stream` nhận `session_id`, `user_id`, câu hỏi.
-- [x] SSE: token/answer + event chart (`chart_type` + spec hoặc image).
-- [x] FE vẽ bar + pie từ payload (Chart.js ưu tiên).
-- [x] Live graph hover: JSON input/output khớp backend.
-- [x] Đổi session → load lịch sử short-term đúng phiên.
+- [x] SSE event chart mang đủ type + data/PNG cho FE.
+- [x] Wire FE: nhận SSE → vẽ bar + pie trong bubble chat.
+- [x] Live graph hover: I/O node SQL / chart khớp backend.
+- [x] Session + stream vẫn gửi `session_id` / `user_id` (không regress v6).
+- [x] Pytest / smoke: hỏi “vẽ biểu đồ…” → UI có chart.
 
-**Done khi:** end-to-end trên Docker: hỏi → trả lời + chart; đổi session không lẫn lịch sử.
+**Done khi:** end-to-end hỏi → trả lời + chart trên UI.
 
 ---
 
 ## Phase 5 — Validation and error states
 
-- [x] Out-of-scope / injection: từ chối rõ, tiếng Việt.
-- [x] Empty số liệu: trả đúng (ví dụ phải có `"0"` khi rule yêu cầu).
-- [x] Classify/route sai domain (fire/anomaly/water): fallback hoặc orchestrator, không im lặng.
-- [x] Lỗi LLM / DB: message ngắn trên UI; không crash stream.
-- [x] Thiếu biến prompt: lỗi rõ (không template trống).
-- [x] TTL / memory fail: degrade an toàn (vẫn trả lời được).
+- [x] SQL invalid / hết lần repair → message ngắn tiếng Việt; không crash stream.
+- [x] LLM timeout / DB fail → message ngắn (giữ pattern v6).
+- [x] Classify lỗi → fallback an toàn (không im lặng).
+- [x] Empty số liệu → trả lời đúng (có `"0"` khi rule yêu cầu).
+- [x] Pytest: stream `__answer__` error thân thiện.
 
-**Done khi:** các case lỗi trên có hành vi ổn định; pytest/guardrail xanh.
+**Done khi:** case lỗi ổn định; pytest xanh.
 
 ---
 
-## Phase 6 — Run instructions (Docker)
+## Phase 6 — Local run instructions
 
-- [x] README quick start **chỉ Docker** (`compose up --build`).
-- [x] Ghi rõ: production test dùng `self_hosted` @ 196; OpenAI = smoke.
-- [x] Checklist: `.env`, health, llm ping, mở UI port.
+- [x] README: quick start **chỉ Docker** (`compose up --build`).
+- [x] Ghi rõ: production = `self_hosted` @ 196; OpenAI = smoke.
+- [x] Checklist: `.env`, health, llm ping, mở UI, smoke script.
 - [x] Langfuse optional: lệnh ngắn trong README.
-- [x] Venv chỉ appendix “dev nhanh” (không phải đường chính).
-- [x] Cập nhật `AGENTS.md` cho khớp phase này.
+- [x] Cập nhật `AGENTS.md` khớp phase này.
 
-**Done khi:** người mới chạy được app chỉ bằng Docker + `.env`, không cần `pip install` trên host.
+**Done khi:** người mới chạy được app bằng Docker + `.env`, không cần `pip install` trên host.
 
 ---
 
-## Phase 7 — Production demo & eval
+## Phase 7 — Production demo (Docker + 196)
 
-- [x] Docker + `LLM_BACKEND=self_hosted` (196).
-- [x] Smoke tay: session, short-term, TTL, bar, pie, 1 câu fire/AIOC.
-- [x] `python eval/run.py` (live) → ghi `eval/results/golden-30.md`.
-- [x] `python eval/run.py --judge` (rubric kiểu llm-engineer-demo).
-- [x] Target **≥28/30** pass (baseline 22/30); ghi delta change-log.
-- [x] Xác nhận acceptance criteria trong product-spec (mục 1–11).
+- [x] `./scripts/verify-docker-self-hosted.sh` OK.
+- [x] `./scripts/smoke-production.sh` pass (session, TTL, bar, pie, fire/AIOC) — 7/7.
+- [x] Smoke tay UI: chào hỏi nhanh + 1 chart đẹp — checklist `specs/smoke-manual-checklist.md` (bar/pie đã verify qua smoke API; UI tay: xin chào + biểu đồ cột trên `:3001`).
+- [x] `python eval/run.py` → `eval/results/golden-30.md`.
+- [ ] Target ≥28/30; ghi delta vào change-log — **27/30** (residual: 018, 021, 023).
+- [x] Đối chiếu đủ acceptance criteria trong `product-spec.md` — xem change-log 2026-09-23 Phase 7 verify.
+- [x] Finalize README / AGENTS: trạng thái v7 production verified (eval residual ghi rõ).
 
-**Done khi:** báo cáo golden cập nhật; ping 196 OK; đủ tiêu chí acceptance.
+**Done v7 khi:** acceptance criteria đạt — **còn 1 tiêu chí eval (≥28/30).**
 
 ---
 
 ## Không làm trong các phase trên
 
-- Ollama, Langfuse cloud prompt sync, MCP/swarm, ghi DB, graph editor, ngrok (không cần cho demo nội bộ LAN 196).
+- Web search, MCP, swarm, Ollama.
+- ngrok bắt buộc (demo LAN 196 đủ).
+- ClickHouse path mới; UI redesign toàn bộ.
+- Thêm thư viện chart nặng nếu stack hiện có đủ sau polish.

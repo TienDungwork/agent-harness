@@ -342,7 +342,10 @@ def check_output(answer: str, evidence: list[str], *, tool_empty: bool = False) 
 def _is_tool_empty(query: Any) -> bool:
     if query is None:
         return False
-        
+
+    if getattr(query, "error", None):
+        return False
+
     if getattr(query, "row_count", None) == 0:
         return True
         

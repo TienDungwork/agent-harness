@@ -21,16 +21,17 @@ def test_json_safe_datetime():
 
 
 def test_execute_node_emits_structured_rows(monkeypatch):
-    from src.agent.graph import execute_node
+    from src.agent.execute_sql import execute_sql_node
 
+    monkeypatch.setattr("src.agent.execute_sql.use_offline_tools", lambda: False)
     monkeypatch.setattr(
-        "src.agent.graph.execute_sql",
+        "src.agent.execute_sql.execute_sql",
         lambda sql, params: [
             {"direction": "IN", "so_luot": 10},
             {"direction": "OUT", "so_luot": 8},
         ],
     )
-    out = execute_node({
+    out = execute_sql_node({
         "sql": "SELECT direction, count(*) AS so_luot FROM plate_event GROUP BY direction",
         "params": [106],
         "user_id": "u1",

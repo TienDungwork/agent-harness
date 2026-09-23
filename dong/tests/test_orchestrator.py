@@ -19,8 +19,9 @@ Kiểm tra:
 from unittest.mock import patch
 
 from src.agent.graph import Agent_Input, _build_graph, run_agent, run_agent_stream
+from src.agent.generate_sql import generate_sql_node
 from src.agent.orchestrator import plan_orchestration
-from src.agent.query_plan import _offline_plan_query
+from src.db.catalog import select_relevant_tables
 from src.llm.schemas import OrchestratorPlan, OrchestratorStep
 
 
@@ -94,26 +95,28 @@ def test_plan_orchestration_case_024_docs_focused_not_sql_only():
 
 
 def test_query_plan_offline_crowd_filter_crowd_detection():
-    """Case 008: query_plan offline với đám đông phải có filter event_type=CROWD_DETECTION."""
+    """Case 008: query offline với đám đông phải có filter event_type=CROWD_DETECTION."""
     q_008 = "Trong khoảng từ 04/09/2026 đến 16/09/2026 có bao nhiêu lượt phát hiện đám đông?"
-    plan = _offline_plan_query(q_008)
-    assert plan.tables == ["anomaly_event"]
-    assert any("CROWD_DETECTION" in f for f in plan.filters)
+    tables = select_relevant_tables(q_008)
+    assert tables == ["anomaly_event"]
+    res = generate_sql_node({"question": q_008})
+    assert "anomaly_event" in res["sql"]
+    assert "CROWD_DETECTION" in res["sql"]
 
 
 def test_query_plan_offline_anomaly_filters():
     """Kiểm tra các filter anomaly khác: leo trèo, mực nước, ẩu đả."""
-    plan_intrusion = _offline_plan_query("Hôm nay có phát hiện leo trèo không?")
-    assert plan_intrusion.tables == ["anomaly_event"]
-    assert any("INTRUSION_DETECTION" in f for f in plan_intrusion.filters)
+    res_intrusion = generate_sql_node({"question": "Hôm nay có phát hiện leo trèo không?"})
+    assert "anomaly_event" in res_intrusion["sql"]
+    assert "INTRUSION_DETECTION" in res_intrusion["sql"]
 
-    plan_water = _offline_plan_query("Hôm nay mực nước có vượt ngưỡng cảnh báo không?")
-    assert plan_water.tables == ["anomaly_event"]
-    assert any("WATER_LEVEL_DETECTION" in f for f in plan_water.filters)
+    res_water = generate_sql_node({"question": "Hôm nay mực nước có vượt ngưỡng cảnh báo không?"})
+    assert "anomaly_event" in res_water["sql"]
+    assert "WATER_LEVEL_DETECTION" in res_water["sql"]
 
-    plan_fight = _offline_plan_query("Trong khoảng này có bao nhiêu vụ ẩu đả?")
-    assert plan_fight.tables == ["anomaly_event"]
-    assert any("FIGHT_DETECTION" in f for f in plan_fight.filters)
+    res_fight = generate_sql_node({"question": "Trong khoảng này có bao nhiêu vụ ẩu đả?"})
+    assert "anomaly_event" in res_fight["sql"]
+    assert "FIGHT_DETECTION" in res_fight["sql"]
 
 
 def test_offline_graph_run_agent_case_009_hits_sql_path_not_docs():
@@ -175,7 +178,7 @@ def test_offline_graph_run_agent_case_024_docs_no_sql():
 
 def test_graph_emits_orchestrator_events_in_stream():
     """Stream event chứa node_id 'orchestrator' với input và output đầy đủ."""
-    inp = Agent_Input(question="Hôm nay có phát hiện leo trèo không?")
+    inp = Agent_Input(question="Hướng dẫn mở quản lý camera, và cho biết hôm nay có bao nhiêu lượt xe?")
     events = list(run_agent_stream(inp))
     done_orchestrator = [ev for ev in events if ev.get("node_id") == "orchestrator" and ev.get("status") == "done"]
     assert len(done_orchestrator) == 1

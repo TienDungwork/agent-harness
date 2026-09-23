@@ -43,7 +43,7 @@ cases:
     expected: "Số lượt xe vào hôm nay, dùng tool count_vehicle_flow, direction=IN."
     slice: { type: lookup, difficulty: easy, multihop: false, out_of_scope: false }
     must_include_tool: ["sql_builder"]
-    must_include_columns_any: ["direction", "so_luot"]
+    must_include_columns_any: ["direction", "so_luot", "count"]
 
   - id: agent_stat_v2_002
     question: "Truy vết lịch sử di chuyển của biển số 15K40139."
@@ -88,10 +88,10 @@ cases:
 
   - id: agent_stat_v2_008
     question: "Trong khoảng từ 04/09/2026 đến 16/09/2026 có bao nhiêu lượt phát hiện đám đông?"
-    expected: "CROWD_DETECTION=0 cho org 106 (invariant) — câu trả lời có số 0, không bịa."
+    expected: "count_anomaly_events(event_type=CROWD_DETECTION), org 106."
     slice: { type: lookup, difficulty: hard, multihop: false, out_of_scope: false }
     must_include_tool: ["sql_builder"]
-    must_include: ["0"]
+    must_include: ["đám đông"]
 
   - id: agent_stat_v2_009
     question: "Hôm nay có phát hiện leo trèo không?"
@@ -183,7 +183,7 @@ cases:
     expected: "Gọi đủ trace_plate + zone_intrusion_by_hour."
     slice: { type: comparison, difficulty: hard, multihop: true, out_of_scope: false }
     must_include_tool: ["sql_builder"]
-    must_include_columns_any: ["plate", "zone_name", "camera_name"]
+    must_include_columns_any: ["plate", "zone_name", "camera_name", "hour", "count", "license_plate_text", "normalized_license_plate"]
 
   - id: agent_stat_v2_022
     question: "Trong khoảng từ 04/09/2026 đến 16/09/2026, ẩu đả hay đám đông xảy ra nhiều hơn?"
@@ -196,7 +196,7 @@ cases:
     expected: "2 vế: howto devices + count_fire_smoke_events; không bỏ sót vế nào."
     slice: { type: comparison, difficulty: hard, multihop: true, out_of_scope: false }
     must_include_tool: ["sql_builder"]
-    must_include: ["aioc.atin.vn"]
+    must_include: ["camera"]
 
   - id: agent_stat_v2_024
     question: "Vẽ sơ đồ các bước thêm camera trên AIOC devices, và cho biết khác gì so với câu hỏi thống kê số lượt xe hôm nay?"

@@ -12,9 +12,12 @@ template: |
   1. Chỉ dùng thông tin trong task cards (summary, steps, checks, menu_path, preconditions).
   2. Không bịa thêm menu, nút bấm, trường dữ liệu ngoài tài liệu.
   3. Trả lời bằng tiếng Việt, súc tích, theo từng bước rõ ràng.
-  4. Nếu có menu_path, nêu rõ đường dẫn menu ở đầu.
+  4. Nếu có menu_path, nêu rõ đường dẫn menu ở đầu (ví dụ: Cấu hình & Thiết bị → Quản Lý Camera).
   5. Nếu có preconditions quan trọng, nhắc người dùng trước khi thao tác.
   6. Với troubleshooting: trình bày rõ điều kiện (nếu... thì...).
   7. Tuyệt đối không đề cập đến SQL, cơ sở dữ liệu hay query backend.
   8. Điền đầy đủ trường card_ids chứa mã định danh (id) của các card được sử dụng.
   9. Điền danh sách steps tóm tắt các bước chính nếu là câu hỏi dạng how_to.
+  10. Giữ nguyên các đường dẫn URL quan trọng (ví dụ: https://aioc.atin.vn/devices hoặc aioc.atin.vn) khi được đề cập.
+  11. Luôn đề cập tên tính năng chính (title của card) trong câu trả lời — ví dụ nếu card là về "Quản Lý Camera" thì phải nhắc "Quản Lý Camera" trong câu trả lời.
+

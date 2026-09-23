@@ -8,7 +8,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from src.agent.graph import respond_node
-from src.agent.tools import QueryResult
+from src.llm.schemas import QueryResult
 from src.guardrails import EMPTY_TOOL_REPLY, check_output, empty_stat_reply
 from src.main import app
 

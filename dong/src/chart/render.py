@@ -1,9 +1,10 @@
-"""Module vẽ biểu đồ PNG qua matplotlib backend Agg và chuyển đổi sang base64 (dong v5).
+"""Module vẽ biểu đồ PNG qua matplotlib backend Agg và chuyển đổi sang base64 (Phase 3d).
 
-Chỉ bao gồm các hàm thuần, độc lập, có thể kiểm thử offline:
+Bao gồm:
 - render_chart: vẽ biểu đồ từ danh sách dòng và ChartSpec, trả về chuỗi PNG base64.
 - should_render_chart: phát hiện yêu cầu vẽ biểu đồ từ từ khóa hoặc StatAnswer.
 - plan_chart: sinh ChartSpec từ rows và câu hỏi (structured LLM hoặc offline heuristic).
+- Format nhãn tiếng Việt chuẩn cho phương tiện, sự kiện, camera và thiết bị.
 """
 
 from __future__ import annotations
@@ -26,19 +27,39 @@ from src.prompts import registry
 
 _CHART_KEYWORD_RE = re.compile(
     r"biểu\s*đồ|bieu\s*do|\bchart\b|\bplot\b|vẽ\s*(biểu|đồ|đường|cột|thị)?|"
-    r"đồ\s*thị|thống\s*kê\s*theo|so\s*sánh\s*theo|phân\s*bố|cơ\s*cấu|tỷ\s*lệ|"
+    r"đồ\s*thị|thống\s*kê\s*theo|so\s*sánh\s*theo|phân\s*bố|cơ\s*cấu|tỷ\s*lệ|tỉ\s*lệ|"
     r"\bvẽ\b",
     re.IGNORECASE,
 )
 
-_VEHICLE_LABELS: dict[str, str] = {
+_CATEGORY_LABELS: dict[str, str] = {
     "CAR": "Ô tô",
     "MOTORCYCLE": "Xe máy",
     "TRUCK": "Xe tải",
     "BUS": "Xe buýt",
     "IN": "Vào",
     "OUT": "Ra",
+    "CROWD_DETECTION": "Đám đông",
+    "INTRUSION_DETECTION": "Xâm nhập/Leo trèo",
+    "WATER_LEVEL_DETECTION": "Mực nước",
+    "FIGHT_DETECTION": "Ẩu đả",
+    "FIRE": "Cháy",
+    "SMOKE": "Khói",
+    "ONLINE": "Trực tuyến",
+    "OFFLINE": "Ngoại tuyến",
+    "MAINTENANCE": "Bảo trì",
 }
+
+_PIE_COLORS = [
+    "#1f5c4f",
+    "#2a8570",
+    "#3bba9c",
+    "#60d394",
+    "#aaf683",
+    "#ffd97d",
+    "#ff9b85",
+    "#ee6055",
+]
 
 
 def _is_number(v: Any) -> bool:
@@ -72,7 +93,7 @@ def _format_label(v: Any) -> str:
     if isinstance(v, date):
         return v.isoformat()
     s = str(v).strip()
-    mapped = _VEHICLE_LABELS.get(s.upper())
+    mapped = _CATEGORY_LABELS.get(s.upper())
     if mapped:
         return mapped
     return s if len(s) <= 24 else s[:21] + "…"
@@ -108,13 +129,15 @@ def _pick_columns(rows: list[dict[str, Any]]) -> tuple[str, str]:
     return keys[0], keys[0]
 
 
-def _detect_chart_type(question: str) -> Literal["bar", "pie", "line"]:
+def _detect_chart_type(question: str, labels: list[str] | None = None) -> Literal["bar", "pie", "line"]:
     q = (question or "").lower()
     if re.search(r"cột|\bbar\b", q) and not re.search(r"tròn|pie|đường|line|xu\s*hướng|tỷ\s*lệ|cơ\s*cấu", q):
         return "bar"
     if re.search(r"tỷ\s*lệ|tỉ\s*lệ|cơ\s*cấu|phần\s*trăm|pie|tròn|bánh", q):
         return "pie"
     if re.search(r"theo\s*(ngày|tháng|năm|giờ|tuần|time|thời\s*gian)|đường|line|xu\s*hướng|biến\s*động|diễn\s*biến|lịch\s*trình", q):
+        return "line"
+    if labels and sum(1 for x in labels if re.match(r"^\d{4}[-/]\d{2}", x) or re.match(r"^\d{1,2}[-/]\d{1,2}", x)) >= max(1, len(labels) // 2):
         return "line"
     return "bar"
 
@@ -134,7 +157,8 @@ def should_render_chart(question: str, stat_answer: StatAnswer | None = None) ->
 
 def _offline_plan_chart(rows: list[dict[str, Any]], question: str) -> ChartSpec:
     cat_col, num_col = _pick_columns(rows)
-    chart_type = _detect_chart_type(question)
+    labels = [_format_label(r.get(cat_col)) for r in rows[:30]] if cat_col else []
+    chart_type = _detect_chart_type(question, labels)
     cleaned_q = (question or "").strip()
     title_vi = cleaned_q if cleaned_q and len(cleaned_q) <= 80 else (
         f"Thống kê {num_col} theo {cat_col}" if num_col and cat_col else "Biểu đồ thống kê"
@@ -225,27 +249,35 @@ def render_chart(rows: list[dict[str, Any]], spec: ChartSpec) -> str:
             valid_pairs = [(lbl, v) for lbl, v in zip(labels, values) if v > 0]
             if valid_pairs:
                 pie_labels, pie_vals = zip(*valid_pairs)
-                ax.pie(pie_vals, labels=pie_labels, autopct="%1.0f%%", startangle=90, textprops={"fontsize": 8})
+                colors = _PIE_COLORS[:len(pie_vals)] if len(pie_vals) <= len(_PIE_COLORS) else None
+                ax.pie(
+                    pie_vals,
+                    labels=pie_labels,
+                    autopct="%1.0f%%",
+                    startangle=90,
+                    colors=colors,
+                    textprops={"fontsize": 9, "color": "#16262e"},
+                )
                 ax.axis("equal")
             else:
-                ax.text(0.5, 0.5, "Không có dữ liệu hợp lệ", ha="center", va="center")
+                ax.text(0.5, 0.5, "Không có dữ liệu hợp lệ", ha="center", va="center", color="#5c6d76")
         elif chart_type == "line":
-            ax.plot(range(len(values)), values, marker="o", color=color, linewidth=2)
+            ax.plot(range(len(values)), values, marker="o", color=color, linewidth=2.5, markersize=6)
             ax.set_xticks(range(len(labels)))
-            ax.set_xticklabels(labels, rotation=35, ha="right", fontsize=8)
-            ax.grid(True, axis="y", alpha=0.3)
+            ax.set_xticklabels(labels, rotation=35, ha="right", fontsize=8, color="#16262e")
+            ax.grid(True, axis="y", alpha=0.3, linestyle="--")
             ax.set_ylabel(y_col, fontsize=9, color="#5c6d76")
             ax.set_xlabel(x_col, fontsize=9, color="#5c6d76")
         else:  # bar hoặc fallback
-            ax.bar(range(len(values)), values, color=color)
+            ax.bar(range(len(values)), values, color=color, width=0.6)
             ax.set_xticks(range(len(labels)))
-            ax.set_xticklabels(labels, rotation=35, ha="right", fontsize=8)
-            ax.grid(True, axis="y", alpha=0.3)
+            ax.set_xticklabels(labels, rotation=35, ha="right", fontsize=8, color="#16262e")
+            ax.grid(True, axis="y", alpha=0.3, linestyle="--")
             ax.set_ylabel(y_col, fontsize=9, color="#5c6d76")
             ax.set_xlabel(x_col, fontsize=9, color="#5c6d76")
 
         title = spec.title_vi or "Biểu đồ"
-        ax.set_title(title, fontsize=11, color="#16262e")
+        ax.set_title(title, fontsize=11, fontweight="bold", color="#16262e", pad=10)
         fig.tight_layout()
 
         buf = io.BytesIO()

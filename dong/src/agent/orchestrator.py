@@ -70,6 +70,12 @@ SPLIT_PATTERNS = (
 )
 
 
+def is_multi_question(question: str) -> bool:
+    """Kiểm tra heuristic xem câu hỏi có chứa mẫu tách multi-agent không."""
+    low = (question or "").lower().strip()
+    return any(pat in low for pat in SPLIT_PATTERNS)
+
+
 def _classify_sub_question(text: str) -> Literal["query_data", "docs"]:
     """Phân loại 1 sub-question sang query_data hoặc docs dựa trên từ khóa."""
     low = text.lower().strip()

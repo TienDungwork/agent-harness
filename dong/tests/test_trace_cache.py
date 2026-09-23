@@ -7,7 +7,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 from langchain_core.messages import AIMessage, ToolMessage
 
-from src.agent.tools import QueryResult
+from src.llm.schemas import QueryResult
 
 from src.monitoring.tracing import (
     extract_token_usage,
@@ -427,7 +427,7 @@ from src.memory.ttl_cache import clear_ttl_cache
 
 def test_cache_miss_then_hit_skips_run_agent(monkeypatch):
     from src.agent.graph import Agent_Output
-    from src.agent.tools import QueryResult
+    from src.llm.schemas import QueryResult
 
     mock_run_agent = MagicMock()
     valid_answer = "Hôm nay có tổng cộng 100 chiếc xe các loại vào cổng KCN."
@@ -453,7 +453,7 @@ def test_cache_miss_then_hit_skips_run_agent(monkeypatch):
 
 def test_cache_expired_entry_misses(monkeypatch):
     from src.agent.graph import Agent_Output
-    from src.agent.tools import QueryResult
+    from src.llm.schemas import QueryResult
 
     mock_run_agent = MagicMock()
     valid_answer = "Hôm nay có tổng cộng 100 chiếc xe các loại vào cổng KCN."
@@ -482,7 +482,7 @@ def test_cache_expired_entry_misses(monkeypatch):
 
 def test_cache_disabled(monkeypatch):
     from src.agent.graph import Agent_Output
-    from src.agent.tools import QueryResult
+    from src.llm.schemas import QueryResult
 
     mock_run_agent = MagicMock()
     valid_answer = "Hôm nay có tổng cộng 100 chiếc xe các loại vào cổng KCN."
@@ -529,7 +529,7 @@ def test_every_graph_node_emits_full_input_output_and_session_user_meta():
         assert isinstance(ev.get("input"), dict), f"Node {node_id} input phải là dict structured"
         assert isinstance(out, dict), f"Node {node_id} output phải là dict structured"
 
-    execute_ev = next(ev for ev in done_events if ev.get("node_id") == "execute")
+    execute_ev = next(ev for ev in done_events if ev.get("node_id") in ("execute", "execute_sql"))
     assert "sql" in execute_ev["input"]
     assert "rows" in execute_ev["output"]
     assert "row_count" in execute_ev["output"]

@@ -21,7 +21,7 @@ class Settings(BaseSettings):
     llm_temperature: float = Field(default=0.2, alias="LLM_TEMPERATURE")
     llm_max_retries: int = Field(default=3, alias="LLM_MAX_RETRIES")
     llm_api_key: str = Field(default="", alias="LLM_API_KEY")
-    llm_request_timeout_s: float = Field(default=15.0, alias="LLM_REQUEST_TIMEOUT_S")
+    llm_request_timeout_s: float = Field(default=60.0, alias="LLM_REQUEST_TIMEOUT_S")
 
     # vLLM gateway (khi LLM_BACKEND=self_hosted)
     model_base_url: str = Field(default="http://192.168.1.196:18083/v1", alias="MODEL_BASE_URL")
@@ -32,8 +32,12 @@ class Settings(BaseSettings):
     # Bước "Answer" (diễn giải số liệu -> câu tiếng Việt)
     answer_use_llm: bool = Field(default=True, alias="ANSWER_USE_LLM")
 
-    # v5 QueryPlan repair loop
-    sql_repair_max: int = Field(default=1, alias="SQL_REPAIR_MAX")
+    # v7 text-to-SQL / QueryPlan repair loop
+    sql_repair_max: int = Field(default=2, alias="SQL_REPAIR_MAX")
+
+    # v7 text-to-SQL generate max tokens (support reasoning/think tokens in Qwen/deepseek)
+    sql_generate_max_tokens: int = Field(default=2048, alias="SQL_GENERATE_MAX_TOKENS")
+    sql_respond_max_tokens: int = Field(default=2048, alias="SQL_RESPOND_MAX_TOKENS")
 
     # v5 Docs YAML corpus (duy style)
     docs_root: str = Field(default="resource/docs/vms_yaml", alias="DOCS_ROOT")

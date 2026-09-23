@@ -1,75 +1,98 @@
-# Product Spec — agent dong v6 (MVP)
+# Product Spec — agent dong v7
 
-**Trạng thái:** v6 in progress — **Phase 1 done** (resource/ layout). Kế thừa v5 (QueryPlan, Docker, golden-30).
+**Trạng thái:** Spec only — chưa implement.  
+**Baseline:** v6 đang chạy (Docker + UI session + QueryPlan).  
+**v7:** Học `agent-harness/duy` — text-to-SQL nhanh hơn, chào hỏi trả lời ngay, biểu đồ dễ đọc hơn, rồi dọn code chết.
+
+---
 
 ## App goal
 
-Trợ lý tiếng Việt cho vận hành VMS KCN Hưng Phú: hỏi số liệu (read-only), hướng dẫn VMS/AIOC, và xem biểu đồ — code ngắn, rõ, chạy production bằng Docker.
+Trợ lý tiếng Việt cho vận hành VMS KCN Hưng Phú: hỏi số liệu (read-only), hỏi hướng dẫn VMS/AIOC, xem biểu đồ rõ — nhanh hơn v6, chạy production bằng Docker.
 
-MVP v6 thêm: memory (short / long / TTL 5 phút), sidebar session, prompt LLMOps trong `resource/`, multi-agent để cải thiện golden-30, và trace đầy đủ input/output mỗi node.
+---
 
 ## Target users
 
 | Ai | Họ làm gì với app |
 |----|-------------------|
 | Vận hành KCN | Hỏi tiếng Việt; đổi session; xem số liệu / hướng dẫn / biểu đồ — không viết SQL |
-| Dev / reviewer | Chạy Docker, xem live graph + Langfuse, chạy eval → `eval/results/golden-30.md` |
+| Dev / reviewer | Chạy Docker, pytest, smoke, eval golden-30 |
+
+---
 
 ## Core user flow
 
 1. Mở UI → chọn hoặc tạo **session** (cột trái).
-2. Gõ câu hỏi tiếng Việt (tuỳ chọn: gợi ý domain trong khung chat).
-3. Backend: recall memory → guardrail → rewrite → classify → route.
-4. Nhánh xử lý:
-   - **Số liệu:** QueryPlan → SQL read-only → (tuỳ câu) chart → trả lời
-   - **Hướng dẫn:** lấy card từ `resource/docs/` → trả lời
-   - **Khó / đa domain:** orchestrator multi-agent ngắn
-5. Lưu short-term; có thể store long-term; TTL cache 5 phút nếu trùng câu.
-6. UI stream câu trả lời + biểu đồ; live graph / Langfuse hiện **full I/O** từng node.
+2. Gõ câu hỏi tiếng Việt.
+3. Hệ thống kiểm tra an toàn (guardrail) → phân loại câu hỏi.
+4. Chọn một đường xử lý:
+   - **Chào hỏi / ngoài phạm vi** → trả lời ngay (không truy vấn DB).
+   - **Hướng dẫn** → lấy tài liệu VMS/AIOC → trả lời.
+   - **Số liệu** → chuẩn bị schema gọn → sinh SQL → kiểm tra/sửa → chạy DB → (nếu cần) biểu đồ đẹp → trả lời ngắn.
+5. UI hiện câu trả lời + biểu đồ; session nhớ ngữ cảnh ngắn; câu trùng trong 5 phút lấy cache.
+6. (Tuỳ chọn) Live graph hiện từng bước xử lý để debug.
 
-## Features in scope
-
-- Code sạch, production-only; file tĩnh gom vào `resource/` (prompts, docs, db catalog).
-- Prompt management kiểu LLMOps: YAML versioned + `production.txt`; nội dung ngắn, rõ.
-- Docker là đường chạy chính; không dùng venv trong quick start.
-- Đổi LLM bằng `LLM_BACKEND`: `self_hosted` (gateway 196) ↔ `openai` (keys pattern `llm-engineer-demo/.env`).
-- Memory: short-term theo session, long-term theo `user_id`, TTL response cache **300 giây**.
-- UI: cột trái = danh sách session; domain chips nằm trong chat.
-- Biểu đồ theo câu hỏi: **bar**, **pie** (MVP; line nếu dễ).
-- Trace: mỗi graph node ghi đủ input và output (Langfuse + SSE hover).
-- Multi-agent MVP để pass các case fail golden-30 (008–011, 015, 017, 023, 024).
-- Eval live trên LLM 196 + judge → cập nhật `eval/results/golden-30.md` (target ≥28/30; baseline 22/30).
-
-## Features out of scope
-
-- Venv / local pip là đường chính.
-- Ghi DB production, web search, MCP, swarm agent phức tạp.
-- Sync prompt lên Langfuse Cloud.
-- Backend Ollama.
-- Graph editor / dashboard analytics ngoài chat.
-
-## Acceptance criteria
-
-1. `docker compose up --build -d` → healthy; không bắt buộc `.venv`.
-2. `LLM_BACKEND=self_hosted` + gateway 196 → `/api/llm/ping` OK.
-3. `LLM_BACKEND=openai` + keys theo pattern `llm-engineer-demo` → smoke OK.
-4. Prompt chỉ load từ `resource/prompts/`; đổi `production.txt` → đổi hành vi, không sửa code.
-5. Langfuse / SSE: hover node thấy **full** input và output.
-6. Sidebar: tạo / chuyển session; short-term nhớ trong cùng session.
-7. Long-term: nói 1 fact → session mới cùng `user_id` vẫn recall (smoke).
-8. TTL: cùng câu trong 5 phút → `cache_hit` (hoặc trả lời identical nhanh hơn).
-9. Chart **bar** và **pie** render đúng trên UI.
-10. Golden-30 live trên 196: **≥28/30 pass**; file `eval/results/golden-30.md` cập nhật.
-11. `pytest -q` xanh offline.
+```text
+câu hỏi → phân loại
+              ├─ chào / ngoài phạm vi → trả lời ngay → xong
+              ├─ hướng dẫn → docs → xong
+              └─ số liệu → chuẩn bị → sinh SQL → kiểm tra → chạy DB
+                            → trả lời (+ biểu đồ nếu cần) → xong
+```
 
 ---
 
-## Ghi chú MVP (không mở rộng scope)
+## Features in scope
 
-| Chủ đề | Quyết định ngắn |
-|--------|-----------------|
-| Layout UI | `[Sessions] \| [Chat] \| [Live graph]` |
-| Memory | Short = checkpointer theo `session_id`; long = vector/in-memory theo `user_id`; TTL = hash(question+route), 300s |
-| Prompt bắt buộc | rewrite, classify, plan_query, answer_docs, respond_stat, plan_chart, orchestrator, memory_extract, judge_eval |
-| Chart | Planner chọn `chart_type`; FE Chart.js từ JSON spec |
-| Multi-agent | Orchestrator 1–2 bước specialist → responder; không swarm |
+**Giữ từ v6 (vẫn dùng):**
+
+- Docker là đường chạy chính; UI session + stream trả lời.
+- Memory theo session / user; cache câu trùng 5 phút.
+- Guardrails; prompts trong `resource/`; docs VMS/AIOC.
+- Đổi LLM: self-hosted @ 196 hoặc OpenAI.
+- Trace / live graph (debug).
+
+**Làm mới trong v7:**
+
+- Chào hỏi (`chào bạn`, …) → trả lời thẳng từ LLM, không chạy SQL.
+- Nhánh số liệu = **text-to-SQL** + kiểm tra SQL bắt buộc (chỉ SELECT, bảng/cột trong whitelist).
+- **Trước SQL:** chọn ít bảng liên quan, gắn khung thời gian, gợi ý GROUP BY cho biểu đồ.
+- **Sau SQL:** câu đếm đơn giản trả lời nhanh (không gọi LLM thừa); biểu đồ **bar/pie dễ đọc** (nhãn tiếng Việt, title, màu rõ) — học pattern duy.
+- Dọn code / prompt không dùng production; cập nhật README, AGENTS, sơ đồ.
+
+---
+
+## Features out of scope
+
+- Web search, MCP, swarm agent phức tạp.
+- Ghi DB production; path ClickHouse mới.
+- Graph editor / dashboard analytics ngoài chat.
+- Backend Ollama; sync prompt lên Langfuse Cloud.
+- Giữ ReAct tool-calling cũ làm đường product.
+- Redesign UI toàn bộ (chỉ chỉnh chỗ chart/session nếu cần).
+
+---
+
+## Acceptance criteria
+
+1. `pytest -q` xanh sau mỗi task và khi kết thúc v7.
+2. `"xin chào"` / `"chào bạn"` → một lần gọi LLM; không chạy SQL / docs.
+3. Câu đếm đơn giản (1 dòng số) → trả lời nhanh khi khớp rule; không gọi LLM respond thừa.
+4. Nhánh số liệu: sinh SQL → kiểm tra → chạy; sửa tối đa 2 lần; chặn DDL/DML.
+5. Không gửi full catalog mỗi lần — chỉ schema đã chọn.
+6. Khung thời gian (hôm nay / hôm qua / …) có khi sinh SQL.
+7. Câu yêu cầu biểu đồ → bar hoặc pie hiện trên UI: có title, nhãn tiếng Việt, màu rõ; không trống / không khó đọc.
+8. Cùng câu trong 5 phút → cache hit.
+9. `./scripts/smoke-production.sh` pass trên Docker + gateway 196.
+10. Eval golden-30 ≥ 28/30; cập nhật `eval/results/golden-30.md`.
+11. Đã gỡ code chết không product; README + AGENTS + sơ đồ khớp flow v7.
+
+---
+
+## Ghi chú (không mở rộng scope)
+
+- SQL: text-to-SQL + validator (học duy); không dùng QueryPlan làm path chính.
+- Chart: học duy (gợi ý → fallback → render đẹp).
+- Tốc độ: ít lần gọi LLM; bỏ bước thừa với câu đơn giản.
+- Tham chiếu code: `agent-harness/duy`.

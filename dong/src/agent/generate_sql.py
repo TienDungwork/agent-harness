@@ -1,0 +1,160 @@
+"""Node generate_sql — LLM text-to-SQL + extract SQL; max_tokens cap (Phase 3c)."""
+
+from __future__ import annotations
+
+import re
+from datetime import date
+
+from src.agent.node_io import node_event
+from src.agent.pre_sql import format_time_range_for_prompt, build_chart_sql_hint
+from src.config import settings
+from src.llm.client import invoke_text, use_offline_tools
+from src.prompts import registry
+
+# ── SQL extraction ────────────────────────────────────────────────────────────
+
+_SQL_FENCE = re.compile(r"```(?:sql)?\s*(.*?)```", re.IGNORECASE | re.DOTALL)
+_THINKING_BLOCK = re.compile(r"\x3cthink\x3e.*?\x3c/think\x3e", re.DOTALL | re.IGNORECASE)
+
+
+def extract_sql(text: str) -> str:
+    """Extract SQL from fenced ```sql block or bare text; strip trailing `;`."""
+    raw = (text or "").strip()
+    # Strip <think>...</think> blocks (Qwen3)
+    if re.search(r"\x3cthink\x3e", raw, re.IGNORECASE):
+        if re.search(r"\x3c/think\x3e", raw, re.IGNORECASE):
+            raw = _THINKING_BLOCK.sub("", raw).strip()
+        else:
+            # Unclosed thinking block — nothing useful
+            return ""
+    m = _SQL_FENCE.search(raw)
+    if m:
+        return m.group(1).strip().rstrip(";")
+    # Bare SQL — only accept if it starts with a SQL keyword
+    stripped = raw.strip()
+    if stripped and re.match(r"(?i)^\s*(SELECT|WITH|INSERT|UPDATE|DELETE|CREATE)\b", stripped):
+        return stripped.rstrip(";")
+    return ""
+
+
+# ── Node ──────────────────────────────────────────────────────────────────────
+
+
+def generate_sql_node(state: dict) -> dict:
+    """Generate SQL from question + schema using LLM or offline fallback.
+
+    Returns ``{sql, error, events}``.
+    """
+
+    question = state.get("question", "")
+    rewritten = state.get("rewritten")
+    schema_excerpt = state.get("schema_excerpt", "")
+    user_id = state.get("user_id") or "default"
+    session_id = state.get("session_id") or "default"
+
+    # Prefer rewritten.text
+    if rewritten is not None:
+        if hasattr(rewritten, "text"):
+            q_text = rewritten.text or question
+        elif isinstance(rewritten, dict):
+            q_text = rewritten.get("text") or question
+        else:
+            q_text = question
+    else:
+        q_text = question
+
+    # ── Offline path ──────────────────────────────────────────────────────
+    if use_offline_tools():
+        q_lower = q_text.lower()
+        has_today = any(kw in q_lower for kw in ("hôm nay", "hom nay", "today"))
+        if any(kw in q_lower for kw in ("đám đông", "dam dong", "crowd")):
+            sql = "SELECT count(*) FROM anomaly_event WHERE event_type = 'CROWD_DETECTION'"
+        elif any(kw in q_lower for kw in ("leo trèo", "xâm nhập", "intrusion")):
+            sql = "SELECT count(*) FROM anomaly_event WHERE event_type = 'INTRUSION_DETECTION'"
+        elif any(kw in q_lower for kw in ("mực nước", "muc nuoc", "water_level")):
+            sql = "SELECT count(*) FROM anomaly_event WHERE event_type = 'WATER_LEVEL_DETECTION'"
+        elif any(kw in q_lower for kw in ("ẩu đả", "au da", "fight")):
+            sql = "SELECT count(*) FROM anomaly_event WHERE event_type = 'FIGHT_DETECTION'"
+        elif any(kw in q_lower for kw in ("cháy", "khói", "fire", "smoke")):
+            sql = "SELECT count(*) FROM fire_smoke_event"
+        elif has_today:
+            sql = "SELECT count(*) FROM plate_event WHERE event_time >= CURRENT_DATE"
+        else:
+            sql = "SELECT count(*) FROM plate_event"
+        return {
+            "sql": sql,
+            "error": "",
+            "events": [node_event(
+                "generate_sql",
+                input={"question": q_text, "offline": True},
+                output={"sql": sql},
+                meta={"user_id": user_id, "session_id": session_id, "offline": True},
+            )],
+        }
+
+    # ── Online path ───────────────────────────────────────────────────────
+    system_prompt = registry().render("sql_agent")
+
+    # Build user message: time_range hint + chart hint + schema + question
+    user_parts: list[str] = []
+
+    # Time range hint
+    time_range = None
+    if rewritten is not None:
+        if hasattr(rewritten, "time_range"):
+            time_range = rewritten.time_range
+        elif isinstance(rewritten, dict):
+            time_range = rewritten.get("time_range")
+    tr_hint = format_time_range_for_prompt(time_range)
+    if tr_hint:
+        user_parts.append(tr_hint)
+
+    # Chart hint
+    chart_hint = build_chart_sql_hint(q_text)
+    if chart_hint:
+        user_parts.append(chart_hint)
+
+    # Schema excerpt
+    if schema_excerpt:
+        user_parts.append(f"Schema excerpt:\n{schema_excerpt}")
+
+    # Question
+    user_parts.append(f"Câu hỏi:\n{q_text}")
+
+    user_prompt = "\n\n".join(user_parts)
+
+    max_tokens = settings.sql_generate_max_tokens
+
+    raw = invoke_text(system_prompt, user_prompt, max_tokens=max_tokens)
+    sql = extract_sql(raw)
+
+    if not sql:
+        return {
+            "sql": "",
+            "error": "Không thể tạo câu SQL từ câu hỏi.",
+            "events": [node_event(
+                "generate_sql",
+                input={"question": q_text, "schema_excerpt_len": len(schema_excerpt)},
+                output={"sql": "", "error": "empty_extract", "raw_len": len(raw)},
+                meta={
+                    "user_id": user_id,
+                    "session_id": session_id,
+                    "max_tokens": max_tokens,
+                },
+            )],
+        }
+
+    return {
+        "sql": sql,
+        "error": "",
+        "events": [node_event(
+            "generate_sql",
+            input={"question": q_text, "schema_excerpt_len": len(schema_excerpt)},
+            output={"sql": sql},
+            meta={
+                "user_id": user_id,
+                "session_id": session_id,
+                "max_tokens": max_tokens,
+            },
+        )],
+    }

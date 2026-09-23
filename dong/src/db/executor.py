@@ -24,10 +24,12 @@ def execute_sql(
     sql: str,
     params: list | tuple | None = None,
     dbname: str | None = None,
-) -> list[dict[str, Any]]:
+) -> tuple[list[dict[str, Any]], list[str]]:
     """Thực thi câu SQL SELECT read-only trên Postgres.
 
-    Trả về danh sách các dòng dạng dict (cột -> giá trị).
+    Trả về tuple (rows, columns):
+    - rows: danh sách các dòng dạng dict (cột -> giá trị).
+    - columns: danh sách tên cột từ cursor.description (không rỗng kể cả khi 0 dòng).
     Nếu DB chưa được cấu hình, raise RuntimeError rõ ràng.
     """
     # 1. Kiểm tra an toàn SQL
@@ -52,6 +54,7 @@ def execute_sql(
         with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
             cur.execute(sql, tuple(params) if params else ())
             if cur.description:
+                col_names = [desc[0] for desc in cur.description]
                 rows = [dict(r) for r in cur.fetchall()]
-                return rows
-            return []
+                return rows, col_names
+            return [], []

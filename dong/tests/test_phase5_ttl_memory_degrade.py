@@ -16,7 +16,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from src.agent.graph import Agent_Input, Agent_Output, recall_node, run_agent_stream, run_store_extract
-from src.agent.tools import QueryResult
+from src.llm.schemas import QueryResult
 from src.main import app, _lookup_ttl_cache
 from src.memory.ttl_cache import (
     clear_ttl_cache,

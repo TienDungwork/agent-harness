@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from src.agent.intent import is_chat_greeting
 from src.llm.client import use_offline_tools
 from src.llm.schemas import RewrittenQuestion
 from src.llm.structured import invoke_structured
@@ -12,6 +13,8 @@ from src.prompts import registry
 def _offline_rewrite(raw: str) -> RewrittenQuestion:
     """Fallback offline trả về RewrittenQuestion hợp lệ không gọi LAN."""
     raw_str = (raw or "").strip()
+    if is_chat_greeting(raw_str):
+        return RewrittenQuestion(text=raw_str, intent_hint="chat")
     filters: list[str] = []
     time_range = None
     intent_hint = None
@@ -50,6 +53,9 @@ def rewrite_question(raw: str) -> RewrittenQuestion:
     if not cleaned:
         return RewrittenQuestion(text="")
 
+    if is_chat_greeting(cleaned):
+        return RewrittenQuestion(text=cleaned, intent_hint="chat")
+
     if use_offline_tools():
         return _offline_rewrite(cleaned)
 
@@ -62,6 +68,9 @@ def rewrite_question(raw: str) -> RewrittenQuestion:
 
 def rewrite_question_safe(raw: str) -> RewrittenQuestion:
     """Rewrite với fallback offline khi LLM lỗi/timeout."""
+    cleaned = (raw or "").strip()
+    if is_chat_greeting(cleaned):
+        return RewrittenQuestion(text=cleaned, intent_hint="chat")
     try:
         return rewrite_question(raw)
     except Exception:

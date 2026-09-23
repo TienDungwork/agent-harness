@@ -578,14 +578,92 @@
   }
 
   // ==========================================================================
-  // Chart.js rendering helper
+  // Chart.js rendering helper & Vietnamese localization
   // ==========================================================================
+
+  /** Vietnamese translation map for categorical chart values */
+  const CHART_VI_LABELS = {
+    'CAR': 'Ô tô',
+    'MOTORCYCLE': 'Xe máy',
+    'MOTORBIKE': 'Xe máy',
+    'TRUCK': 'Xe tải',
+    'BUS': 'Xe buýt',
+    'IN': 'Vào',
+    'OUT': 'Ra',
+    'FIRE': 'Cháy',
+    'SMOKE': 'Khói',
+    'HIGH': 'Cao',
+    'MEDIUM': 'Trung bình',
+    'LOW': 'Thấp',
+    'FIGHT_DETECTION': 'Ẩu đả',
+    'CROWD_DETECTION': 'Đám đông',
+    'INTRUSION_DETECTION': 'Xâm nhập',
+    'WATER_LEVEL_DETECTION': 'Mực nước',
+    'SIDEWALK_ENCROACHMENT': 'Lấn chiếm vỉa hè',
+    'TRAFFIC_JAM': 'Ùn tắc giao thông',
+    'UNKNOWN': 'Không xác định',
+    'OTHER': 'Khác',
+  };
+
+  /** Vietnamese translation map for common numeric columns and group-by dimensions */
+  const CHART_VI_COLUMNS = {
+    'count': 'Số lượng',
+    'total': 'Tổng số',
+    'so_luot': 'Số lượt',
+    'so_luong': 'Số lượng',
+    'event_count': 'Số sự kiện',
+    'plate_count': 'Số lượt xe',
+    'sum': 'Tổng cộng',
+    'value': 'Giá trị',
+    'n': 'Số lượng',
+    'vehicle_type': 'Loại xe',
+    'direction': 'Hướng di chuyển',
+    'manufacturer': 'Hãng xe',
+    'event_type': 'Loại sự kiện',
+    'severity': 'Mức độ',
+    'alert_level': 'Mức cảnh báo',
+    'zone_name': 'Khu vực',
+    'camera_name': 'Camera',
+    'department_name': 'Phòng ban',
+  };
+
+  /**
+   * Format categorical label to human-friendly Vietnamese.
+   * @param {*} val
+   * @returns {string}
+   */
+  function formatChartLabel(val) {
+    if (val === null || val === undefined || val === '') return '(trống)';
+    const str = String(val).trim();
+    const upper = str.toUpperCase();
+    if (CHART_VI_LABELS[upper]) {
+      return CHART_VI_LABELS[upper];
+    }
+    if (str.length > 24) {
+      return str.slice(0, 21) + '…';
+    }
+    return str;
+  }
+
+  /**
+   * Format column header to friendly Vietnamese label.
+   * @param {string} col
+   * @returns {string}
+   */
+  function formatChartColumn(col) {
+    if (!col) return 'Số lượng';
+    const lower = String(col).toLowerCase().trim();
+    if (CHART_VI_COLUMNS[lower]) return CHART_VI_COLUMNS[lower];
+    if (lower.includes('count') || lower.includes('so_luong') || lower.includes('so_luot')) return 'Số lượng';
+    return col;
+  }
 
   /** WeakMap to track Chart.js instances keyed by canvas element */
   const _chartInstances = new WeakMap();
 
   /**
    * Render an interactive Chart.js bar or pie chart inside containerEl.
+   * Polish bar chart: title rõ, nhãn tiếng Việt, màu sắc tương phản cao, chống méo / blank.
    * @param {HTMLElement} containerEl  - the .chart-slot element
    * @param {{ chartType: string, chartSpec: Object, rows: Array }} opts
    */
@@ -596,62 +674,176 @@
 
     const xCol = chartSpec.x_column;
     const yCol = chartSpec.y_column;
-    const title = chartSpec.title_vi || '';
+    const rawTitle = chartSpec.title_vi || '';
+    const title = rawTitle.trim() || `Biểu đồ thống kê theo ${formatChartColumn(xCol)}`;
 
-    const labels = rows.map(r => String(r[xCol] !== undefined ? r[xCol] : ''));
+    const labels = rows.map(r => formatChartLabel(r[xCol]));
     const values = rows.map(r => {
       const v = r[yCol];
-      return (v !== undefined && v !== null) ? Number(v) : 0;
+      return (v !== undefined && v !== null && !isNaN(Number(v))) ? Number(v) : 0;
     });
 
     const type = (chartType === 'pie') ? 'pie' : 'bar';
 
-    // Palette
+    // Curated high-contrast palette: duy pine-teal (#1f5c4f) leading, with warm theme accents
     const palette = [
-      'rgba(194, 65, 12, 0.75)',
-      'rgba(217, 119, 6, 0.75)',
-      'rgba(5, 150, 105, 0.75)',
-      'rgba(37, 99, 235, 0.75)',
-      'rgba(124, 58, 237, 0.75)',
-      'rgba(220, 38, 38, 0.75)',
-      'rgba(16, 185, 129, 0.75)',
-      'rgba(245, 158, 11, 0.75)',
+      '#1f5c4f', // Deep pine teal (duy pattern)
+      '#c2410c', // Terracotta orange (theme warm)
+      '#2563eb', // Vivid royal blue
+      '#d97706', // Warm amber
+      '#7c3aed', // Rich violet
+      '#059669', // Emerald green
+      '#dc2626', // Crimson red
+      '#0891b2', // Ocean cyan
+      '#4f46e5', // Deep indigo
+      '#ea580c', // Bright orange
     ];
     const colors = values.map((_, i) => palette[i % palette.length]);
 
-    // Clear previous content
+    // Clear previous content and wrap canvas in responsive container to prevent distortion
     containerEl.innerHTML = '';
+    const wrapper = document.createElement('div');
+    wrapper.className = 'chart-canvas-wrapper';
+
     const canvas = document.createElement('canvas');
     canvas.setAttribute('aria-label', title || 'Biểu đồ');
     canvas.setAttribute('role', 'img');
-    containerEl.appendChild(canvas);
+    wrapper.appendChild(canvas);
+    containerEl.appendChild(wrapper);
 
     // Destroy existing Chart instance on this canvas if any
     if (_chartInstances.has(canvas)) {
       _chartInstances.get(canvas).destroy();
     }
 
+    const colLabel = formatChartColumn(yCol);
     const dataset = {
-      label: yCol,
+      label: colLabel,
       data: values,
-      backgroundColor: colors,
+      backgroundColor: colors.map(c => c + 'd9'), // ~85% opacity
     };
+
     if (type === 'bar') {
-      dataset.borderColor = colors.map(c => c.replace('0.75', '1'));
-      dataset.borderWidth = 1;
+      dataset.borderColor = colors;
+      dataset.borderWidth = 1.5;
+      dataset.borderRadius = 6;
+      dataset.borderSkipped = false;
+      dataset.maxBarThickness = 48;
+    } else if (type === 'pie') {
+      dataset.borderColor = '#ffffff';
+      dataset.borderWidth = 2;
     }
+
+    const totalValue = values.reduce((sum, v) => sum + (Number(v) || 0), 0);
 
     const config = {
       type,
       data: { labels, datasets: [dataset] },
       options: {
         responsive: true,
+        maintainAspectRatio: false,
         plugins: {
-          legend: { display: type === 'pie' },
-          title: title ? { display: true, text: title } : { display: false },
+          legend: {
+            display: type === 'pie',
+            position: 'bottom',
+            labels: {
+              color: '#2a2824',
+              padding: 12,
+              boxWidth: 14,
+              boxHeight: 14,
+              font: {
+                family: "'Plus Jakarta Sans', system-ui, -apple-system, sans-serif",
+                size: 12,
+              },
+              generateLabels: (chart) => {
+                const datasets = chart.data.datasets;
+                if (!datasets.length) return [];
+                const ds = datasets[0];
+                const data = ds.data || [];
+                const total = data.reduce((acc, v) => acc + (Number(v) || 0), 0);
+                return (chart.data.labels || []).map((label, i) => {
+                  const val = Number(data[i]) || 0;
+                  const pct = total > 0 ? ((val / total) * 100).toFixed(1).replace(/\.0$/, '') : '0';
+                  const text = `${label}: ${pct}%`;
+                  const fill = Array.isArray(ds.backgroundColor) ? ds.backgroundColor[i] : ds.backgroundColor;
+                  const stroke = Array.isArray(ds.borderColor) ? ds.borderColor[i] : ds.borderColor;
+                  return {
+                    text,
+                    fillStyle: fill,
+                    strokeStyle: stroke || fill,
+                    lineWidth: 1,
+                    hidden: !chart.getDataVisibility(i),
+                    index: i,
+                  };
+                });
+              },
+            },
+          },
+          title: {
+            display: Boolean(title),
+            text: title,
+            color: '#1c1b18',
+            font: {
+              family: "'Plus Jakarta Sans', system-ui, -apple-system, sans-serif",
+              size: 13,
+              weight: '600',
+            },
+            padding: { top: 4, bottom: 12 },
+          },
+          tooltip: {
+            backgroundColor: 'rgba(28, 27, 24, 0.92)',
+            titleColor: '#ffffff',
+            bodyColor: '#ffffff',
+            titleFont: { size: 12, weight: '600' },
+            bodyFont: { size: 12 },
+            padding: { top: 6, bottom: 6, left: 10, right: 10 },
+            cornerRadius: 6,
+            displayColors: true,
+            callbacks: {
+              label: (context) => {
+                const val = context.parsed.y !== undefined ? context.parsed.y : context.parsed;
+                const num = Number(val) || 0;
+                if (type === 'pie') {
+                  const pct = totalValue > 0 ? ((num / totalValue) * 100).toFixed(1).replace(/\.0$/, '') : '0';
+                  return ` ${colLabel}: ${num.toLocaleString('vi-VN')} (${pct}%)`;
+                }
+                return ` ${colLabel}: ${num.toLocaleString('vi-VN')}`;
+              },
+            },
+          },
         },
       },
     };
+
+    // Specific scale configuration for bar chart: clean ticks, integer precision, beginAtZero
+    if (type === 'bar') {
+      const maxVal = values.length ? Math.max(...values) : 0;
+      config.options.scales = {
+        x: {
+          grid: { display: false },
+          ticks: {
+            color: '#636159',
+            font: { family: "'Plus Jakarta Sans', system-ui, -apple-system, sans-serif", size: 11 },
+            maxRotation: 35,
+            minRotation: 0,
+            autoSkip: true,
+          },
+        },
+        y: {
+          beginAtZero: true,
+          suggestedMax: maxVal > 0 ? Math.ceil(maxVal * 1.15) : 5,
+          grid: {
+            color: 'rgba(229, 228, 220, 0.6)',
+          },
+          ticks: {
+            color: '#636159',
+            font: { family: "'Plus Jakarta Sans', system-ui, -apple-system, sans-serif", size: 11 },
+            precision: 0,
+            callback: (val) => Number(val).toLocaleString('vi-VN'),
+          },
+        },
+      };
+    }
 
     const instance = new Chart(canvas, config);
     _chartInstances.set(canvas, instance);
@@ -711,44 +903,56 @@
     bubble.innerHTML = parseMarkdown(content);
     contentDiv.appendChild(bubble);
 
-    // Chart rendering in assistant messages
-    if (role === 'assistant') {
-      const chartSlot = document.createElement('div');
-      chartSlot.className = 'chart-slot';
-
-      // Normalize chartPayload: can be string (legacy PNG base64) or object {png, spec, type, rows}
+    // Chart rendering in assistant messages: only render when chartPayload is present
+    if (role === 'assistant' && chartPayload) {
+      // Normalize chartPayload: can be string (legacy PNG base64) or object {png, spec, type, rows, empty}
       let chartObj = null;
-      if (chartPayload && typeof chartPayload === 'object') {
-        chartObj = chartPayload; // {png, spec, type, rows}
-      } else if (typeof chartPayload === 'string' && chartPayload) {
-        chartObj = { png: chartPayload };
+      if (typeof chartPayload === 'object') {
+        chartObj = chartPayload; // {png, spec, type, rows, empty}
+      } else if (typeof chartPayload === 'string' && chartPayload.trim().length > 0) {
+        chartObj = { png: chartPayload.trim() };
       }
 
-      const chartSpec = chartObj && (chartObj.spec || null);
-      const chartRows = chartObj && (chartObj.rows || null);
-      const chartType = chartObj && (chartObj.type || 'bar');
-      const chartPng = chartObj && (chartObj.png || null);
+      if (chartObj) {
+        const chartSpec = chartObj.spec || null;
+        const chartRows = chartObj.rows || null;
+        const chartType = chartObj.type || 'bar';
+        const chartPng = chartObj.png || null;
 
-      if (chartSpec && Array.isArray(chartRows) && chartRows.length > 0 && typeof Chart !== 'undefined') {
-        // Prefer Chart.js interactive render
-        renderChartJs(chartSlot, { chartType, chartSpec, rows: chartRows });
-      } else if (chartPng) {
-        // PNG fallback
-        chartSlot.innerHTML = `<img src="data:image/png;base64,${chartPng}" alt="Biểu đồ" style="max-width:100%; border-radius:8px; display:block; margin:0 auto;">`;
-      } else {
-        // No chart data — placeholder only when no chart at all
-        chartSlot.innerHTML = `
-          <div class="chart-placeholder">
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <line x1="18" y1="20" x2="18" y2="10"></line>
-              <line x1="12" y1="20" x2="12" y2="4"></line>
-              <line x1="6" y1="20" x2="6" y2="14"></line>
-            </svg>
-            <span>Khu vực biểu đồ (Bar/Pie chart)</span>
-          </div>
-        `;
+        const hasChartJsData = Boolean(
+          chartSpec &&
+          Array.isArray(chartRows) &&
+          chartRows.length > 0 &&
+          typeof Chart !== 'undefined'
+        );
+
+        const chartSlot = document.createElement('div');
+        chartSlot.className = 'chart-slot';
+
+        if (hasChartJsData) {
+          // Prefer Chart.js interactive render
+          renderChartJs(chartSlot, { chartType, chartSpec, rows: chartRows });
+          contentDiv.appendChild(chartSlot);
+        } else if (chartPng) {
+          // PNG fallback
+          chartSlot.innerHTML = `<img src="data:image/png;base64,${chartPng}" alt="Biểu đồ" style="max-width:100%; border-radius:8px; display:block; margin:0 auto;">`;
+          contentDiv.appendChild(chartSlot);
+        } else if (chartSpec || chartObj.type || (Array.isArray(chartRows) && chartRows.length === 0) || chartObj.empty) {
+          // Explicit empty chart state: payload present but no renderable data (empty/missing rows, etc.)
+          chartSlot.classList.add('chart-slot-empty');
+          chartSlot.innerHTML = `
+            <div class="chart-placeholder chart-empty-state">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <circle cx="12" cy="12" r="10"></circle>
+                <line x1="12" y1="8" x2="12" y2="12"></line>
+                <line x1="12" y1="16" x2="12.01" y2="16"></line>
+              </svg>
+              <span>Chưa có dữ liệu để hiển thị biểu đồ</span>
+            </div>
+          `;
+          contentDiv.appendChild(chartSlot);
+        }
       }
-      contentDiv.appendChild(chartSlot);
     }
 
     item.appendChild(avatar);

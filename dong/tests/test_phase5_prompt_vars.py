@@ -51,13 +51,15 @@ def test_whitespace_template_raises_value_error_with_prompt_name():
 
 def test_missing_required_var_raises_value_error_with_name_and_var():
     """Thiếu biến bắt buộc phải raise ValueError kèm tên prompt và tên biến thiếu."""
-    reg = registry()
-    with pytest.raises(ValueError) as exc_info:
-        reg.render("agent_system", "production")
-    err = str(exc_info.value)
-    assert "agent_system" in err
-    assert "now" in err
-    assert "thiếu biến" in err.lower()
+    reg = PromptRegistry()
+    fake_prompt = Prompt(name="test_prompt_vars", version=1, template="Xin chào {now}")
+    with patch.object(reg, "get", return_value=fake_prompt):
+        with pytest.raises(ValueError) as exc_info:
+            reg.render("test_prompt_vars")
+        err = str(exc_info.value)
+        assert "test_prompt_vars" in err
+        assert "now" in err
+        assert "thiếu biến" in err.lower()
 
 
 def test_render_resulting_in_empty_string_raises_value_error():
@@ -85,13 +87,14 @@ def test_unreplaced_placeholder_raises_value_error():
         assert "unreplaced_var" in err
 
 
-def test_successful_render_agent_system():
-    """Render thành công prompt agent_system với tham số now."""
-    reg = registry()
-    rendered = reg.render("agent_system", "production", now="2026-09-22 15:30:00")
-    assert "2026-09-22 15:30:00" in rendered
-    assert "Bạn là trợ lý thống kê xe ra/vào" in rendered
-    assert len(rendered.strip()) > 0
+def test_successful_render_prompt_with_vars():
+    """Render thành công prompt với tham số."""
+    reg = PromptRegistry()
+    fake_prompt = Prompt(name="test_prompt_vars", version=1, template="Thời gian là {now}")
+    with patch.object(reg, "get", return_value=fake_prompt):
+        rendered = reg.render("test_prompt_vars", "production", now="2026-09-22 15:30:00")
+        assert "2026-09-22 15:30:00" in rendered
+        assert len(rendered.strip()) > 0
 
 
 @pytest.mark.parametrize(

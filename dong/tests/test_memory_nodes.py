@@ -188,12 +188,21 @@ def test_recall_memories_injected_into_respond_prompt(monkeypatch):
     save_to_long_term("u_mem", "Người dùng phụ trách cổng số 2")
     captured: list[str] = []
 
-    def fake_invoke(_system: str, user: str) -> str:
+    def fake_invoke(_system: str, user: str, max_tokens: int | None = None) -> str:
+        if "sql" in _system.lower() or "select" in _system.lower():
+            return "```sql\nSELECT camera_name, count(*) AS so_luot FROM plate_event GROUP BY camera_name\n```"
         captured.append(user)
         return "Trả lời có bối cảnh người dùng."
 
     monkeypatch.setattr("src.llm.client.invoke_text", fake_invoke)
     monkeypatch.setattr("src.llm.client.use_offline_tools", lambda: False)
+    monkeypatch.setattr("src.agent.generate_sql.invoke_text", fake_invoke)
+    monkeypatch.setattr("src.agent.generate_sql.use_offline_tools", lambda: False)
+    monkeypatch.setattr("src.agent.execute_sql.use_offline_tools", lambda: False)
+    monkeypatch.setattr("src.agent.execute_sql.execute_sql", lambda sql, params=None: [
+        {"camera_name": "Cổng 2", "so_luot": 10},
+        {"camera_name": "Cổng 1", "so_luot": 20},
+    ])
 
     inp = Agent_Input(
         question="Hôm nay có bao nhiêu xe vào cổng số 2?",

@@ -1,0 +1,37 @@
+name: classify
+version: 2
+model: qwen3-4b
+description: Phân loại ý định người dùng thành 7 nhóm intent cho trợ lý VMS KCN Hưng Phú
+owner: team-ai@kcn.vn
+created: "2026-09-22"
+changelog: "v2: hỗ trợ 7 intents, hướng dẫn phân biệt tự nhiên, quy định inline answer cho chat/clarify và rỗng cho pipeline"
+template: |
+  Phân loại ý định câu người dùng cho trợ lý VMS KCN Hưng Phú (số liệu DB và hướng dẫn sử dụng).
+  Hiểu ngữ cảnh tiếng Việt tự nhiên, không phụ thuộc vào danh sách từ khóa cố định.
+
+  Chọn ĐÚNG MỘT intent trong 7 intent sau:
+  - query_data: Cần đọc, đếm, lọc, thống kê dữ liệu trong DB (có bao nhiêu, top N, sự kiện xe cộ, cảnh báo an ninh, vẽ biểu đồ số liệu...).
+  - how_to: Hỏi cách thao tác, quy trình, cấu hình trên giao diện VMS/AIOC (làm sao thêm camera, xem playback, xuất báo cáo...).
+  - troubleshoot: Báo lỗi, sự cố kỹ thuật, thiết bị không hoạt động (mất kết nối, camera lỗi, stream đen...).
+  - concept: Hỏi khái niệm, định nghĩa, thuật ngữ nội bộ trong VMS/AIOC (AIOC là gì, hàng rào ảo là gì, camera PTZ là gì...).
+  - out_of_scope: Ngoài phạm vi hệ thống VMS/KCN (thời tiết, tin tức, kiến thức xã hội, nấu ăn, viết thơ, lập trình...).
+  - chat: Chào hỏi, cảm ơn, hỏi trợ lý làm được gì (giao tiếp cơ bản, không cần số liệu hay thao tác hệ thống).
+  - clarify: Câu hỏi quá ngắn hoặc quá mơ hồ, không thể đoán được ý định.
+
+  Phân biệt quan trọng:
+  - "Có bao nhiêu camera đang hoạt động?" / "Hôm nay có bao nhiêu xe máy vào cổng?" -> query_data (hỏi số liệu trực tiếp).
+  - "Vẽ biểu đồ số xe theo loại" / "Thống kê sự kiện theo ngày" -> query_data (truy vấn DB để vẽ biểu đồ).
+  - "Làm sao thêm camera?" / "Hướng dẫn xem lại video" -> how_to (hỏi thao tác).
+  - "Làm thế nào để xem báo cáo xe?" -> how_to (hỏi thao tác trên giao diện, dù có nhắc số liệu).
+  - Khi câu vừa có "làm thế nào / cách / hướng dẫn" vừa có từ số liệu: ưu tiên how_to.
+  - Khi câu hỏi số liệu trong hệ thống VMS: luôn query_data, không phải out_of_scope.
+  - "AIOC là gì?" -> concept (khái niệm VMS).
+  - "Thời tiết hôm nay thế nào?" -> out_of_scope (ngoài phạm vi VMS/KCN).
+  - "Xin chào" / "Chào bạn" -> chat.
+
+  Quy định đầu ra (IntentResult):
+  - reason: Cụm từ tiếng Việt ngắn gọn giải thích lý do.
+  - answer:
+    + Với chat: Chào lịch sự và gợi ý hỏi số liệu hoặc cách dùng VMS (tối đa 1 câu).
+    + Với clarify: Hỏi lại người dùng để làm rõ yêu cầu (tối đa 1 câu).
+    + Với pipeline intents (query_data, how_to, troubleshoot, concept, out_of_scope): BẮT BUỘC để chuỗi rỗng "".

@@ -1,6 +1,9 @@
-# Test Plan — dong v6
+# Test Plan — agent dong v7
 
-**Trạng thái:** Verify sau **từng task** (TNN) trong `implementation-plan.md` — không đợi hết phase.
+**Trạng thái:** Spec only. Verify **sau từng task** trong `implementation-plan.md`.  
+**Baseline:** pytest v6 xanh; Docker + smoke script đã có.
+
+---
 
 ## Offline (pytest)
 
@@ -11,90 +14,72 @@ pytest -q
 
 | Chủ đề | Kỳ vọng |
 |--------|---------|
-| **resource paths** | `DOCS_ROOT`, prompt dir → `resource/` |
-| **Prompt registry** | render production; thiếu biến → ValueError |
-| **LLM backend** | mock `openai` vs `self_hosted`; key rotation |
-| **Structured schemas** | v5 schemas giữ hành vi |
-| **QueryPlan** | validator, builder, repair |
-| **Trace** | node input/output full; metadata session/user |
-| **Memory short-term** | 2 turn cùng `session_id` nhớ context |
-| **Memory long-term** | fact store + recall cùng `user_id`, session khác |
-| **TTL cache** | hit trong 300s; miss sau expire (mock time) |
-| **Chart** | bar + pie non-empty |
-| **Multi-agent** | orchestrator route fire/anomaly mock |
-| **Guardrail** | injection, out-of-scope |
-| **Sessions API** | list/create/delete mock |
-| **Docker spec** | compose valid; `resource/` in Dockerfile |
+| **Classify fast path** | Chào hỏi → END sớm, không node SQL (`tests/test_classify_fast_path.py`) |
+| **Pre-SQL** | Schema ≤4 bảng; time_range + chart hint trong prompt — acceptance pytest: `tests/test_phase3b_pre_sql_context.py` (16 tests, Phase 3b done) |
+| **generate_sql** | Extract SQL fenced; empty → lỗi rõ |
+| **validate / repair** | SELECT-only; DDL fail; repair ≤2 |
+| **execute** | Re-validate trước chạy (mock PG) |
+| **Simple answer** | 1-row COUNT → template; không gọi respond LLM |
+| **Chart** | Detect bar/pie; fallback mock; PNG/spec không rỗng; nhãn/meta có title |
+| **SSE chart** | Event chart tới FE; FE wiring test (`tests/test_phase2_chart_ui_audit.py`, `test_frontend_chartjs.py`); audit: `specs/v7-chart-ui-audit.md` |
+| **Errors** | Stream không crash; message ngắn VI |
+| **Regression** | Sessions, TTL, guardrails, Docker spec vẫn pass |
+| **Cleanup** | Sau Phase 8: graph không import dead modules |
 
-## Live — Production (Docker + LLM 196)
+### File test dự kiến (tạo khi implement)
 
-**Điều kiện:** `LLM_BACKEND=self_hosted`, gateway `192.168.1.196:18083`, DB read-only.
+- `tests/test_classify_fast_path.py`
+- `tests/test_pre_sql_retrieval.py`
+- `tests/test_sql_generation.py`
+- `tests/test_post_sql_chart.py`
+- Giữ: `test_memory_*`, `test_phase5_*`, `test_phase7_*`
+
+---
+
+## Live — Docker + LLM 196
 
 ```bash
-cd agent-harness/dong
 docker compose up --build -d
-curl -s http://localhost:8000/api/health
-curl -s http://localhost:8000/api/llm/ping
+./scripts/verify-docker-self-hosted.sh
+./scripts/smoke-production.sh
 ```
 
 | Case | Kỳ vọng |
 |------|---------|
-| Health | ok + backend=self_hosted |
-| Ping 196 | model qwen3-4b (hoặc tên gateway) |
-| Session UI | Tạo session mới; đổi session; lịch sử hiển thị |
-| Short-term | "Tên tôi là A" → câu sau trong cùng session nhớ |
-| Long-term | Fact → session mới + cùng user_id vẫn recall (nếu bật) |
-| TTL | Cùng câu trong 5 phút → cache hit / latency thấp hơn |
-| Số liệu | "Hôm nay có bao nhiêu lượt xe CAR vào?" |
-| Fire #010 | "Có cảnh báo cháy khói hôm nay không?" |
-| Anomaly #009 | "Có phát hiện leo trèo không?" |
-| AIOC #015,#017 | "Làm sao thêm camera trên AIOC?" — keyword đủ |
-| Chart bar | "Vẽ biểu đồ cột lượt xe theo loại hôm nay" |
-| Chart pie | "Vẽ biểu đồ tròn tỷ lệ loại xe" |
-| Langfuse | Mỗi node full input/output |
-| SSE graph | Hover khớp Langfuse |
+| Greeting | `"chào bạn"` nhanh, không SQL trên live graph |
+| Stat simple | COUNT → trả lời ngắn / template |
+| Chart bar | UI hiện cột rõ, nhãn category VI, title VI, canvas không méo/blank, tooltip số liệu |
+| Chart pie | UI hiện tròn rõ, legend đọc được với nhãn VI + %, tooltip có %, lát cắt rõ |
+| Fire / AIOC | Smoke cases pass |
+| TTL | Lần 2 = cache hit |
 
-## Live — OpenAI smoke (optional)
+Checklist UI chi tiết: `specs/smoke-manual-checklist.md` (đã cập nhật Phase 2; kiểm thử smoke live toàn diện ở Phase 7).
 
-Copy `OPENAI_API_KEYS` từ `llm-engineer-demo/.env` → `dong/.env` (không commit).
+---
+
+## Eval golden-30
 
 ```bash
-LLM_BACKEND=openai docker compose up -d
-curl -s http://localhost:8000/api/llm/ping
-# 1 câu how-to qua UI
-```
-
-## Golden 30 (Phase 9)
-
-```bash
-unset PYTEST_CURRENT_TEST
-cd agent-harness/dong
 python eval/run.py
 python eval/run.py --judge
 ```
 
-| Metric | Baseline (v5) | Target v6 |
-|--------|---------------|-----------|
-| Rule pass | 22/30 | **≥28/30** |
-| Fail ưu tiên | 008–011, 015, 017, 023, 024 | pass |
-| Output | `eval/results/golden-30.md` | `mode: live`, timestamp mới |
-| Judge | 1–5 tiếng Việt | ≥3/5 trên case pass |
+| Metric | Target |
+|--------|--------|
+| Pass | ≥28/30 |
+| Output | `eval/results/golden-30.md` |
+| Log | Delta vs baseline trong `specs/change-log.md` |
 
-**Không** ghi đè báo cáo live bằng `--offline` trừ CI mock.
+---
 
-## Eval workflow (theo llm-engineer-demo)
+## Review mỗi task
 
-1. Dataset YAML → agent thật (`run_agent` / stream).
-2. Rule: `must_include`, `must_include_tool`, columns.
-3. Optional `--judge`: LLM chấm 1–5.
-4. Ghi markdown report + slice breakdown.
+1. Diff đúng scope task.
+2. `pytest -q` xanh.
+3. Manual / smoke nếu chạm API hoặc UI chart.
+4. Cập nhật `specs/change-log.md`.
 
-## Regression v5 → v6
+## Không bắt buộc mỗi commit
 
-| Giữ | Thay đổi |
-|-----|----------|
-| QueryPlan + read-only SQL | Prompt → `resource/prompts/` |
-| Guardrail injection | Docs → `resource/docs/` |
-| SSE live graph | + full I/O trace |
-| Docker deploy | + memory + sessions UI |
-| Langfuse | + session_id metadata |
+- Full golden live (chỉ Phase 9).
+- Browser E2E tự động.

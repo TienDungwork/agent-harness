@@ -8,8 +8,8 @@ import pytest
 
 from src.agent.graph import Agent_Input, run_agent
 from src.agent.intent import classify_intent_safe, is_stat_event_domain
-from src.agent.query_plan import _offline_plan_query, plan_query_safe
-from src.llm.schemas import IntentResult, QueryPlan, RewrittenQuestion
+from src.db.catalog import select_relevant_tables
+from src.llm.schemas import IntentResult, RewrittenQuestion
 
 
 @pytest.mark.parametrize(
@@ -33,13 +33,10 @@ def test_classify_intent_safe_falls_back_on_llm_error():
     assert res.intent == "query_data"
 
 
-def test_plan_query_safe_falls_back_fire_table():
+def test_select_relevant_tables_fire():
     q = "Hôm nay có cảnh báo cháy hoặc khói không?"
-    with patch("src.agent.query_plan.use_offline_tools", return_value=False), patch(
-        "src.agent.query_plan.invoke_structured", side_effect=RuntimeError("parse fail")
-    ):
-        plan = plan_query_safe(q)
-    assert plan.tables == ["fire_smoke_event"]
+    tables = select_relevant_tables(q)
+    assert tables == ["fire_smoke_event"]
 
 
 def test_wrong_classify_out_of_scope_still_routes_query_data():
@@ -65,4 +62,4 @@ def test_wrong_classify_how_to_fire_still_routes_query_data():
 
     assert res.detail == "query_data"
     assert res.query is not None
-    assert _offline_plan_query(q).tables == ["fire_smoke_event"]
+    assert select_relevant_tables(q) == ["fire_smoke_event"]

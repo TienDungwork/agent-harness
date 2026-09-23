@@ -7,10 +7,10 @@ from src.db.catalog import (
     get_allowed_tables,
     get_catalog,
     get_database_for_table,
+    select_relevant_tables,
 )
 from src.db.connection import get_connection
 from src.db.executor import execute_sql
-from src.db.query_builder import build_sql
 from src.db.validator import ValidationResult, validate_sql
 
 __all__ = [
@@ -20,7 +20,7 @@ __all__ = [
     "get_database_for_table",
     "describe_table",
     "build_schema_excerpt",
-    "build_sql",
+    "select_relevant_tables",
     "ValidationResult",
     "validate_sql",
     "execute_sql",

@@ -31,7 +31,7 @@ plate_event:
     manufacturer:
       type: varchar
       description: Hãng xe ô tô (Toyota, Honda, ...)
-    license_plate:
+    license_plate_text:
       type: varchar
       description: Biển số xe đầy đủ
     normalized_license_plate:

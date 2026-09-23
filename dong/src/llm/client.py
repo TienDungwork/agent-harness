@@ -7,6 +7,7 @@ import time
 from collections import deque
 from dataclasses import dataclass
 from functools import lru_cache
+from langchain_openai import ChatOpenAI
 
 from src.config import settings
 
@@ -75,13 +76,22 @@ def use_offline_tools(backend_override: str | None = None) -> bool:
     return backend.requires_real_key and not settings.api_keys
 
 
+class SafeChatOpenAI(ChatOpenAI):
+    """ChatOpenAI wrapper preserving max_tokens for OpenAI-compatible endpoints."""
+
+    def _get_request_payload(self, input_, *, stop=None, **kwargs):
+        payload = super()._get_request_payload(input_, stop=stop, **kwargs)
+        if "max_completion_tokens" in payload:
+            payload["max_tokens"] = payload.pop("max_completion_tokens")
+        return payload
+
+
 def base_llm(
     model_override: str | None = None,
     backend_override: str | None = None,
     temperature_override: float | None = None,
+    max_tokens_override: int | None = None,
 ):
-    from langchain_openai import ChatOpenAI
-
     backend_name = (backend_override or settings.llm_backend).strip().lower()
     backend = _get_backend(backend_name)
 
@@ -105,7 +115,9 @@ def base_llm(
     }
     if base_url:
         kwargs["base_url"] = base_url
-    return ChatOpenAI(**kwargs)
+    if max_tokens_override is not None:
+        kwargs["max_tokens"] = max_tokens_override
+    return SafeChatOpenAI(**kwargs)
 
 
 def invoke_with_tools(
@@ -132,10 +144,11 @@ def invoke_text(
     user_prompt: str,
     model_override: str | None = None,
     backend_override: str | None = None,
+    max_tokens: int | None = None,
 ) -> str:
     """Lời gọi LLM đơn giản không tool — dùng cho bước Answer (diễn giải số liệu)."""
     from src.monitoring.tracing import extract_token_usage, add_request_tokens
-    llm = base_llm(model_override=model_override, backend_override=backend_override)
+    llm = base_llm(model_override=model_override, backend_override=backend_override, max_tokens_override=max_tokens)
     try:
         response = llm.invoke([
             {"role": "system", "content": system_prompt},

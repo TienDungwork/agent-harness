@@ -434,9 +434,14 @@ def chat(req: ChatRequest) -> ChatResponse:
             return response
 
         try:
+            from src.agent.intent import is_chat_greeting
             from src.agent.rewrite import rewrite_question_safe
+            from src.llm.schemas import RewrittenQuestion
 
-            rewritten = rewrite_question_safe(question)
+            if is_chat_greeting(question):
+                rewritten = RewrittenQuestion(text=question, intent_hint="chat")
+            else:
+                rewritten = rewrite_question_safe(question)
             cache_q = rewritten.text if (rewritten and rewritten.text) else question
             out = run_agent(
                 Agent_Input(question=question, rewritten=rewritten, user_id=req.user_id),
@@ -537,9 +542,14 @@ def ask(req: AskRequest) -> AskResponse:
             return response
 
         try:
+            from src.agent.intent import is_chat_greeting
             from src.agent.rewrite import rewrite_question_safe
+            from src.llm.schemas import RewrittenQuestion
 
-            rewritten = rewrite_question_safe(question)
+            if is_chat_greeting(question):
+                rewritten = RewrittenQuestion(text=question, intent_hint="chat")
+            else:
+                rewritten = rewrite_question_safe(question)
             cache_q = rewritten.text if (rewritten and rewritten.text) else question
             out = run_agent(Agent_Input(question=question, rewritten=rewritten), parent_span=t.get("_span"))
         except Exception as exc:
@@ -665,10 +675,15 @@ def stream_agent(req: ChatRequest) -> StreamingResponse:
                 return
 
             try:
+                from src.agent.intent import is_chat_greeting
                 from src.agent.rewrite import rewrite_question_safe
                 from src.agent.graph import run_agent_stream, Agent_Input
+                from src.llm.schemas import RewrittenQuestion
 
-                rewritten = rewrite_question_safe(question)
+                if is_chat_greeting(question):
+                    rewritten = RewrittenQuestion(text=question, intent_hint="chat")
+                else:
+                    rewritten = rewrite_question_safe(question)
                 cache_q = rewritten.text if (rewritten and rewritten.text) else question
                 stream_kwargs = {"parent_span": t.get("_span")}
                 target_fn = getattr(run_agent_stream, "side_effect", None) or run_agent_stream

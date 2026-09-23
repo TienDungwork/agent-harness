@@ -94,7 +94,7 @@ def test_get_messages_api_missing_user_422():
 def test_stream_persists_messages(monkeypatch):
     """Stream __answer__ lưu cặp user/assistant vào session store."""
     from src.agent.graph import Agent_Output
-    from src.agent.tools import QueryResult
+    from src.llm.schemas import QueryResult
     from src.main import _cache
 
     monkeypatch.setattr("src.monitoring.tracing.settings.monitoring_enabled", False)

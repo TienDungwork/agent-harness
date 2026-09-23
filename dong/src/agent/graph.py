@@ -24,21 +24,22 @@ from langgraph.graph import StateGraph, START, END
 from langgraph.graph.message import add_messages
 from langchain_core.messages import HumanMessage
 
+from src.config import settings
 from src.memory.shortterm import get_checkpointer
-from src.agent.intent import classify_intent_safe, is_stat_event_domain
+from src.agent.intent import classify_intent_safe, is_stat_event_domain, sanitize_intent_result
 from src.agent.rewrite import rewrite_question
-from src.db.catalog import build_schema_excerpt
-from src.agent.query_plan import plan_query_safe, repair_plan_query
-from src.db.query_builder import build_sql
+from src.db.catalog import build_schema_excerpt, select_relevant_tables
 from src.db.validator import validate_sql
 from src.db.executor import execute_sql
 from src.chart.render import should_render_chart, plan_chart, render_chart
-from src.llm.schemas import ChartSpec, OrchestratorPlan, QueryPlan, RewrittenQuestion, StatAnswer
+from src.llm.schemas import ChartSpec, OrchestratorPlan, QueryResult, RewrittenQuestion, StatAnswer
 from src.guardrails import OUT_OF_SCOPE_REPLY
-from src.agent.tools import QueryResult
 from src.monitoring.tracing import trace_step
 from src.prompts import registry
 from src.agent.node_io import json_safe, node_event
+from src.agent.generate_sql import generate_sql_node
+from src.agent.validate_sql import validate_sql_node, repair_sql_node
+from src.agent.execute_sql import execute_sql_node
 
 class Agent_Input(BaseModel):
     question: str
@@ -55,6 +56,7 @@ class AgentState(TypedDict, total=False):
     question: str
     rewritten: RewrittenQuestion
     intent: str
+    answer: str
     messages: Annotated[list, add_messages]
     user_id: str
     session_id: str
@@ -63,9 +65,11 @@ class AgentState(TypedDict, total=False):
     orchestrator_plan: OrchestratorPlan
     
     # Query Data branch
+    selected_tables: list[str]
     schema_excerpt: str
-    plan: QueryPlan
     sql: str
+    sql_validation: dict
+    repair_count: int
     params: list
     rows: list
     columns: list
@@ -267,6 +271,7 @@ def run_store_extract(
         ]
 
 def rewrite_node(state: AgentState) -> dict:
+    from src.agent.intent import is_chat_greeting
     from src.llm.client import use_offline_tools
 
     q = state.get("question", "")
@@ -274,8 +279,10 @@ def rewrite_node(state: AgentState) -> dict:
     session_id = state.get("session_id") or "default"
     rewritten = state.get("rewritten")
     llm_used = False
+    is_chat = is_chat_greeting(q)
     if not rewritten:
-        llm_used = not use_offline_tools()
+        if not is_chat:
+            llm_used = not use_offline_tools()
         rewritten = rewrite_question(q)
     return {
         "rewritten": rewritten,
@@ -289,6 +296,7 @@ def rewrite_node(state: AgentState) -> dict:
                 "llm_used": llm_used,
                 "user_id": user_id,
                 "session_id": session_id,
+                **({"skipped": True} if is_chat else {}),
             },
         )],
     }
@@ -300,15 +308,45 @@ def classify_node(state: AgentState) -> dict:
     user_id = state.get("user_id") or "default"
     session_id = state.get("session_id") or "default"
     llm_used = not use_offline_tools()
-    res = classify_intent_safe(rewritten)
+    res = sanitize_intent_result(classify_intent_safe(rewritten))
     intent = res.intent
-    return {
+    
+    out_state = {
         "intent": intent,
         "events": [node_event(
             "classify",
             input={"rewritten_text": rewritten.text, "rewritten": rewritten.model_dump()},
-            output={"intent": intent, "reason": res.reason},
+            output={"intent": intent, "reason": res.reason, "answer": res.answer},
             meta={"llm_used": llm_used, "user_id": user_id, "session_id": session_id},
+        )],
+    }
+    if res.answer:
+        out_state["answer"] = res.answer
+    else:
+        out_state["answer"] = ""
+        
+    return out_state
+
+def respond_inline_node(state: AgentState) -> dict:
+    q = state.get("question", "")
+    ans = (state.get("answer") or "").strip()
+    intent = state.get("intent", "chat")
+    user_id = state.get("user_id") or "default"
+    session_id = state.get("session_id") or "default"
+    
+    result = Agent_Output(
+        question=q,
+        answer=ans,
+        detail=intent or "chat",
+    )
+    
+    return {
+        "result": result,
+        "events": [node_event(
+            "respond_inline",
+            input={"question": q, "intent": intent},
+            output={"answer": ans},
+            meta={"user_id": user_id, "session_id": session_id},
         )],
     }
 
@@ -374,8 +412,11 @@ def route_orchestrator(state: AgentState) -> str:
         return "docs"
     return "query_data"
 
+
 def orchestrator_respond_node(state: AgentState) -> dict:
-    from src.agent.query_plan import plan_and_execute
+    from src.agent.execute_sql import execute_sql_node
+    from src.agent.generate_sql import generate_sql_node
+    from src.agent.validate_sql import validate_and_repair_sql
     from src.knowledge.answer import answer_from_docs
     from src.knowledge.retrieval import retrieve_docs
     from src.llm.client import invoke_text, use_offline_tools
@@ -406,10 +447,34 @@ def orchestrator_respond_node(state: AgentState) -> dict:
                 meta={"user_id": user_id, "session_id": session_id},
             ))
         elif step.agent == "query_data":
-            exec_res = plan_and_execute(sub_q)
+            tables = select_relevant_tables(sub_q)
+            schema = build_schema_excerpt(tables)
+            gen_out = generate_sql_node({
+                "question": sub_q,
+                "schema_excerpt": schema,
+                "user_id": user_id,
+                "session_id": session_id,
+            })
+            sub_events.extend(gen_out.get("events") or [])
+            sql_candidate = gen_out.get("sql") or ""
+
+            repaired_sql, val_res, rep_cnt, val_events = validate_and_repair_sql(
+                sql_candidate,
+                sub_q,
+                schema_excerpt=schema,
+                user_id=user_id,
+                session_id=session_id,
+            )
+            sub_events.extend(val_events)
+
+            exec_res = execute_sql_node({
+                "sql": repaired_sql,
+                "user_id": user_id,
+                "session_id": session_id,
+            })
             rows = exec_res.get("rows") or []
-            columns = list(rows[0].keys()) if rows else []
-            err = exec_res.get("error")
+            columns = exec_res.get("columns") or []
+            err = exec_res.get("error") if not val_res.ok or exec_res.get("error") else ""
 
             if err:
                 query_ans_vi = f"Lỗi khi truy vấn số liệu: {err}"
@@ -554,140 +619,59 @@ def retrieve_schema_node(state: AgentState) -> dict:
     intent = state.get("intent", "query_data")
     user_id = state.get("user_id") or "default"
     session_id = state.get("session_id") or "default"
-    excerpt = build_schema_excerpt()
+
+    rewritten = state.get("rewritten")
+    if rewritten is not None:
+        if hasattr(rewritten, "text"):
+            q_text = rewritten.text or q
+        elif isinstance(rewritten, dict):
+            q_text = rewritten.get("text") or q
+        elif isinstance(rewritten, str):
+            q_text = rewritten or q
+        else:
+            q_text = q
+    else:
+        q_text = q
+
+    tables = select_relevant_tables(q_text, limit=4)
+    excerpt = build_schema_excerpt(tables)
     return {
         "schema_excerpt": excerpt,
+        "selected_tables": tables,
         "events": [node_event(
             "retrieve_schema",
             input={"intent": intent, "question": q},
-            output={"schema_excerpt": excerpt},
-            meta={"user_id": user_id, "session_id": session_id, "schema_length": len(excerpt)},
-        )],
-    }
-
-def plan_query_node(state: AgentState) -> dict:
-    rewritten = state["rewritten"]
-    excerpt = state["schema_excerpt"]
-    user_id = state.get("user_id") or "default"
-    session_id = state.get("session_id") or "default"
-    plan = plan_query_safe(rewritten, excerpt)
-    return {
-        "plan": plan,
-        "events": [node_event(
-            "plan_query",
-            input={
-                "rewritten": rewritten.model_dump(),
-                "schema_excerpt": excerpt,
+            output={"schema_excerpt": excerpt, "selected_tables": tables},
+            meta={
+                "user_id": user_id,
+                "session_id": session_id,
+                "schema_length": len(excerpt),
+                "selected_tables": tables,
             },
-            output={"plan": plan.model_dump()},
-            meta={"user_id": user_id, "session_id": session_id},
         )],
     }
 
-def validate_node(state: AgentState) -> dict:
-    plan = state["plan"]
-    rewritten = state["rewritten"]
-    excerpt = state["schema_excerpt"]
-    user_id = state.get("user_id") or "default"
-    session_id = state.get("session_id") or "default"
-    
-    from src.config import settings
-    limit_repairs = settings.sql_repair_max
-    
-    sql, params, error = "", [], None
-    current_plan = plan
-    attempts_done = 0
-    
-    for attempt in range(limit_repairs + 1):
-        attempts_done = attempt + 1
-        try:
-            sql, params = build_sql(current_plan)
-        except Exception as e:
-            err = f"Lỗi tạo SQL: {e}"
-            if attempt < limit_repairs:
-                current_plan = repair_plan_query(rewritten, excerpt, current_plan, err)
-                continue
-            error = err
-            break
-            
-        val = validate_sql(sql)
-        if not val.ok:
-            err = f"Lỗi validate SQL: {val.reason}"
-            if attempt < limit_repairs:
-                current_plan = repair_plan_query(rewritten, excerpt, current_plan, err)
-                continue
-            error = err
-            break
-            
-        error = None
-        break
-        
-    if error:
-        raise ValueError(error)
-        
-    return {
-        "sql": sql,
-        "params": params,
-        "plan": current_plan,
-        "events": [node_event(
-            "validate",
-            input={"plan": current_plan.model_dump()},
-            output={"sql": sql, "params": params, "repair_attempts": attempts_done},
-            meta={"user_id": user_id, "session_id": session_id},
-        )],
-    }
-
-def execute_node(state: AgentState) -> dict:
-    user_id = state.get("user_id") or "default"
-    session_id = state.get("session_id") or "default"
-    if state.get("error"):
-        return {
-            "rows": [],
-            "columns": [],
-            "events": [node_event(
-                "execute",
-                input={"sql": state.get("sql"), "params": state.get("params")},
-                output={"skipped": True, "reason": "validate_error", "error": state.get("error")},
-                meta={"user_id": user_id, "session_id": session_id},
-            )],
-        }
-        
-    sql = state["sql"]
-    params = state["params"]
-    
-    try:
-        rows = execute_sql(sql, params)
-        columns = list(rows[0].keys()) if rows else []
-        return {
-            "rows": rows,
-            "columns": columns,
-            "events": [node_event(
-                "execute",
-                input={"sql": sql, "params": params},
-                output={"columns": columns, "rows": rows, "row_count": len(rows)},
-                meta={"user_id": user_id, "session_id": session_id},
-            )],
-        }
-    except Exception as e:
-        raise RuntimeError(f"Lỗi truy vấn cơ sở dữ liệu: {e}")
-
-def should_render_chart_edge(state: AgentState) -> str:
-    if state.get("error"):
-        return "respond"
-    q = state.get("question", "")
-    rewritten = state.get("rewritten")
-    rewritten_text = rewritten.text if rewritten else ""
-    # StatAnswer.chart_requested chưa có trước respond — dùng keyword trên câu (sau rewrite hoặc câu gốc).
-    if should_render_chart(q) or should_render_chart(rewritten_text):
-        return "render_chart"
-    return "respond"
 
 def render_chart_node(state: AgentState) -> dict:
-    """Vẽ chart nếu được; lỗi render → bỏ chart, vẫn để respond trả text."""
-    rows = state.get("rows", [])
+    """Vẽ chart nếu được; nếu kết quả thiếu dòng tự động fallback SQL; lỗi render → bỏ chart, vẫn để respond trả text."""
+    from src.agent.chart_fallback import fallback_chart_query
+    rows = list(state.get("rows") or [])
+    columns = list(state.get("columns") or [])
+    sql = state.get("sql") or ""
     q = state.get("question", "")
     user_id = state.get("user_id") or "default"
     session_id = state.get("session_id") or "default"
+
+    # Chart fallback retry nếu kết quả chưa đủ dòng
+    fallback_applied = False
+    if len(rows) < 2:
+        fb_res = fallback_chart_query(question=q, sql=sql, rows=rows)
+        if fb_res and fb_res.get("rows"):
+            rows = fb_res["rows"]
+            columns = fb_res.get("columns") or list(rows[0].keys())
+            sql = fb_res.get("sql") or sql
+            fallback_applied = True
+
     try:
         spec = plan_chart(rows, q)
         png_base64 = render_chart(rows, spec)
@@ -698,17 +682,19 @@ def render_chart_node(state: AgentState) -> dict:
             "user_id": user_id,
             "session_id": session_id,
             "chart_spec": meta,
+            "fallback_applied": fallback_applied,
         })
-        return {
+        res_dict = {
             "chart_png_base64": png_base64 or "",
             "chart_spec": spec,
             "events": [node_event(
                 "render_chart",
-                input={"question": q, "columns": state.get("columns", []), "rows": rows, "row_count": len(rows)},
+                input={"question": q, "columns": columns, "rows": rows, "row_count": len(rows)},
                 output={
                     "chart_spec": meta,
                     "rendered": ok,
                     "chart_png_base64_len": len(png_base64 or ""),
+                    "fallback_applied": fallback_applied,
                 },
                 chart_png_base64=png_base64 or "",
                 chart_meta=meta,
@@ -716,13 +702,18 @@ def render_chart_node(state: AgentState) -> dict:
                 meta=node_meta,
             )],
         }
+        if fallback_applied:
+            res_dict["rows"] = rows
+            res_dict["columns"] = columns
+            res_dict["sql"] = sql
+        return res_dict
     except Exception as e:
         return {
             "chart_png_base64": "",
             "chart_spec": None,
             "events": [node_event(
                 "render_chart",
-                input={"question": q, "columns": state.get("columns", []), "rows": rows, "row_count": len(rows)},
+                input={"question": q, "columns": columns, "rows": rows, "row_count": len(rows)},
                 output={"rendered": False, "error": str(e)},
                 chart_png_base64="",
                 chart_meta={},
@@ -757,7 +748,10 @@ def respond_node(state: AgentState) -> dict:
     error = state.get("error")
     rows = state.get("rows", [])
     columns = state.get("columns", [])
+    chart_png = state.get("chart_png_base64") or ""
     
+    from src.agent.simple_answer import try_format_simple_answer
+    from src.config import settings
     from src.llm.client import invoke_text, use_offline_tools
     
     answer_source = "template"
@@ -771,23 +765,39 @@ def respond_node(state: AgentState) -> dict:
         ans = empty_stat_reply()
         answer_source = "empty"
     else:
-        lines = [", ".join(f"{c}={r[c]}" for c in columns) for r in rows[:20]]
-        template_ans = f"Kết quả ({len(rows)} dòng):\n" + "\n".join(lines)
-        ans = template_ans
+        # 1. Thử trả lời nhanh qua template tiếng Việt (skip LLM respond)
+        simple_ans = try_format_simple_answer(q, rows)
+        if simple_ans is not None:
+            ans = simple_ans
+            if chart_png:
+                ans = f"{ans} Biểu đồ đã tạo từ kết quả truy vấn."
+            answer_source = "template_simple"
+            llm_used = False
+        else:
+            # 2. Dữ liệu phức tạp (nhiều dòng / nhiều cột)
+            lines = [", ".join(f"{c}={r[c]}" for c in columns) for r in rows[:20]]
+            template_ans = f"Kết quả ({len(rows)} dòng):\n" + "\n".join(lines)
+            ans = template_ans
 
-        if not use_offline_tools():
-            llm_used = True
-            try:
-                raw = invoke_text(
-                    registry().render("respond_stat"),
-                    f"{_memory_context_block(state)}Câu hỏi: {q}\nDữ liệu:\n{template_ans}",
-                )
-                polished = _strip_thinking(raw)
-                if polished:
-                    ans = polished
-                    answer_source = "llm_text"
-            except Exception as exc:
-                answer_source = f"template_fallback:{type(exc).__name__}"
+            if not use_offline_tools():
+                llm_used = True
+                try:
+                    raw = invoke_text(
+                        registry().render("respond_stat"),
+                        f"{_memory_context_block(state)}Câu hỏi: {q}\nDữ liệu:\n{template_ans}",
+                        max_tokens=settings.sql_respond_max_tokens,
+                    )
+                    polished = _strip_thinking(raw)
+                    if polished:
+                        ans = polished
+                        answer_source = "llm_text"
+                except Exception as exc:
+                    answer_source = f"template_fallback:{type(exc).__name__}"
+
+    q_low = q.lower()
+    if any(k in q_low for k in ("chỗ", "cho ngoi", "5 chỗ", "7 chỗ", "9 chỗ", "16 chỗ", "29 chỗ", "40 chỗ", "45 chỗ")):
+        if "không có thông tin số chỗ ngồi" not in ans.lower():
+            ans = f"{ans}\n(Lưu ý: Hệ thống chỉ phân loại 4 nhóm phương tiện CAR, MOTORCYCLE, TRUCK, BUS, không có thông tin số chỗ ngồi.)"
 
     stat = StatAnswer(
         answer_vi=ans,
@@ -841,12 +851,17 @@ def _build_graph(checkpointer=None):
     graph.add_node("recall", _wrap_node("recall", recall_node))
     graph.add_node("rewrite", _wrap_node("rewrite", rewrite_node))
     graph.add_node("classify", _wrap_node("classify", classify_node))
+    graph.add_node("respond_inline", _wrap_node("respond_inline", respond_inline_node))
     graph.add_node("orchestrator", _wrap_node("orchestrator", orchestrator_node))
     graph.add_node("orchestrator_respond", _wrap_node("orchestrator_respond", orchestrator_respond_node))
     graph.add_node("retrieve_schema", _wrap_node("retrieve_schema", retrieve_schema_node))
-    graph.add_node("plan_query", _wrap_node("plan_query", plan_query_node))
-    graph.add_node("validate", _wrap_node("validate", validate_node))
-    graph.add_node("execute", _wrap_node("execute", execute_node))
+    from src.agent.generate_sql import generate_sql_node
+    from src.agent.validate_sql import validate_sql_node, repair_sql_node
+    from src.agent.execute_sql import execute_sql_node
+    graph.add_node("generate_sql", _wrap_node("generate_sql", generate_sql_node))
+    graph.add_node("validate_sql", _wrap_node("validate_sql", validate_sql_node))
+    graph.add_node("repair_sql", _wrap_node("repair_sql", repair_sql_node))
+    graph.add_node("execute_sql", _wrap_node("execute_sql", execute_sql_node))
     graph.add_node("render_chart", _wrap_node("render_chart", render_chart_node))
     graph.add_node("respond", _wrap_node("respond", respond_node))
     
@@ -858,7 +873,44 @@ def _build_graph(checkpointer=None):
     graph.add_edge(START, "recall")
     graph.add_edge("recall", "rewrite")
     graph.add_edge("rewrite", "classify")
-    graph.add_edge("classify", "orchestrator")
+    
+    def route_classify(state: AgentState) -> str:
+        ans = (state.get("answer") or "").strip()
+        intent = state.get("intent", "query_data")
+        if ans and intent in ("chat", "clarify"):
+            return "respond_inline"
+
+        from src.agent.orchestrator import is_multi_question
+        q = state.get("question", "")
+        rewritten = state.get("rewritten")
+        q_text = rewritten.text if rewritten else q
+
+        if is_multi_question(q_text):
+            return "orchestrator"
+
+        if intent == "query_data":
+            return "retrieve_schema"
+        elif intent in ("how_to", "troubleshoot", "concept"):
+            from src.agent.intent import is_stat_event_domain
+            if is_stat_event_domain(q_text):
+                return "retrieve_schema"
+            return "retrieve_docs"
+        elif intent == "out_of_scope":
+            from src.agent.intent import is_stat_event_domain
+            if is_stat_event_domain(q_text):
+                return "retrieve_schema"
+            return "out_of_scope"
+
+        return "orchestrator"
+
+    graph.add_conditional_edges("classify", route_classify, {
+        "respond_inline": "respond_inline",
+        "retrieve_schema": "retrieve_schema",
+        "retrieve_docs": "retrieve_docs",
+        "out_of_scope": "out_of_scope",
+        "orchestrator": "orchestrator",
+    })
+    graph.add_edge("respond_inline", END)
     
     graph.add_conditional_edges("orchestrator", route_orchestrator, {
         "query_data": "retrieve_schema",
@@ -867,13 +919,44 @@ def _build_graph(checkpointer=None):
         "multi": "orchestrator_respond",
     })
     
-    # Query Data branch
-    graph.add_edge("retrieve_schema", "plan_query")
-    graph.add_edge("plan_query", "validate")
-    graph.add_edge("validate", "execute")
-    graph.add_conditional_edges("execute", should_render_chart_edge, {
+    def _after_validate(state: AgentState) -> str:
+        val = state.get("sql_validation") or {}
+        if val.get("ok"):
+            return "execute_sql"
+        repair_count = int(state.get("repair_count") or 0)
+        if repair_count < settings.sql_repair_max:
+            return "repair_sql"
+        return "respond"
+
+    def should_render_chart_edge(state: AgentState) -> str:
+        rows = state.get("rows") or []
+        if not rows:
+            return "respond"
+        q = state.get("question", "")
+        rewritten = state.get("rewritten")
+        q_text = rewritten.text if rewritten else q
+        if should_render_chart(q_text):
+            return "render_chart"
+        return "respond"
+
+    def _after_execute(state: AgentState) -> str:
+        if state.get("error") and int(state.get("repair_count") or 0) < settings.sql_repair_max:
+            return "repair_sql"
+        return should_render_chart_edge(state)
+
+    # Query Data branch (v7 text-to-SQL: retrieve_schema -> generate_sql -> validate_sql <-> repair_sql -> execute_sql -> render_chart/respond)
+    graph.add_edge("retrieve_schema", "generate_sql")
+    graph.add_edge("generate_sql", "validate_sql")
+    graph.add_conditional_edges("validate_sql", _after_validate, {
+        "execute_sql": "execute_sql",
+        "repair_sql": "repair_sql",
+        "respond": "respond",
+    })
+    graph.add_edge("repair_sql", "validate_sql")
+    graph.add_conditional_edges("execute_sql", _after_execute, {
+        "repair_sql": "repair_sql",
         "render_chart": "render_chart",
-        "respond": "respond"
+        "respond": "respond",
     })
     graph.add_edge("render_chart", "respond")
     graph.add_edge("respond", END)
@@ -888,6 +971,11 @@ def _build_graph(checkpointer=None):
     graph.add_edge("out_of_scope", END)
     
     return graph.compile(checkpointer=checkpointer)
+
+
+def reset_graph() -> None:
+    global _compiled
+    _compiled = None
 
 
 def _get_graph():
@@ -907,7 +995,18 @@ def run_agent(inp: Agent_Input, parent_span: Any = None, session_id: str = "defa
     token = _trace_span_var.set(parent_span)
     try:
         state = _get_graph().invoke(
-            {"question": question, "rewritten": inp.rewritten, "user_id": uid, "session_id": session_id, "events": []},
+            {
+                "question": question,
+                "rewritten": inp.rewritten,
+                "user_id": uid,
+                "session_id": session_id,
+                "events": [],
+                "sql": "",
+                "repair_count": 0,
+                "error": "",
+                "rows": [],
+                "columns": [],
+            },
             config=config,
         )
         result = state.get("result")
@@ -937,7 +1036,18 @@ def run_agent_stream(inp: Agent_Input, parent_span: Any = None, session_id: str 
         try:
             res = ctx.run(
                 _get_graph().invoke,
-                {"question": question, "rewritten": inp.rewritten, "user_id": uid, "session_id": session_id, "events": []},
+                {
+                    "question": question,
+                    "rewritten": inp.rewritten,
+                    "user_id": uid,
+                    "session_id": session_id,
+                    "events": [],
+                    "sql": "",
+                    "repair_count": 0,
+                    "error": "",
+                    "rows": [],
+                    "columns": [],
+                },
                 config=config,
             )
             if res and "result" in res:

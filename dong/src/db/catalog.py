@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from functools import lru_cache
 from pathlib import Path
+import re
 from typing import Any
 
 import yaml
@@ -142,3 +143,164 @@ def build_schema_excerpt(tables: list[str] | None = None) -> str:
         sections.append("\n".join(lines))
 
     return "\n\n".join(sections).strip()
+
+
+# Safe default table when question does not match any domain rule or token score.
+# In VMS KCN Hưng Phú, plate_event (lượt xe ra/vào / ALPR) is the primary and most frequent dataset.
+_DEFAULT_TABLE = "plate_event"
+
+_STOP_WORDS = {
+    "a", "an", "bao", "biết", "các", "cho", "có", "của", "cứu", "danh",
+    "đang", "đó", "được", "gì", "hãy", "hôm", "kê", "là", "một", "nào",
+    "nay", "này", "năm", "ngày", "những", "nhiêu", "ở", "qua", "ra", "sách",
+    "tại", "tháng", "the", "thống", "tôi", "tra", "trong", "và", "vào", "với", "xem",
+}
+
+# Domain heuristics: map regex pattern to catalog table key.
+# Ordered by domain specificity to avoid false positives (e.g. vehicle before generic terms).
+_DOMAIN_RULES: list[tuple[re.Pattern[str], str]] = [
+    (
+        re.compile(
+            r"ô\s*tô|o\s*to|xe\s*máy|xe\s*may|xe\s*đạp|xe\s*dap|xe\s*tải|xe\s*tai|"
+            r"xe\s*buýt|xe\s*buyt|xe\s*bus|xe\s*hơi|xe\s*hoi|xe\s*con|"
+            r"biển\s*số|bien\s*so|biển\s*kiểm\s*soát|bien\s*kiem\s*soat|"
+            r"phương\s*tiện|phuong\s*tien|lượt\s*xe|luot\s*xe|\bxe\b|alpr|license\s*plate|"
+            r"\bcar\b|\bcars\b|\bmotorcycle\b|\bmotorcycles\b|\btruck\b|\bbus\b|\bvehicle\b|\bvehicles\b|"
+            r"camera\s+(?:phương\s*tiện|phuong\s*tien|biển\s*số|bien\s*so|xe)\b|plate_events?|its\.plate",
+            re.IGNORECASE,
+        ),
+        "plate_event",
+    ),
+    (
+        re.compile(
+            r"cháy|chay|khói|khoi|hỏa\s*hoạn|hoa\s*hoan|báo\s*cháy|bao\s*chay|báo\s*khói|bao\s*khoi|"
+            r"\bfire\b|\bsmoke\b|firesmoke|fire_smoke(?:_event)?",
+            re.IGNORECASE,
+        ),
+        "fire_smoke_event",
+    ),
+    (
+        re.compile(
+            r"khuôn\s*mặt|khuon\s*mat|gương\s*mặt|guong\s*mat|nhận\s*diện\s*mặt|nhan\s*dien\s*mat|"
+            r"quét\s*mặt|quet\s*mat|\bmặt\b|"
+            r"chấm\s*công|cham\s*cong|nhân\s*viên|nhan\s*vien|công\s*nhân|cong\s*nhan|"
+            r"smart\s*face|\bface\b|\bfaces\b|smf(?:_face_events)?",
+            re.IGNORECASE,
+        ),
+        "smf_face_events",
+    ),
+    (
+        re.compile(
+            r"xâm\s*nhập|xam\s*nhap|hàng\s*rào\s*ảo|hang\s*rao\s*ao|hàng\s*rào|hang\s*rao|"
+            r"vùng\s*cấm|vung\s*cam|khu\s*vực\s*bảo\s*vệ|khu\s*vuc\s*bao\s*ve|vượt\s*rào|vuot\s*rao|"
+            r"virtual\s*fence|\bzone\b|\bzones\b|zone_events?",
+            re.IGNORECASE,
+        ),
+        "zone_event",
+    ),
+    (
+        re.compile(
+            r"bất\s*thường|bat\s*thuong|ẩu\s*đả|au\s*da|đánh\s*nhau|danh\s*nhau|"
+            r"đám\s*đông|dam\s*dong|tụ\s*tập|tu\s*tap|leo\s*trèo|leo\s*treo|trèo\s*rào|treo\s*rao|"
+            r"mực\s*nước|muc\s*nuoc|ngập\s*nước|ngap\s*nuoc|\bngập\b|\bngap\b|"
+            r"lảng\s*vảng|lang\s*vang|loitering|\banomaly\b|anomaly_events?|"
+            r"fight_detection|crowd_detection|water_level",
+            re.IGNORECASE,
+        ),
+        "anomaly_event",
+    ),
+]
+
+
+def _extract_query_tokens(text: str) -> list[str]:
+    lowered = (text or "").lower()
+    raw = re.findall(r"[\w]+", lowered, flags=re.UNICODE)
+    return [t for t in raw if len(t) >= 2 and t not in _STOP_WORDS]
+
+
+def _score_table(tbl: str, info: dict[str, Any], query_text: str, tokens: list[str]) -> int:
+    score = 0
+    q_lower = query_text.lower()
+
+    if tbl in q_lower:
+        score += 15
+    table_id = str(info.get("id", "")).lower()
+    if table_id and table_id in q_lower:
+        score += 15
+
+    desc = str(info.get("description", "")).lower()
+    for token in tokens:
+        if token in desc:
+            score += 2
+
+    cols = info.get("columns", {})
+    if isinstance(cols, dict):
+        for col_name, meta in cols.items():
+            col_lower = col_name.lower()
+            if col_lower in q_lower:
+                score += 10
+            elif any(t == col_lower for t in tokens):
+                score += 8
+
+            if isinstance(meta, dict):
+                col_desc = str(meta.get("description", "")).lower()
+                for token in tokens:
+                    if token in col_desc:
+                        score += 1
+                for sample in meta.get("sample_values") or []:
+                    sample_str = str(sample).lower()
+                    if sample_str and (sample_str in q_lower or sample_str in tokens):
+                        score += 6
+    return score
+
+
+def select_relevant_tables(question: str, limit: int = 4) -> list[str]:
+    """Chọn tối đa `limit` tên bảng từ catalog phù hợp nhất với câu hỏi (học duy).
+
+    Thứ tự ưu tiên:
+    1. Heuristics theo domain:
+       - vehicle/biển số/ALPR/lượt xe -> plate_event
+       - cháy/khói -> fire_smoke_event
+       - mặt/chấm công -> smf_face_events
+       - xâm nhập/hàng rào/zone -> zone_event
+       - bất thường/anomaly -> anomaly_event
+    2. Fallback scoring: so khớp tokens của câu hỏi với table id, description, column names,
+       column descriptions và sample_values; xếp hạng và chọn top <= limit.
+    3. Safe default set: nếu không khớp bảng nào, trả về `['plate_event']` (bảng nghiệp vụ
+       chính và phổ biến nhất của VMS KCN Hưng Phú).
+
+    Đảm bảo không bao giờ trả về bảng ngoài catalog và len(result) <= limit.
+    """
+    if limit <= 0:
+        return []
+
+    catalog = _load_catalog()
+    allowed = set(catalog.keys())
+    q = (question or "").strip()
+
+    # 1. Domain heuristics
+    matched_domains: list[str] = []
+    for pattern, tbl in _DOMAIN_RULES:
+        if tbl in allowed and pattern.search(q):
+            if tbl not in matched_domains:
+                matched_domains.append(tbl)
+
+    if matched_domains:
+        return matched_domains[:limit]
+
+    # 2. Fallback token-based scoring
+    tokens = _extract_query_tokens(q)
+    scored: list[tuple[int, str]] = []
+    for tbl, info in catalog.items():
+        s = _score_table(tbl, info, q, tokens)
+        if s > 0:
+            scored.append((s, tbl))
+
+    scored.sort(key=lambda x: (-x[0], x[1]))
+    picked = [tbl for _, tbl in scored[:limit]]
+    if picked:
+        return picked
+
+    # 3. Safe default fallback
+    default_tbl = _DEFAULT_TABLE if _DEFAULT_TABLE in allowed else (next(iter(allowed)) if allowed else "")
+    return [default_tbl][:limit] if default_tbl else []

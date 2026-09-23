@@ -1,49 +1,38 @@
-# AGENTS.md — agent dong (v6)
+# AGENTS.md — agent dong
 
-Hướng dẫn cho agent khi làm việc trong `agent-harness/dong`.
+Hướng dẫn ngắn cho AI agent trong `agent-harness/dong`.
 
-## Specs (đọc trước khi code)
+## Trạng thái
 
-1. `specs/product-spec.md` — mục tiêu & acceptance criteria
-2. `specs/implementation-plan.md` — checklist từng phase & task
-3. `specs/test-plan.md` — quy trình test offline (pytest) và live (Docker + 196)
-4. `specs/change-log.md` — lịch sử thay đổi qua từng task
+- **v7:** Production verified — Docker + `self_hosted` @ 196, smoke 7/7, pytest 595, eval **27/30** (chưa đạt ≥28; residual 018/021/023).
+- Phase 1–6 done; Phase 7 còn 1 dòng eval target trong `specs/implementation-plan.md`.
 
-## Rules
+## Specs (tài liệu bắt buộc đọc trước khi code)
 
-- Always read the specs before coding.
-- Implement only **one unchecked item** (`[ ]`) mỗi lần — đánh `[x]` khi xong.
-- Keep the app simple; code ngắn, production-only, không thêm thư viện không cần thiết.
-- Do not change architecture unless the spec is updated first.
-- Đảm bảo Docker compose là đường chạy chính duy nhất (`docker compose up --build -d`).
-- After each task:
-  - Mark task completed (`[x]`) in `specs/implementation-plan.md`.
-  - Update `specs/change-log.md` (1 entry ngắn).
-  - Provide manual test steps & review against acceptance criteria.
+1. `specs/product-spec.md` — Yêu cầu nghiệp vụ, luồng xử lý và tiêu chuẩn nghiệm thu.
+2. `specs/implementation-plan.md` — Danh sách các phase triển khai tuần tự.
+3. `specs/test-plan.md` — Kế hoạch kiểm thử tự động, thủ công và golden-30.
+4. `specs/change-log.md` — Nhật ký thay đổi và kết quả review qua từng bước.
 
-## Quick Run & Test Commands
+## Quy tắc thực thi (Rules)
+
+- Luôn đọc kỹ specs trước khi viết code.
+- Thực hiện từng mục chưa hoàn thành (`[ ]`) một cách tuần tự, không nhảy cóc hay gộp nhiều phase.
+- Giữ ứng dụng gọn gàng, đúng thiết kế, không tự ý thêm thư viện ngoài hoặc thay đổi kiến trúc.
+- Sau mỗi lần triển khai:
+  - Đánh dấu hoàn thành `[x]` trong `specs/implementation-plan.md`.
+  - Cập nhật chi tiết trong `specs/change-log.md`.
+  - Cung cấp các bước kiểm thử thủ công rõ ràng.
+- Chế độ chạy chính thức là **Docker**: `docker compose up --build -d`.
+- Backend production sử dụng `LLM_BACKEND=self_hosted` trỏ tới `192.168.1.196:18083` (model `qwen3-4b`).
+
+## Kiểm thử nhanh
 
 ```bash
-# Đường chạy chính (Docker):
 cd agent-harness/dong
-docker compose up --build -d
-curl -s http://localhost:8000/api/health
-curl -s http://localhost:8000/api/llm/ping
-
-# Kiểm tra test offline nhanh:
 pytest -q
-
-# Chạy eval golden-30 (Phase 7):
-python eval/run.py --judge
-```
-
-## Cursor + Antigravity Delegation
-
-| Cursor | Antigravity |
-|--------|-------------|
-| Spec, plan, review | Implement **đúng 1 task** |
-
-```bash
-# Delegate 1 task cụ thể:
-./scripts/antigravity-delegate.sh --workdir agent-harness/dong --timeout 600 "Continue with the next unchecked item in specs/implementation-plan.md..."
+docker compose up --build -d
+./scripts/verify-docker-self-hosted.sh
+./scripts/smoke-production.sh
+PYTHONPATH=. python eval/run.py   # golden-30 → eval/results/golden-30.md
 ```

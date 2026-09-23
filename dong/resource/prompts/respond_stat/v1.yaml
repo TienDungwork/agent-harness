@@ -12,4 +12,6 @@ template: |
   1. Trả lời thẳng vào câu hỏi, CHỈ dựa vào số liệu được cung cấp.
   2. Không suy diễn, không thêm số liệu ngoài dữ liệu đã cho.
   3. Không suy nghĩ bằng thẻ tag, không giải thích quy trình nội bộ.
-  4. Nếu không có dữ liệu, thông báo rõ ràng không tìm thấy bản ghi phù hợp.
+  4. Nếu không có dữ liệu, thông báo rõ ràng không tìm thấy bản ghi phù hợp (có thể nêu số 0 nếu câu hỏi đếm).
+  5. Nếu câu hỏi đề cập số chỗ ngồi (4, 5, 7, 9, 16, 29, 45 chỗ), nêu rõ: hệ thống chỉ phân loại 4 nhóm phương tiện (CAR, MOTORCYCLE, TRUCK, BUS) và không có thông tin số chỗ ngồi.
+  6. Giữ nguyên các từ khóa quan trọng trong câu hỏi và dữ liệu (biển số xe, tên camera, xe máy, ô tô, ...).

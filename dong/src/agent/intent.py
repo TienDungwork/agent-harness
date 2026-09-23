@@ -36,9 +36,53 @@ def is_stat_event_domain(text: str) -> bool:
     )
 
 
+CHAT_GREETING_KEYWORDS = (
+    "xin chào",
+    "chào bạn",
+    "hello",
+    "hi ",
+    "bạn làm được gì",
+    "cảm ơn",
+    "thank",
+)
+
+
+def is_chat_greeting(text: str) -> bool:
+    """True nếu câu hỏi thuộc dạng chào hỏi / giao tiếp cơ bản (chat intent)."""
+    low = (text or "").lower().strip()
+    if not low:
+        return False
+    stripped = low.rstrip("!?. ,")
+    if stripped in ("hi", "hello", "chào", "xin chào", "cảm ơn", "thanks", "thank you"):
+        return True
+    if stripped.startswith(("chào ", "xin chào ", "hello ", "hi ")):
+        return True
+    return any(k in low for k in CHAT_GREETING_KEYWORDS)
+
+
+is_chat_like = is_chat_greeting
+
+
 def _offline_classify(text: str) -> IntentResult:
     """Heuristic offline cho intent khi test hoặc không có LLM."""
     low = text.lower()
+    cleaned = text.strip()
+
+    # 0. Greetings / Chat
+    if is_chat_greeting(cleaned):
+        return IntentResult(
+            intent="chat",
+            reason="Offline heuristic: chào hỏi, giao tiếp cơ bản",
+            answer="Chào bạn, tôi là trợ lý ảo AIOC. Bạn cần tôi giúp gì về hệ thống camera và sự kiện?",
+        )
+        
+    # 0.1 Clarify for vague empty-ish
+    if not cleaned or len(cleaned) < 3:
+        return IntentResult(
+            intent="clarify",
+            reason="Offline heuristic: câu quá ngắn hoặc rỗng",
+            answer="Bạn có thể nói rõ hơn yêu cầu của mình được không?"
+        )
 
     # 1. Out of scope
     if any(k in low for k in ("thời tiết", "bóng đá", "tổng thống", "chính trị", "giá vàng", "nấu ăn", "viết một bài thơ", "bài thơ", "cổ phiếu")):
@@ -85,19 +129,59 @@ def _offline_classify(text: str) -> IntentResult:
     return IntentResult(intent="query_data", reason="Offline heuristic: mặc định truy vấn số liệu")
 
 
+_NEEDS_PIPELINE = frozenset(
+    {
+        "query_data",
+        "how_to",
+        "troubleshoot",
+        "concept",
+        "out_of_scope",
+    }
+)
+
+
+def sanitize_intent_result(res: IntentResult) -> IntentResult:
+    """Xóa answer với các intent pipeline để chống fake inline skip."""
+    if res.intent in _NEEDS_PIPELINE:
+        res.answer = ""
+    return res
+
+
 def classify_intent(question: str | RewrittenQuestion) -> IntentResult:
     """Phân loại ý định câu hỏi thành IntentResult thông qua structured LLM."""
     text = question.text if isinstance(question, RewrittenQuestion) else str(question)
     cleaned = text.strip()
 
     if use_offline_tools():
-        return _offline_classify(cleaned)
+        return sanitize_intent_result(_offline_classify(cleaned))
 
     messages = [
         {"role": "system", "content": registry().render("classify")},
         {"role": "user", "content": f"Câu hỏi: {cleaned}"},
     ]
-    return invoke_structured(messages, IntentResult)
+    raw = invoke_structured(messages, IntentResult)
+    return sanitize_intent_result(raw)
+
+
+_HOW_TO_OVERRIDE_KEYWORDS = (
+    "vẽ sơ đồ",
+    "sơ đồ",
+    "quản lý camera",
+    "aioc.atin.vn",
+    "aioc",
+    "/devices",
+    "devices",
+    "đăng nhập",
+    "thêm camera",
+    "trực tuyến",
+    "ngoại tuyến",
+)
+
+
+def _is_how_to_override(text: str) -> bool:
+    """True nếu câu hỏi chứa từ khóa rõ ràng thuộc how_to — không thể là clarify."""
+    low = (text or "").lower()
+    return any(k in low for k in _HOW_TO_OVERRIDE_KEYWORDS)
 
 
 def classify_intent_safe(question: str | RewrittenQuestion) -> IntentResult:
@@ -105,9 +189,17 @@ def classify_intent_safe(question: str | RewrittenQuestion) -> IntentResult:
     text = question.text if isinstance(question, RewrittenQuestion) else str(question)
     cleaned = text.strip()
     try:
-        return classify_intent(question)
+        result = classify_intent(question)
+        # Override: nếu LLM trả clarify cho câu hỏi rõ ràng là how_to → sửa lại
+        if result.intent == "clarify" and _is_how_to_override(cleaned):
+            return sanitize_intent_result(IntentResult(
+                intent="how_to",
+                reason="Override: câu hỏi rõ ràng là how_to (vẽ sơ đồ / AIOC / devices)",
+            ))
+        return result
     except Exception:
-        return _offline_classify(cleaned)
+        return sanitize_intent_result(_offline_classify(cleaned))
+
 
 
 def classify_intent_str(question: str | RewrittenQuestion) -> str:

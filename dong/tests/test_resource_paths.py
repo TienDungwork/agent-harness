@@ -22,7 +22,7 @@ def test_default_docs_root_and_prompts_dir():
     reg = registry()
     assert reg.prompts_dir.name == "prompts"
     assert reg.prompts_dir.parent.name == "resource"
-    assert (reg.prompts_dir / "agent_system" / "production.txt").exists()
+    assert (reg.prompts_dir / "sql_agent" / "production.txt").exists()
 
 
 def test_catalog_loads_from_yaml():
