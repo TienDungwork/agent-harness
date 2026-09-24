@@ -53,7 +53,9 @@
     graphNodes: document.getElementById('graph-nodes'),
     graphIoEmpty: document.getElementById('graph-io-empty'),
     graphIoBody: document.getElementById('graph-io-body'),
+    graphPanelHint: document.getElementById('graph-panel-hint'),
   };
+
 
   // ==========================================================================
   // Session & LocalStorage Helpers (Phase 2)
@@ -426,6 +428,9 @@
     }
     state.streamAbortController = new AbortController();
     state.streamEventsCount = 0;
+    state.streamStartTime = performance.now();
+    state.nodeStartTimes = {};
+    state.nodeDurations = {};
     state.lastChart = null;
     state.lastChartSpec = null;
     state.lastChartType = null;
@@ -433,6 +438,9 @@
     state.lastStreamError = null;
     state.graphNodes = {};
     if (el.graphNodes) el.graphNodes.innerHTML = '';
+    if (el.graphPanelHint) {
+      el.graphPanelHint.innerHTML = '<span class="graph-panel-total">⏱️ Đang chạy…</span>';
+    }
     if (el.graphPlaceholder) {
       el.graphPlaceholder.classList.remove('hidden');
       el.graphPlaceholder.textContent = 'Chờ sự kiện node...';
@@ -455,17 +463,38 @@
     let raw =
       'input:\n' + formatIoValue(n.input) +
       '\n\noutput:\n' + formatIoValue(n.output);
+    if (n.durationMs !== undefined && n.durationMs !== null) {
+      const durFormatted = n.durationMs >= 1000 ? (n.durationMs / 1000).toFixed(2) + 's' : n.durationMs + 'ms';
+      raw += `\n\nthời gian thực thi (latency): ${durFormatted} (${n.durationMs}ms)`;
+    }
     if (n.meta && typeof n.meta === 'object' && Object.keys(n.meta).length > 0) {
       raw += '\n\nmeta:\n' + formatIoValue(n.meta);
     }
     el.graphIoBody.textContent = truncateIoText(raw);
   }
 
-  function upsertGraphNode(nodeId, status, input, output, meta) {
+  function upsertGraphNode(nodeId, status, input, output, meta, durationMs) {
     if (el.graphPlaceholder) el.graphPlaceholder.classList.add('hidden');
     const prev = state.graphNodes[nodeId] || {};
+    
+    let dur = durationMs !== undefined && durationMs !== null ? durationMs : (meta && meta.duration_ms);
+    if (!state.nodeStartTimes) state.nodeStartTimes = {};
+    if (!state.nodeDurations) state.nodeDurations = {};
+
+    if (status === 'running') {
+      state.nodeStartTimes[nodeId] = performance.now();
+    } else if (status === 'done') {
+      if ((dur === undefined || dur === null) && state.nodeStartTimes[nodeId]) {
+        dur = Math.round(performance.now() - state.nodeStartTimes[nodeId]);
+      }
+      if (dur !== undefined && dur !== null) {
+        state.nodeDurations[nodeId] = dur;
+      }
+    }
+
     const next = {
       status,
+      durationMs: dur !== undefined && dur !== null ? dur : prev.durationMs,
       input: status === 'done'
         ? input
         : (input !== undefined && input !== null ? input : prev.input),
@@ -484,7 +513,7 @@
       card.className = 'graph-node';
       card.dataset.nodeId = nodeId;
       card.innerHTML =
-        '<div class="graph-node-id"></div><div class="graph-node-status"></div>';
+        '<div class="graph-node-header"><span class="graph-node-id"></span><span class="graph-node-time"></span></div><div class="graph-node-status"></div>';
       card.addEventListener('click', () => showNodeIo(nodeId));
       card.addEventListener('mouseenter', () => {
         hoveredGraphNodeId = nodeId;
@@ -495,16 +524,72 @@
       });
       el.graphNodes.appendChild(card);
     }
-    card.classList.remove('running', 'done');
-    card.classList.add(status);
-    card.querySelector('.graph-node-id').textContent = nodeId;
-    card.querySelector('.graph-node-status').textContent =
-      status === 'running' ? 'đang chạy…' : 'xong — trỏ hoặc bấm để xem I/O';
+    let headerEl = card.querySelector('.graph-node-header');
+    let idEl = card.querySelector('.graph-node-id');
+    let timeEl = card.querySelector('.graph-node-time');
+    let statusEl = card.querySelector('.graph-node-status');
+
+    if (!headerEl) {
+      headerEl = document.createElement('div');
+      headerEl.className = 'graph-node-header';
+      idEl = document.createElement('span');
+      idEl.className = 'graph-node-id';
+      timeEl = document.createElement('span');
+      timeEl.className = 'graph-node-time';
+      headerEl.appendChild(idEl);
+      headerEl.appendChild(timeEl);
+      card.insertBefore(headerEl, card.firstChild);
+    } else {
+      if (!idEl) {
+        idEl = document.createElement('span');
+        idEl.className = 'graph-node-id';
+        headerEl.insertBefore(idEl, headerEl.firstChild);
+      }
+      if (!timeEl) {
+        timeEl = document.createElement('span');
+        timeEl.className = 'graph-node-time';
+        headerEl.appendChild(timeEl);
+      }
+    }
+    if (!statusEl) {
+      statusEl = document.createElement('div');
+      statusEl.className = 'graph-node-status';
+      card.appendChild(statusEl);
+    }
+
+    idEl.textContent = nodeId;
+
+    const curDur = next.durationMs;
+    let durLabel = '';
+    if (typeof curDur === 'number' && !isNaN(curDur)) {
+      durLabel = curDur >= 1000 ? (curDur / 1000).toFixed(2) + 's' : (curDur >= 10 ? Math.round(curDur) : curDur.toFixed(1)) + 'ms';
+    }
+
+    if (timeEl) {
+      if (status === 'running') {
+        timeEl.className = 'graph-node-time running';
+        timeEl.textContent = '…';
+        timeEl.style.display = 'inline-block';
+      } else if (durLabel) {
+        timeEl.className = 'graph-node-time';
+        timeEl.textContent = durLabel;
+        timeEl.style.display = 'inline-block';
+      } else {
+        timeEl.textContent = '';
+        timeEl.style.display = 'none';
+      }
+    }
+
+    statusEl.textContent =
+      status === 'running'
+        ? 'đang chạy…'
+        : (durLabel ? `xong (${durLabel}) — trỏ hoặc bấm để xem I/O` : 'xong — trỏ hoặc bấm để xem I/O');
 
     if (status === 'done' && (card.classList.contains('selected') || hoveredGraphNodeId === nodeId)) {
       showNodeIo(nodeId);
     }
   }
+
 
   // ==========================================================================
   // Markdown & Message Rendering
@@ -1157,6 +1242,11 @@
                   renderSessionList();
                 }
                 
+                if (state.streamStartTime && el.graphPanelHint) {
+                  const totalMs = Math.round(performance.now() - state.streamStartTime);
+                  const totalStr = totalMs >= 1000 ? (totalMs / 1000).toFixed(2) + 's' : totalMs + 'ms';
+                  el.graphPanelHint.innerHTML = '<span class="graph-panel-total">⏱️ Tổng: ' + totalStr + '</span>';
+                }
                 appendMessage('assistant', answerText, event.detail, chartPayload);
                 continue;
               }
@@ -1166,7 +1256,8 @@
                 event.status,
                 event.input,
                 event.output,
-                event.meta
+                event.meta,
+                event.duration_ms
               );
               state.streamEventsCount++;
             } catch (e) {
@@ -1174,6 +1265,7 @@
             }
           }
         }
+
       }
       if (!hasAnswer && currentRunId === graphRunId) {
         removeThinkingIndicator();

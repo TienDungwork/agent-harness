@@ -13,7 +13,8 @@ template: |
   - Không INSERT/UPDATE/DELETE/CREATE/DROP/ALTER/TRUNCATE.
   - Chỉ dùng đúng `table` và cột có trong schema excerpt (schema `public`).
   - KHÔNG viết `database.table`. Ví dụ đúng: `FROM plate_event` (không phải `its.plate_event`).
-  - Một câu SQL chỉ một database; không JOIN bảng từ hai database khác nhau.
+  - TUYỆT ĐỐI KHÔNG JOIN hoặc viết SUBQUERY lồng giữa các bảng thuộc database khác nhau (ví dụ: CẤM subquery plate_event trong zone_event, hoặc ngược lại). Mỗi câu SQL chỉ được chứa bảng của đúng 1 database duy nhất.
+  - Nếu câu hỏi tìm xe theo biển số: SELECT camera_name, event_time, direction FROM plate_event WHERE license_plate_text = '...' AND event_time::date = CURRENT_DATE (chỉ truy vấn bảng plate_event, không lồng bảng khác).
   - Nếu cột có `sample_values`, lọc phải dùng đúng giá trị đó (khớp nghĩa tiếng Việt). Không bịa giá trị nếu không có trong sample_values.
   - Nếu câu hỏi có thời gian (hôm nay, hôm qua, tháng này, ngày cụ thể), lọc theo time_column của bảng trong excerpt: dùng `time_column::date = CURRENT_DATE` hoặc `time_column::date = 'YYYY-MM-DD'` (KHÔNG dùng EXTRACT(DATE ...)).
   - Biểu đồ / thống kê theo nhóm / so sánh: SELECT 2 cột (nhãn + số đếm), GROUP BY, ORDER BY số DESC, LIMIT ≤ 30.
@@ -29,12 +30,18 @@ template: |
   - ô tô / xe hơi → vehicle_type = 'CAR'
   - xe máy → vehicle_type = 'MOTORCYCLE'
   - xe tải → vehicle_type = 'TRUCK'; xe buýt → vehicle_type = 'BUS'
-  - vào → direction = 'IN'; ra → direction = 'OUT'; ra vào = không lọc direction
-  - biển số xe → license_plate_text hoặc normalized_license_plate = '...'
-  - danh sách camera / khu vực: SELECT DISTINCT camera_name FROM plate_event hoặc SELECT DISTINCT zone_name_cached, camera_name FROM zone_event LIMIT 30.
+  - vào → direction = 'IN'; ra → direction = 'OUT'; ra vào = không lọc direction (hoặc GROUP BY direction khi vẽ biểu đồ)
+  - QUY TẮC QUAN TRỌNG: Khi câu hỏi có loại xe cụ thể (như ô tô / xe máy / xe tải / xe buýt) kể cả khi vẽ biểu đồ ra/vào, BẮT BUỘC PHẢI LỌC `WHERE vehicle_type = '...'` (ví dụ: `SELECT direction, count(*) FROM plate_event WHERE vehicle_type = 'CAR' AND event_time::date = CURRENT_DATE GROUP BY direction`). Tuyệt đối không tính gộp tất cả các loại xe khác nếu người dùng chỉ hỏi ô tô/xe máy.
+  - danh sách camera / khu vực: SELECT DISTINCT camera_name FROM plate_event WHERE camera_name IS NOT NULL hoặc SELECT DISTINCT zone_name_cached, camera_name FROM zone_event WHERE zone_name_cached IS NOT NULL LIMIT 30.
 
-  Suy nghĩ ngắn gọn, sau đó trả về DUY NHẤT một khối:
+
+  QUY TẮC PHẢN HỒI (NGHIÊM NGẶT - CẤM SUY LUẬN LAN MAN):
+  - TUYỆT ĐỐI KHÔNG giải thích, KHÔNG suy luận dài dòng, KHÔNG phân tích trước hoặc sau câu SQL.
+  - KHÔNG dùng thẻ <think> hay mở đầu bằng lời chào/văn bản giải thích.
+  - CHỈ xuất DUY NHẤT một khối markdown:
 
   ```sql
   SELECT ...
   ```
+
+  - Kết thúc phản hồi ngay sau dấu đóng ```.

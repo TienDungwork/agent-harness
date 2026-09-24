@@ -79,6 +79,16 @@ class OrchestratorPlan(BaseModel):
     is_multi: bool = False
     reason: str = ""
 
+    @field_validator("is_multi", mode="after")
+    @classmethod
+    def _validate_is_multi(cls, v: bool, info: Any) -> bool:
+        return v
+
+    def model_post_init(self, __context: Any) -> None:
+        if len(self.steps) >= 2:
+            self.is_multi = True
+
+
 
 class QueryResult(BaseModel):
     tool: str = "sql_builder"

@@ -35,6 +35,16 @@ STAT_KEYWORDS = (
     "số lượt",
     "vào cổng",
     "ra cổng",
+    "vi phạm",
+    "gần nhất",
+    "mới nhất",
+    "gần đây nhất",
+    "lúc nào",
+    "phương tiện",
+    "ô tô",
+    "xe máy",
+    "xe tải",
+    "biển số",
 )
 
 DOCS_KEYWORDS = (
@@ -65,8 +75,18 @@ SPLIT_PATTERNS = (
     " rồi ",
     ", và cho biết ",
     " và cho biết ",
+    ", và cho tôi biết ",
+    " và cho tôi biết ",
+    ", cho tôi biết ",
+    ", cho biết ",
     ", khác gì so với ",
     " khác gì so với ",
+    ", và đồng thời ",
+    " và đồng thời ",
+    ", đồng thời ",
+    " đồng thời ",
+    ", và ",
+    "? và ",
 )
 
 
@@ -122,18 +142,24 @@ def _offline_plan_orchestration(question: str) -> OrchestratorPlan:
             reason="Offline heuristic: docs-focused sơ đồ và phân biệt khái niệm (không gọi SQL)",
         )
 
-    # 3. Thử tách 2 bước dựa trên các mẫu nối câu: "rồi", "và cho biết", "khác gì so với"
+    # 3. Thử tách 2 bước dựa trên các mẫu nối câu: "rồi", "và cho biết", ", và ", "khác gì so với"
     for pat in SPLIT_PATTERNS:
         if pat in low:
             idx = low.find(pat)
-            part1 = text[:idx].strip().rstrip(",")
+            part1 = text[:idx].strip().rstrip(",").rstrip("?")
             part2 = text[idx + len(pat):].strip()
             if part1 and part2:
                 agent1 = _classify_sub_question(part1)
                 agent2 = _classify_sub_question(part2)
 
-                # Trường hợp multi-agent kết hợp docs và query_data (vd: case 023)
-                if agent1 != agent2:
+                # Nếu cả 2 phần đều là docs
+                if agent1 == "docs" and agent2 == "docs":
+                    return OrchestratorPlan(
+                        steps=[OrchestratorStep(agent="docs", sub_question=text)],
+                        is_multi=False,
+                        reason="Offline heuristic: câu hỏi docs chuyên biệt",
+                    )
+                else:
                     return OrchestratorPlan(
                         steps=[
                             OrchestratorStep(agent=agent1, sub_question=part1),
@@ -141,13 +167,6 @@ def _offline_plan_orchestration(question: str) -> OrchestratorPlan:
                         ],
                         is_multi=True,
                         reason=f"Offline heuristic: 2 bước multi-agent ({agent1} + {agent2})",
-                    )
-                # Nếu cả 2 phần đều là docs
-                elif agent1 == "docs":
-                    return OrchestratorPlan(
-                        steps=[OrchestratorStep(agent="docs", sub_question=text)],
-                        is_multi=False,
-                        reason="Offline heuristic: câu hỏi docs chuyên biệt",
                     )
 
     # 4. Phân loại 1 bước đơn (Single step)

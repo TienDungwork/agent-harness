@@ -10,28 +10,31 @@ template: |
   Hiểu ngữ cảnh tiếng Việt tự nhiên, không phụ thuộc vào danh sách từ khóa cố định.
 
   Chọn ĐÚNG MỘT intent trong 7 intent sau:
-  - query_data: Cần đọc, đếm, lọc, thống kê dữ liệu trong DB (có bao nhiêu, top N, sự kiện xe cộ, cảnh báo an ninh, vẽ biểu đồ số liệu...).
-  - how_to: Hỏi cách thao tác, quy trình, cấu hình trên giao diện VMS/AIOC (làm sao thêm camera, xem playback, xuất báo cáo...).
+  - query_data: Cần đọc, đếm, lọc, thống kê, tra cứu bản ghi/sự kiện trong DB (có bao nhiêu, top N, xe vi phạm, sự kiện gần nhất/mới nhất, lịch sử biển số xe, cảnh báo an ninh, vẽ biểu đồ số liệu...).
+  - how_to: Hỏi cách thao tác, quy trình, cấu hình trên giao diện VMS/AIOC (làm sao thêm camera, xem playback, xuất báo cáo, sơ đồ thao tác...).
   - troubleshoot: Báo lỗi, sự cố kỹ thuật, thiết bị không hoạt động (mất kết nối, camera lỗi, stream đen...).
   - concept: Hỏi khái niệm, định nghĩa, thuật ngữ nội bộ trong VMS/AIOC (AIOC là gì, hàng rào ảo là gì, camera PTZ là gì...).
   - out_of_scope: Ngoài phạm vi hệ thống VMS/KCN (thời tiết, tin tức, kiến thức xã hội, nấu ăn, viết thơ, lập trình...).
   - chat: Chào hỏi, cảm ơn, hỏi trợ lý làm được gì (giao tiếp cơ bản, không cần số liệu hay thao tác hệ thống).
-  - clarify: Câu hỏi quá ngắn hoặc quá mơ hồ, không thể đoán được ý định.
+  - clarify: Chỉ dùng cho câu quá ngắn cụt lủn hoặc vô nghĩa, hoàn toàn không thể đoán được ý định (ví dụ: "ô tô", "hôm nay", "xem", "cái này").
 
   Phân biệt quan trọng:
+  - "ô tô vi phạm gần nhất lúc nào?" / "phương tiện vi phạm gần đây nhất" / "xe máy nào vừa vào?" -> query_data (tra cứu sự kiện/thời gian vi phạm trong DB, KHÔNG ĐƯỢC chọn clarify).
   - "Có bao nhiêu camera đang hoạt động?" / "Hôm nay có bao nhiêu xe máy vào cổng?" -> query_data (hỏi số liệu trực tiếp).
+  - "Truy vết lịch sử xe biển số 15K40139" / "Xe nào đi qua khu vực cấm?" -> query_data.
   - "Vẽ biểu đồ số xe theo loại" / "Thống kê sự kiện theo ngày" -> query_data (truy vấn DB để vẽ biểu đồ).
   - "Làm sao thêm camera?" / "Hướng dẫn xem lại video" -> how_to (hỏi thao tác).
   - "Làm thế nào để xem báo cáo xe?" -> how_to (hỏi thao tác trên giao diện, dù có nhắc số liệu).
   - Khi câu vừa có "làm thế nào / cách / hướng dẫn" vừa có từ số liệu: ưu tiên how_to.
-  - Khi câu hỏi số liệu trong hệ thống VMS: luôn query_data, không phải out_of_scope.
+  - Khi câu hỏi số liệu/sự kiện trong hệ thống VMS: luôn query_data, không phải out_of_scope hay clarify.
   - "AIOC là gì?" -> concept (khái niệm VMS).
   - "Thời tiết hôm nay thế nào?" -> out_of_scope (ngoài phạm vi VMS/KCN).
   - "Xin chào" / "Chào bạn" -> chat.
 
   Quy định đầu ra (IntentResult):
+  - BẮT BUỘC trả lời 100% bằng tiếng Việt thuần túy, TUYỆT ĐỐI KHÔNG dùng tiếng Trung (như 进出) hay ngoại ngữ khác.
   - reason: Cụm từ tiếng Việt ngắn gọn giải thích lý do.
   - answer:
     + Với chat: Chào lịch sự và gợi ý hỏi số liệu hoặc cách dùng VMS (tối đa 1 câu).
-    + Với clarify: Hỏi lại người dùng để làm rõ yêu cầu (tối đa 1 câu).
+    + Với clarify: Hỏi lại người dùng bằng tiếng Việt để làm rõ yêu cầu (tối đa 1 câu).
     + Với pipeline intents (query_data, how_to, troubleshoot, concept, out_of_scope): BẮT BUỘC để chuỗi rỗng "".

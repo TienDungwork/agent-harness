@@ -1,0 +1,1876 @@
+{
+  "its": {
+    "plate_blacklist": [
+      {
+        "name": "id",
+        "type": "bigint",
+        "nullable": false
+      },
+      {
+        "name": "organization_id",
+        "type": "bigint",
+        "nullable": false
+      },
+      {
+        "name": "license_plate_text",
+        "type": "character varying",
+        "nullable": false
+      },
+      {
+        "name": "normalized_license_plate",
+        "type": "character varying",
+        "nullable": false
+      },
+      {
+        "name": "vehicle_type",
+        "type": "character varying",
+        "nullable": true
+      },
+      {
+        "name": "reason",
+        "type": "character varying",
+        "nullable": true
+      },
+      {
+        "name": "note",
+        "type": "text",
+        "nullable": true
+      },
+      {
+        "name": "is_active",
+        "type": "boolean",
+        "nullable": false
+      },
+      {
+        "name": "created_by",
+        "type": "character varying",
+        "nullable": true
+      },
+      {
+        "name": "updated_by",
+        "type": "character varying",
+        "nullable": true
+      },
+      {
+        "name": "created_at",
+        "type": "timestamp with time zone",
+        "nullable": true
+      },
+      {
+        "name": "updated_at",
+        "type": "timestamp with time zone",
+        "nullable": true
+      }
+    ],
+    "plate_event": [
+      {
+        "name": "id",
+        "type": "bigint",
+        "nullable": false
+      },
+      {
+        "name": "camera_id",
+        "type": "uuid",
+        "nullable": true
+      },
+      {
+        "name": "event_time",
+        "type": "timestamp with time zone",
+        "nullable": false
+      },
+      {
+        "name": "entity_type",
+        "type": "character varying",
+        "nullable": false
+      },
+      {
+        "name": "entity_id",
+        "type": "character varying",
+        "nullable": true
+      },
+      {
+        "name": "direction",
+        "type": "character varying",
+        "nullable": false
+      },
+      {
+        "name": "license_plate_text",
+        "type": "character varying",
+        "nullable": true
+      },
+      {
+        "name": "license_plate_status",
+        "type": "character varying",
+        "nullable": true
+      },
+      {
+        "name": "plate_color",
+        "type": "character varying",
+        "nullable": true
+      },
+      {
+        "name": "vehicle_type",
+        "type": "character varying",
+        "nullable": true
+      },
+      {
+        "name": "car_type",
+        "type": "character varying",
+        "nullable": true
+      },
+      {
+        "name": "manufacturer",
+        "type": "character varying",
+        "nullable": true
+      },
+      {
+        "name": "vehicle_color",
+        "type": "character varying",
+        "nullable": true
+      },
+      {
+        "name": "total_number_of_seats",
+        "type": "integer",
+        "nullable": true
+      },
+      {
+        "name": "camera_code",
+        "type": "character varying",
+        "nullable": true
+      },
+      {
+        "name": "camera_name",
+        "type": "character varying",
+        "nullable": true
+      },
+      {
+        "name": "snapshot_url",
+        "type": "text",
+        "nullable": true
+      },
+      {
+        "name": "snapshot_base64",
+        "type": "text",
+        "nullable": true
+      },
+      {
+        "name": "payload",
+        "type": "jsonb",
+        "nullable": true
+      },
+      {
+        "name": "created_at",
+        "type": "timestamp with time zone",
+        "nullable": true
+      },
+      {
+        "name": "normalized_license_plate",
+        "type": "character varying",
+        "nullable": true
+      },
+      {
+        "name": "is_blacklisted",
+        "type": "boolean",
+        "nullable": false
+      },
+      {
+        "name": "blacklist_id",
+        "type": "bigint",
+        "nullable": true
+      },
+      {
+        "name": "organization_id",
+        "type": "bigint",
+        "nullable": true
+      },
+      {
+        "name": "is_whitelisted",
+        "type": "boolean",
+        "nullable": false
+      },
+      {
+        "name": "whitelist_id",
+        "type": "bigint",
+        "nullable": true
+      },
+      {
+        "name": "chassis_number",
+        "type": "character varying",
+        "nullable": true
+      },
+      {
+        "name": "vehicle_owner_name",
+        "type": "character varying",
+        "nullable": true
+      },
+      {
+        "name": "site_id",
+        "type": "bigint",
+        "nullable": true
+      },
+      {
+        "name": "iam_area_id",
+        "type": "bigint",
+        "nullable": true
+      },
+      {
+        "name": "iam_zone_id",
+        "type": "bigint",
+        "nullable": true
+      },
+      {
+        "name": "node_id",
+        "type": "bigint",
+        "nullable": true
+      },
+      {
+        "name": "node_path",
+        "type": "text",
+        "nullable": true
+      }
+    ],
+    "plate_violation_case": [
+      {
+        "name": "id",
+        "type": "bigint",
+        "nullable": false
+      },
+      {
+        "name": "plate_event_id",
+        "type": "bigint",
+        "nullable": false
+      },
+      {
+        "name": "violation_event_id",
+        "type": "bigint",
+        "nullable": true
+      },
+      {
+        "name": "violation_type_code",
+        "type": "character varying",
+        "nullable": false
+      },
+      {
+        "name": "status",
+        "type": "character varying",
+        "nullable": false
+      },
+      {
+        "name": "deadline_at",
+        "type": "timestamp with time zone",
+        "nullable": true
+      },
+      {
+        "name": "fine_min",
+        "type": "numeric",
+        "nullable": true
+      },
+      {
+        "name": "fine_max",
+        "type": "numeric",
+        "nullable": true
+      },
+      {
+        "name": "fine_amount",
+        "type": "numeric",
+        "nullable": true
+      },
+      {
+        "name": "legal_ref",
+        "type": "text",
+        "nullable": true
+      },
+      {
+        "name": "note",
+        "type": "text",
+        "nullable": true
+      },
+      {
+        "name": "created_by",
+        "type": "character varying",
+        "nullable": true
+      },
+      {
+        "name": "confirmed_by",
+        "type": "character varying",
+        "nullable": true
+      },
+      {
+        "name": "resolved_by",
+        "type": "character varying",
+        "nullable": true
+      },
+      {
+        "name": "created_at",
+        "type": "timestamp with time zone",
+        "nullable": true
+      },
+      {
+        "name": "updated_at",
+        "type": "timestamp with time zone",
+        "nullable": true
+      }
+    ],
+    "plate_violation_event": [
+      {
+        "name": "id",
+        "type": "bigint",
+        "nullable": false
+      },
+      {
+        "name": "plate_event_id",
+        "type": "bigint",
+        "nullable": false
+      },
+      {
+        "name": "violation_type_code",
+        "type": "character varying",
+        "nullable": false
+      },
+      {
+        "name": "evidence",
+        "type": "jsonb",
+        "nullable": true
+      },
+      {
+        "name": "is_promoted",
+        "type": "boolean",
+        "nullable": false
+      },
+      {
+        "name": "created_at",
+        "type": "timestamp with time zone",
+        "nullable": true
+      }
+    ],
+    "plate_whitelist": [
+      {
+        "name": "id",
+        "type": "bigint",
+        "nullable": false
+      },
+      {
+        "name": "organization_id",
+        "type": "bigint",
+        "nullable": false
+      },
+      {
+        "name": "license_plate_text",
+        "type": "character varying",
+        "nullable": false
+      },
+      {
+        "name": "normalized_license_plate",
+        "type": "character varying",
+        "nullable": false
+      },
+      {
+        "name": "vehicle_type",
+        "type": "character varying",
+        "nullable": true
+      },
+      {
+        "name": "reason",
+        "type": "character varying",
+        "nullable": true
+      },
+      {
+        "name": "note",
+        "type": "text",
+        "nullable": true
+      },
+      {
+        "name": "is_active",
+        "type": "boolean",
+        "nullable": false
+      },
+      {
+        "name": "created_by",
+        "type": "character varying",
+        "nullable": true
+      },
+      {
+        "name": "updated_by",
+        "type": "character varying",
+        "nullable": true
+      },
+      {
+        "name": "created_at",
+        "type": "timestamp with time zone",
+        "nullable": true
+      },
+      {
+        "name": "updated_at",
+        "type": "timestamp with time zone",
+        "nullable": true
+      }
+    ],
+    "violation_type_catalog": [
+      {
+        "name": "code",
+        "type": "character varying",
+        "nullable": false
+      },
+      {
+        "name": "vehicle_category",
+        "type": "character varying",
+        "nullable": false
+      },
+      {
+        "name": "title",
+        "type": "character varying",
+        "nullable": false
+      },
+      {
+        "name": "fine_min",
+        "type": "numeric",
+        "nullable": true
+      },
+      {
+        "name": "fine_max",
+        "type": "numeric",
+        "nullable": true
+      },
+      {
+        "name": "violation_level",
+        "type": "smallint",
+        "nullable": true
+      },
+      {
+        "name": "gplx_points",
+        "type": "smallint",
+        "nullable": true
+      },
+      {
+        "name": "currency",
+        "type": "character varying",
+        "nullable": false
+      },
+      {
+        "name": "legal_ref",
+        "type": "text",
+        "nullable": true
+      },
+      {
+        "name": "effective_from",
+        "type": "date",
+        "nullable": true
+      },
+      {
+        "name": "effective_to",
+        "type": "date",
+        "nullable": true
+      },
+      {
+        "name": "is_active",
+        "type": "boolean",
+        "nullable": false
+      },
+      {
+        "name": "created_at",
+        "type": "timestamp with time zone",
+        "nullable": true
+      },
+      {
+        "name": "updated_at",
+        "type": "timestamp with time zone",
+        "nullable": true
+      }
+    ]
+  },
+  "virtual_fence": {
+    "restricted_zones": [
+      {
+        "name": "id",
+        "type": "uuid",
+        "nullable": false
+      },
+      {
+        "name": "zone_code",
+        "type": "character varying",
+        "nullable": false
+      },
+      {
+        "name": "name",
+        "type": "character varying",
+        "nullable": false
+      },
+      {
+        "name": "description",
+        "type": "text",
+        "nullable": true
+      },
+      {
+        "name": "camera_id",
+        "type": "uuid",
+        "nullable": true
+      },
+      {
+        "name": "is_active",
+        "type": "boolean",
+        "nullable": true
+      },
+      {
+        "name": "config",
+        "type": "jsonb",
+        "nullable": true
+      },
+      {
+        "name": "created_at",
+        "type": "timestamp with time zone",
+        "nullable": true
+      },
+      {
+        "name": "updated_at",
+        "type": "timestamp with time zone",
+        "nullable": true
+      }
+    ],
+    "zone_access_policy": [
+      {
+        "name": "id",
+        "type": "bigint",
+        "nullable": false
+      },
+      {
+        "name": "zone_id",
+        "type": "uuid",
+        "nullable": false
+      },
+      {
+        "name": "is_active",
+        "type": "boolean",
+        "nullable": false
+      },
+      {
+        "name": "subject_type",
+        "type": "character varying",
+        "nullable": false
+      },
+      {
+        "name": "subject_value",
+        "type": "character varying",
+        "nullable": true
+      },
+      {
+        "name": "allowed",
+        "type": "boolean",
+        "nullable": false
+      },
+      {
+        "name": "must_stay",
+        "type": "boolean",
+        "nullable": false
+      },
+      {
+        "name": "min_stay_seconds",
+        "type": "integer",
+        "nullable": true
+      },
+      {
+        "name": "time_window",
+        "type": "jsonb",
+        "nullable": true
+      },
+      {
+        "name": "note",
+        "type": "text",
+        "nullable": true
+      },
+      {
+        "name": "created_at",
+        "type": "timestamp with time zone",
+        "nullable": false
+      },
+      {
+        "name": "updated_at",
+        "type": "timestamp with time zone",
+        "nullable": false
+      }
+    ],
+    "zone_event": [
+      {
+        "name": "id",
+        "type": "bigint",
+        "nullable": false
+      },
+      {
+        "name": "zone_id",
+        "type": "uuid",
+        "nullable": false
+      },
+      {
+        "name": "camera_id",
+        "type": "uuid",
+        "nullable": true
+      },
+      {
+        "name": "event_time",
+        "type": "timestamp with time zone",
+        "nullable": false
+      },
+      {
+        "name": "entity_type",
+        "type": "character varying",
+        "nullable": false
+      },
+      {
+        "name": "entity_id",
+        "type": "character varying",
+        "nullable": false
+      },
+      {
+        "name": "direction",
+        "type": "character varying",
+        "nullable": false
+      },
+      {
+        "name": "person_name",
+        "type": "character varying",
+        "nullable": true
+      },
+      {
+        "name": "person_identity",
+        "type": "character varying",
+        "nullable": true
+      },
+      {
+        "name": "license_plate",
+        "type": "character varying",
+        "nullable": true
+      },
+      {
+        "name": "snapshot_url",
+        "type": "text",
+        "nullable": true
+      },
+      {
+        "name": "snapshot_base64",
+        "type": "text",
+        "nullable": true
+      },
+      {
+        "name": "zone_name_cached",
+        "type": "character varying",
+        "nullable": true
+      },
+      {
+        "name": "camera_code",
+        "type": "character varying",
+        "nullable": true
+      },
+      {
+        "name": "camera_name",
+        "type": "character varying",
+        "nullable": true
+      },
+      {
+        "name": "payload",
+        "type": "jsonb",
+        "nullable": true
+      },
+      {
+        "name": "created_at",
+        "type": "timestamp with time zone",
+        "nullable": true
+      },
+      {
+        "name": "organization_id",
+        "type": "bigint",
+        "nullable": true
+      },
+      {
+        "name": "site_id",
+        "type": "bigint",
+        "nullable": true
+      },
+      {
+        "name": "iam_area_id",
+        "type": "bigint",
+        "nullable": true
+      },
+      {
+        "name": "iam_zone_id",
+        "type": "bigint",
+        "nullable": true
+      },
+      {
+        "name": "node_id",
+        "type": "bigint",
+        "nullable": true
+      },
+      {
+        "name": "node_path",
+        "type": "text",
+        "nullable": true
+      }
+    ],
+    "zone_incident": [
+      {
+        "name": "id",
+        "type": "bigint",
+        "nullable": false
+      },
+      {
+        "name": "zone_id",
+        "type": "uuid",
+        "nullable": false
+      },
+      {
+        "name": "camera_id",
+        "type": "uuid",
+        "nullable": true
+      },
+      {
+        "name": "entity_type",
+        "type": "character varying",
+        "nullable": false
+      },
+      {
+        "name": "entity_key",
+        "type": "character varying",
+        "nullable": false
+      },
+      {
+        "name": "violation_type",
+        "type": "character varying",
+        "nullable": false
+      },
+      {
+        "name": "first_event_id",
+        "type": "bigint",
+        "nullable": true
+      },
+      {
+        "name": "last_event_id",
+        "type": "bigint",
+        "nullable": true
+      },
+      {
+        "name": "start_time",
+        "type": "timestamp with time zone",
+        "nullable": false
+      },
+      {
+        "name": "end_time",
+        "type": "timestamp with time zone",
+        "nullable": true
+      },
+      {
+        "name": "status",
+        "type": "character varying",
+        "nullable": false
+      },
+      {
+        "name": "severity",
+        "type": "character varying",
+        "nullable": true
+      },
+      {
+        "name": "notes",
+        "type": "text",
+        "nullable": true
+      },
+      {
+        "name": "created_at",
+        "type": "timestamp with time zone",
+        "nullable": false
+      },
+      {
+        "name": "updated_at",
+        "type": "timestamp with time zone",
+        "nullable": false
+      },
+      {
+        "name": "organization_id",
+        "type": "bigint",
+        "nullable": true
+      }
+    ],
+    "zone_presence": [
+      {
+        "name": "zone_id",
+        "type": "uuid",
+        "nullable": false
+      },
+      {
+        "name": "entity_type",
+        "type": "character varying",
+        "nullable": false
+      },
+      {
+        "name": "entity_key",
+        "type": "character varying",
+        "nullable": false
+      },
+      {
+        "name": "last_in_event_id",
+        "type": "bigint",
+        "nullable": true
+      },
+      {
+        "name": "last_in_time",
+        "type": "timestamp with time zone",
+        "nullable": true
+      },
+      {
+        "name": "last_camera_id",
+        "type": "uuid",
+        "nullable": true
+      },
+      {
+        "name": "updated_at",
+        "type": "timestamp with time zone",
+        "nullable": false
+      }
+    ]
+  },
+  "smart_face": {
+    "smf_config_history": [
+      {
+        "name": "id",
+        "type": "bigint",
+        "nullable": false
+      },
+      {
+        "name": "change_time",
+        "type": "timestamp without time zone",
+        "nullable": false
+      },
+      {
+        "name": "user_name",
+        "type": "character varying",
+        "nullable": true
+      },
+      {
+        "name": "change_type",
+        "type": "character varying",
+        "nullable": false
+      },
+      {
+        "name": "detail",
+        "type": "character varying",
+        "nullable": true
+      },
+      {
+        "name": "created_at",
+        "type": "timestamp without time zone",
+        "nullable": true
+      },
+      {
+        "name": "organization_id",
+        "type": "bigint",
+        "nullable": true
+      }
+    ],
+    "smf_customer_groups": [
+      {
+        "name": "id",
+        "type": "bigint",
+        "nullable": false
+      },
+      {
+        "name": "organization_id",
+        "type": "bigint",
+        "nullable": false
+      },
+      {
+        "name": "code",
+        "type": "character varying",
+        "nullable": false
+      },
+      {
+        "name": "name",
+        "type": "character varying",
+        "nullable": false
+      },
+      {
+        "name": "description",
+        "type": "character varying",
+        "nullable": true
+      },
+      {
+        "name": "sort_order",
+        "type": "integer",
+        "nullable": false
+      },
+      {
+        "name": "is_delete",
+        "type": "boolean",
+        "nullable": false
+      },
+      {
+        "name": "creation_time",
+        "type": "timestamp without time zone",
+        "nullable": false
+      },
+      {
+        "name": "updation_time",
+        "type": "timestamp without time zone",
+        "nullable": true
+      },
+      {
+        "name": "deletion_time",
+        "type": "timestamp without time zone",
+        "nullable": true
+      }
+    ],
+    "smf_departments": [
+      {
+        "name": "id",
+        "type": "bigint",
+        "nullable": false
+      },
+      {
+        "name": "code",
+        "type": "character varying",
+        "nullable": false
+      },
+      {
+        "name": "name",
+        "type": "character varying",
+        "nullable": false
+      },
+      {
+        "name": "description",
+        "type": "character varying",
+        "nullable": true
+      },
+      {
+        "name": "parent_id",
+        "type": "bigint",
+        "nullable": true
+      },
+      {
+        "name": "sort_order",
+        "type": "integer",
+        "nullable": true
+      },
+      {
+        "name": "is_delete",
+        "type": "boolean",
+        "nullable": false
+      },
+      {
+        "name": "creation_time",
+        "type": "timestamp without time zone",
+        "nullable": true
+      },
+      {
+        "name": "updation_time",
+        "type": "timestamp without time zone",
+        "nullable": true
+      },
+      {
+        "name": "organization_id",
+        "type": "bigint",
+        "nullable": true
+      }
+    ],
+    "smf_employee_weekly_schedule": [
+      {
+        "name": "id",
+        "type": "bigint",
+        "nullable": false
+      },
+      {
+        "name": "organization_id",
+        "type": "bigint",
+        "nullable": true
+      },
+      {
+        "name": "store_id",
+        "type": "uuid",
+        "nullable": true
+      },
+      {
+        "name": "employee_id",
+        "type": "bigint",
+        "nullable": false
+      },
+      {
+        "name": "work_shift_id",
+        "type": "bigint",
+        "nullable": true
+      },
+      {
+        "name": "work_date",
+        "type": "date",
+        "nullable": false
+      },
+      {
+        "name": "week_start_date",
+        "type": "date",
+        "nullable": false
+      },
+      {
+        "name": "shift_code",
+        "type": "character varying",
+        "nullable": true
+      },
+      {
+        "name": "shift_name",
+        "type": "character varying",
+        "nullable": true
+      },
+      {
+        "name": "planned_start_time",
+        "type": "time without time zone",
+        "nullable": true
+      },
+      {
+        "name": "planned_end_time",
+        "type": "time without time zone",
+        "nullable": true
+      },
+      {
+        "name": "status",
+        "type": "character varying",
+        "nullable": false
+      },
+      {
+        "name": "note",
+        "type": "character varying",
+        "nullable": true
+      },
+      {
+        "name": "created_at",
+        "type": "timestamp without time zone",
+        "nullable": false
+      },
+      {
+        "name": "updated_at",
+        "type": "timestamp without time zone",
+        "nullable": true
+      }
+    ],
+    "smf_employees": [
+      {
+        "name": "id",
+        "type": "bigint",
+        "nullable": false
+      },
+      {
+        "name": "organization_id",
+        "type": "bigint",
+        "nullable": true
+      },
+      {
+        "name": "department_id",
+        "type": "bigint",
+        "nullable": true
+      },
+      {
+        "name": "group_id",
+        "type": "bigint",
+        "nullable": true
+      },
+      {
+        "name": "code",
+        "type": "character varying",
+        "nullable": false
+      },
+      {
+        "name": "full_name",
+        "type": "character varying",
+        "nullable": false
+      },
+      {
+        "name": "job_duties",
+        "type": "character varying",
+        "nullable": true
+      },
+      {
+        "name": "position",
+        "type": "character varying",
+        "nullable": true
+      },
+      {
+        "name": "birthday",
+        "type": "date",
+        "nullable": true
+      },
+      {
+        "name": "gender",
+        "type": "integer",
+        "nullable": true
+      },
+      {
+        "name": "phone_number",
+        "type": "character varying",
+        "nullable": true
+      },
+      {
+        "name": "email",
+        "type": "character varying",
+        "nullable": true
+      },
+      {
+        "name": "status",
+        "type": "integer",
+        "nullable": false
+      },
+      {
+        "name": "avatar_path",
+        "type": "character varying",
+        "nullable": true
+      },
+      {
+        "name": "is_delete",
+        "type": "boolean",
+        "nullable": false
+      },
+      {
+        "name": "card_id",
+        "type": "character varying",
+        "nullable": true
+      },
+      {
+        "name": "citizen_id",
+        "type": "character varying",
+        "nullable": true
+      },
+      {
+        "name": "time_recorder_id",
+        "type": "bigint",
+        "nullable": true
+      },
+      {
+        "name": "similar_person_id",
+        "type": "bigint",
+        "nullable": true
+      },
+      {
+        "name": "creator_id",
+        "type": "bigint",
+        "nullable": true
+      },
+      {
+        "name": "creation_time",
+        "type": "timestamp without time zone",
+        "nullable": true
+      },
+      {
+        "name": "updater_id",
+        "type": "bigint",
+        "nullable": true
+      },
+      {
+        "name": "updation_time",
+        "type": "timestamp without time zone",
+        "nullable": true
+      },
+      {
+        "name": "deleter_id",
+        "type": "bigint",
+        "nullable": true
+      },
+      {
+        "name": "deletion_time",
+        "type": "timestamp without time zone",
+        "nullable": true
+      },
+      {
+        "name": "face_feature",
+        "type": "bytea",
+        "nullable": true
+      },
+      {
+        "name": "start_time",
+        "type": "time without time zone",
+        "nullable": true
+      },
+      {
+        "name": "end_time",
+        "type": "time without time zone",
+        "nullable": true
+      },
+      {
+        "name": "person_type",
+        "type": "integer",
+        "nullable": true
+      },
+      {
+        "name": "address",
+        "type": "character varying",
+        "nullable": true
+      },
+      {
+        "name": "card_back",
+        "type": "character varying",
+        "nullable": true
+      },
+      {
+        "name": "card_front",
+        "type": "character varying",
+        "nullable": true
+      },
+      {
+        "name": "comp_guest",
+        "type": "integer",
+        "nullable": true
+      },
+      {
+        "name": "contactor",
+        "type": "integer",
+        "nullable": true
+      },
+      {
+        "name": "face_match",
+        "type": "integer",
+        "nullable": true
+      },
+      {
+        "name": "notes",
+        "type": "character varying",
+        "nullable": true
+      },
+      {
+        "name": "receiver",
+        "type": "character varying",
+        "nullable": true
+      },
+      {
+        "name": "snapshot_url",
+        "type": "text",
+        "nullable": true
+      },
+      {
+        "name": "customer_group_id",
+        "type": "bigint",
+        "nullable": true
+      },
+      {
+        "name": "service_license_plate",
+        "type": "character varying",
+        "nullable": true
+      },
+      {
+        "name": "service_chassis_number",
+        "type": "character varying",
+        "nullable": true
+      }
+    ],
+    "smf_face_events": [
+      {
+        "name": "id",
+        "type": "bigint",
+        "nullable": false
+      },
+      {
+        "name": "event_id",
+        "type": "bigint",
+        "nullable": true
+      },
+      {
+        "name": "user_code",
+        "type": "character varying",
+        "nullable": true
+      },
+      {
+        "name": "user_name",
+        "type": "character varying",
+        "nullable": true
+      },
+      {
+        "name": "department_name",
+        "type": "character varying",
+        "nullable": true
+      },
+      {
+        "name": "area_name",
+        "type": "character varying",
+        "nullable": true
+      },
+      {
+        "name": "device_name",
+        "type": "character varying",
+        "nullable": true
+      },
+      {
+        "name": "access_time",
+        "type": "timestamp with time zone",
+        "nullable": false
+      },
+      {
+        "name": "event_type_id",
+        "type": "integer",
+        "nullable": true
+      },
+      {
+        "name": "status",
+        "type": "integer",
+        "nullable": true
+      },
+      {
+        "name": "person_type",
+        "type": "integer",
+        "nullable": true
+      },
+      {
+        "name": "person_type_name",
+        "type": "character varying",
+        "nullable": true
+      },
+      {
+        "name": "image",
+        "type": "text",
+        "nullable": true
+      },
+      {
+        "name": "person_id",
+        "type": "bigint",
+        "nullable": true
+      },
+      {
+        "name": "area_id",
+        "type": "bigint",
+        "nullable": true
+      },
+      {
+        "name": "organization_id",
+        "type": "bigint",
+        "nullable": true
+      },
+      {
+        "name": "device_id",
+        "type": "bigint",
+        "nullable": true
+      },
+      {
+        "name": "server_url",
+        "type": "character varying",
+        "nullable": true
+      },
+      {
+        "name": "face_feature",
+        "type": "bytea",
+        "nullable": true
+      },
+      {
+        "name": "gender",
+        "type": "integer",
+        "nullable": true
+      },
+      {
+        "name": "age",
+        "type": "integer",
+        "nullable": true
+      },
+      {
+        "name": "score_match",
+        "type": "integer",
+        "nullable": true
+      },
+      {
+        "name": "department_id",
+        "type": "bigint",
+        "nullable": true
+      },
+      {
+        "name": "camera_id",
+        "type": "uuid",
+        "nullable": true
+      },
+      {
+        "name": "direction",
+        "type": "character varying",
+        "nullable": true
+      },
+      {
+        "name": "site_id",
+        "type": "bigint",
+        "nullable": true
+      },
+      {
+        "name": "iam_area_id",
+        "type": "bigint",
+        "nullable": true
+      },
+      {
+        "name": "iam_zone_id",
+        "type": "bigint",
+        "nullable": true
+      },
+      {
+        "name": "node_id",
+        "type": "bigint",
+        "nullable": true
+      },
+      {
+        "name": "node_path",
+        "type": "text",
+        "nullable": true
+      }
+    ],
+    "smf_registration_requests": [
+      {
+        "name": "id",
+        "type": "bigint",
+        "nullable": false
+      },
+      {
+        "name": "employee_id",
+        "type": "bigint",
+        "nullable": true
+      },
+      {
+        "name": "user_code",
+        "type": "character varying",
+        "nullable": true
+      },
+      {
+        "name": "user_name",
+        "type": "character varying",
+        "nullable": false
+      },
+      {
+        "name": "department_name",
+        "type": "character varying",
+        "nullable": true
+      },
+      {
+        "name": "request_time",
+        "type": "timestamp without time zone",
+        "nullable": false
+      },
+      {
+        "name": "requested_by",
+        "type": "character varying",
+        "nullable": true
+      },
+      {
+        "name": "status",
+        "type": "character varying",
+        "nullable": false
+      },
+      {
+        "name": "approved_by",
+        "type": "character varying",
+        "nullable": true
+      },
+      {
+        "name": "approved_time",
+        "type": "timestamp without time zone",
+        "nullable": true
+      },
+      {
+        "name": "rejection_reason",
+        "type": "character varying",
+        "nullable": true
+      },
+      {
+        "name": "created_at",
+        "type": "timestamp without time zone",
+        "nullable": true
+      },
+      {
+        "name": "organization_id",
+        "type": "bigint",
+        "nullable": true
+      }
+    ],
+    "smf_work_shifts": [
+      {
+        "name": "id",
+        "type": "bigint",
+        "nullable": false
+      },
+      {
+        "name": "name",
+        "type": "character varying",
+        "nullable": false
+      },
+      {
+        "name": "start_time",
+        "type": "time without time zone",
+        "nullable": false
+      },
+      {
+        "name": "end_time",
+        "type": "time without time zone",
+        "nullable": false
+      },
+      {
+        "name": "late_threshold_minutes",
+        "type": "integer",
+        "nullable": false
+      },
+      {
+        "name": "early_threshold_minutes",
+        "type": "integer",
+        "nullable": false
+      },
+      {
+        "name": "is_default",
+        "type": "boolean",
+        "nullable": false
+      },
+      {
+        "name": "is_delete",
+        "type": "boolean",
+        "nullable": false
+      },
+      {
+        "name": "creation_time",
+        "type": "timestamp without time zone",
+        "nullable": true
+      },
+      {
+        "name": "updation_time",
+        "type": "timestamp without time zone",
+        "nullable": true
+      },
+      {
+        "name": "organization_id",
+        "type": "bigint",
+        "nullable": true
+      }
+    ],
+    "view_face_events": [
+      {
+        "name": "id",
+        "type": "bigint",
+        "nullable": true
+      },
+      {
+        "name": "event_id",
+        "type": "bigint",
+        "nullable": true
+      },
+      {
+        "name": "user_code",
+        "type": "character varying",
+        "nullable": true
+      },
+      {
+        "name": "user_name",
+        "type": "character varying",
+        "nullable": true
+      },
+      {
+        "name": "department_name",
+        "type": "character varying",
+        "nullable": true
+      },
+      {
+        "name": "area_name",
+        "type": "character varying",
+        "nullable": true
+      },
+      {
+        "name": "device_name",
+        "type": "character varying",
+        "nullable": true
+      },
+      {
+        "name": "access_time",
+        "type": "timestamp with time zone",
+        "nullable": true
+      },
+      {
+        "name": "event_type_id",
+        "type": "integer",
+        "nullable": true
+      },
+      {
+        "name": "status",
+        "type": "integer",
+        "nullable": true
+      },
+      {
+        "name": "person_type",
+        "type": "integer",
+        "nullable": true
+      },
+      {
+        "name": "person_type_name",
+        "type": "character varying",
+        "nullable": true
+      },
+      {
+        "name": "image",
+        "type": "text",
+        "nullable": true
+      },
+      {
+        "name": "person_id",
+        "type": "bigint",
+        "nullable": true
+      },
+      {
+        "name": "area_id",
+        "type": "bigint",
+        "nullable": true
+      },
+      {
+        "name": "company_id",
+        "type": "bigint",
+        "nullable": true
+      },
+      {
+        "name": "device_id",
+        "type": "bigint",
+        "nullable": true
+      },
+      {
+        "name": "server_url",
+        "type": "character varying",
+        "nullable": true
+      },
+      {
+        "name": "face_feature",
+        "type": "bytea",
+        "nullable": true
+      },
+      {
+        "name": "gender",
+        "type": "integer",
+        "nullable": true
+      },
+      {
+        "name": "age",
+        "type": "integer",
+        "nullable": true
+      },
+      {
+        "name": "score_match",
+        "type": "integer",
+        "nullable": true
+      },
+      {
+        "name": "department_id",
+        "type": "bigint",
+        "nullable": true
+      },
+      {
+        "name": "camera_id",
+        "type": "uuid",
+        "nullable": true
+      },
+      {
+        "name": "direction",
+        "type": "character varying",
+        "nullable": true
+      }
+    ]
+  },
+  "firesmoke": {
+    "fire_smoke_event": [
+      {
+        "name": "id",
+        "type": "bigint",
+        "nullable": false
+      },
+      {
+        "name": "camera_id",
+        "type": "uuid",
+        "nullable": true
+      },
+      {
+        "name": "event_time",
+        "type": "timestamp with time zone",
+        "nullable": false
+      },
+      {
+        "name": "entity_type",
+        "type": "character varying",
+        "nullable": false
+      },
+      {
+        "name": "entity_id",
+        "type": "character varying",
+        "nullable": true
+      },
+      {
+        "name": "alert_level",
+        "type": "character varying",
+        "nullable": true
+      },
+      {
+        "name": "camera_code",
+        "type": "character varying",
+        "nullable": true
+      },
+      {
+        "name": "camera_name",
+        "type": "character varying",
+        "nullable": true
+      },
+      {
+        "name": "snapshot_url",
+        "type": "text",
+        "nullable": true
+      },
+      {
+        "name": "snapshot_base64",
+        "type": "text",
+        "nullable": true
+      },
+      {
+        "name": "payload",
+        "type": "jsonb",
+        "nullable": true
+      },
+      {
+        "name": "created_at",
+        "type": "timestamp with time zone",
+        "nullable": true
+      },
+      {
+        "name": "organization_id",
+        "type": "bigint",
+        "nullable": true
+      },
+      {
+        "name": "site_id",
+        "type": "bigint",
+        "nullable": true
+      },
+      {
+        "name": "iam_area_id",
+        "type": "bigint",
+        "nullable": true
+      },
+      {
+        "name": "iam_zone_id",
+        "type": "bigint",
+        "nullable": true
+      },
+      {
+        "name": "node_id",
+        "type": "bigint",
+        "nullable": true
+      },
+      {
+        "name": "node_path",
+        "type": "text",
+        "nullable": true
+      }
+    ]
+  },
+  "anomaly": {
+    "anomaly_event": [
+      {
+        "name": "id",
+        "type": "bigint",
+        "nullable": false
+      },
+      {
+        "name": "organization_id",
+        "type": "bigint",
+        "nullable": true
+      },
+      {
+        "name": "camera_id",
+        "type": "uuid",
+        "nullable": false
+      },
+      {
+        "name": "event_time",
+        "type": "timestamp with time zone",
+        "nullable": false
+      },
+      {
+        "name": "module_code",
+        "type": "character varying",
+        "nullable": false
+      },
+      {
+        "name": "event_type",
+        "type": "character varying",
+        "nullable": false
+      },
+      {
+        "name": "severity",
+        "type": "character varying",
+        "nullable": false
+      },
+      {
+        "name": "confidence",
+        "type": "numeric",
+        "nullable": true
+      },
+      {
+        "name": "camera_code",
+        "type": "character varying",
+        "nullable": true
+      },
+      {
+        "name": "camera_name",
+        "type": "character varying",
+        "nullable": true
+      },
+      {
+        "name": "entity_type",
+        "type": "character varying",
+        "nullable": true
+      },
+      {
+        "name": "entity_id",
+        "type": "character varying",
+        "nullable": true
+      },
+      {
+        "name": "zone_id",
+        "type": "uuid",
+        "nullable": true
+      },
+      {
+        "name": "zone_name",
+        "type": "character varying",
+        "nullable": true
+      },
+      {
+        "name": "snapshot_url",
+        "type": "text",
+        "nullable": true
+      },
+      {
+        "name": "snapshot_base64",
+        "type": "text",
+        "nullable": true
+      },
+      {
+        "name": "video_clip_url",
+        "type": "text",
+        "nullable": true
+      },
+      {
+        "name": "payload",
+        "type": "jsonb",
+        "nullable": true
+      },
+      {
+        "name": "created_at",
+        "type": "timestamp with time zone",
+        "nullable": false
+      },
+      {
+        "name": "site_id",
+        "type": "bigint",
+        "nullable": true
+      },
+      {
+        "name": "iam_area_id",
+        "type": "bigint",
+        "nullable": true
+      },
+      {
+        "name": "iam_zone_id",
+        "type": "bigint",
+        "nullable": true
+      },
+      {
+        "name": "node_id",
+        "type": "bigint",
+        "nullable": true
+      },
+      {
+        "name": "node_path",
+        "type": "text",
+        "nullable": true
+      }
+    ]
+  }
+}

@@ -154,8 +154,9 @@ def invoke_text(
     max_tokens: int | None = None,
     *,
     substep: str | None = "llm_text",
+    stop: list[str] | None = None,
 ) -> str:
-    """Lời gọi LLM đơn giản không tool — dùng cho bước Answer (diễn giải số liệu)."""
+    """Lời gọi LLM đơn giản không tool — dùng cho bước Answer và SQL generator."""
     from src.monitoring.tracing import add_request_tokens, extract_token_usage, trace_substep
 
     trace_in = {
@@ -171,6 +172,8 @@ def invoke_text(
             backend_override=backend_override,
             max_tokens_override=max_tokens,
         )
+        if stop:
+            llm = llm.bind(stop=stop)
         response = llm.invoke([
             {"role": "system", "content": system_prompt},
             {"role": "user", "content": user_prompt},

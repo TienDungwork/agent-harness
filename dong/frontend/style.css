@@ -405,16 +405,50 @@ html, body {
   box-shadow: var(--shadow-md);
 }
 
+.graph-node-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
 .graph-node-id {
   font-family: var(--font-mono);
   font-size: 0.8rem;
   font-weight: 600;
 }
 
+.graph-node-time {
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: #059669;
+  background: rgba(16, 185, 129, 0.12);
+  padding: 0.1rem 0.4rem;
+  border-radius: 4px;
+}
+
+.graph-node-time.running {
+  color: #d97706;
+  background: rgba(217, 119, 6, 0.12);
+}
+
+.graph-panel-total {
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--accent-warm);
+  background: rgba(194, 65, 12, 0.08);
+  padding: 0.2rem 0.5rem;
+  border-radius: 6px;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+}
+
 .graph-node-status {
   font-size: 0.75rem;
   color: var(--text-muted);
-  margin-top: 0.15rem;
+  margin-top: 0.2rem;
 }
 
 .graph-io {
@@ -423,6 +457,7 @@ html, body {
   max-height: 40%;
   overflow: auto;
   background: var(--bg-surface);
+
 }
 
 .graph-io-title {

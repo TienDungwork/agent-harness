@@ -98,8 +98,19 @@ def validate_sql(
             f"Bảng '{unknown_tables[0]}' không nằm trong danh mục cho phép. Chỉ dùng: {', '.join(sorted(allowed))}.",
         )
 
-    # Kiểm tra cột lẫn giữa các bảng
+    # Kiểm tra đa database trong cùng một câu SQL (Cross-database query isolation)
     used_tables = [t for t in referenced if t in allowed]
+    if len(used_tables) > 1:
+        from src.db.catalog import get_database_for_table
+        dbs = {get_database_for_table(t) for t in used_tables}
+        if len(dbs) > 1:
+            tbl_db_map = ", ".join(f"'{t}' (db {get_database_for_table(t)})" for t in used_tables)
+            return ValidationResult(
+                False,
+                f"Không thể truy vấn đồng thời bảng từ nhiều database khác nhau trong cùng một câu SQL ({tbl_db_map}). Hãy chỉ truy vấn trên một bảng/database duy nhất.",
+            )
+
+    # Kiểm tra cột lẫn giữa các bảng
     if used_tables:
         own_cols: set[str] = set()
         for t in used_tables:

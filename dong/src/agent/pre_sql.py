@@ -97,8 +97,8 @@ def build_chart_sql_hint(question: str) -> str:
     """Gợi ý cấu trúc SQL phù hợp khi câu hỏi yêu cầu biểu đồ.
 
     Trả về "" nếu câu hỏi không có từ khóa biểu đồ.
-    Nếu có từ khóa xe/phương tiện (và không tập trung vào hướng ra/vào)
-    → gợi ý GROUP BY vehicle_type.
+    Nếu có loại xe cụ thể + hướng ra/vào → gợi ý WHERE vehicle_type = '...' GROUP BY direction.
+    Nếu có từ khóa xe/phương tiện chung → gợi ý GROUP BY vehicle_type.
     Ngược lại → gợi ý generic GROUP BY nhãn.
     """
     # Lazy import to avoid circular dependency
@@ -108,6 +108,27 @@ def build_chart_sql_hint(question: str) -> str:
         return ""
 
     q = question or ""
+    q_low = q.lower()
+
+    # Kiểm tra loại xe cụ thể
+    vtype = None
+    if any(k in q_low for k in ("ô tô", "o to", "xe hơi", "car", "xe con")):
+        vtype = "CAR"
+    elif any(k in q_low for k in ("xe máy", "xe may", "motorcycle", "moto")):
+        vtype = "MOTORCYCLE"
+    elif any(k in q_low for k in ("xe tải", "xe tai", "truck")):
+        vtype = "TRUCK"
+    elif any(k in q_low for k in ("xe buýt", "xe buyt", "bus")):
+        vtype = "BUS"
+
+    if vtype and _DIRECTION_CHART_RE.search(q):
+        return (
+            f"Yêu cầu biểu đồ ra/vào cho loại xe cụ thể ({vtype}): "
+            f"SELECT direction, COUNT(*) AS n FROM plate_event "
+            f"WHERE vehicle_type = '{vtype}' (và lọc ngày nếu có), "
+            f"GROUP BY direction ORDER BY n DESC, LIMIT 30."
+        )
+
     if _VEHICLE_CHART_RE.search(q) and not _DIRECTION_CHART_RE.search(q):
         return (
             "Yêu cầu biểu đồ số lượng phương tiện/xe: SELECT vehicle_type, COUNT(*) AS n "
@@ -120,3 +141,4 @@ def build_chart_sql_hint(question: str) -> str:
         "Yêu cầu biểu đồ: trả về nhiều dòng (GROUP BY nhãn), 2 cột nhãn+COUNT, "
         "ORDER BY count DESC, LIMIT 30."
     )
+

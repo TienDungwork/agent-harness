@@ -207,7 +207,7 @@ _DISCLAIMER = " (Lưu ý: số liệu chưa xác minh được với dữ liệu
 def empty_stat_reply(question: str = "") -> str:
     """Câu trả lời chuẩn khi tool/SQL không có số liệu — luôn ghi rõ 0."""
     q = (question or "").strip()
-    plate_match = re.search(r"\b\d{2}[A-Za-z]\d{4,6}\b", q)
+    plate_match = re.search(r"\b\d{2}[A-Za-z0-9\.\-]{4,8}\b", q)
     if plate_match:
         plate = plate_match.group(0).upper()
         return (
@@ -275,8 +275,78 @@ MEMORY_STATEMENT_KEYWORDS = frozenset(
 )
 
 
+CHAT_GREETING_KEYWORDS = frozenset(
+    {
+        "xin chào",
+        "xin chao",
+        "chào bạn",
+        "chao ban",
+        "chào bot",
+        "chao bot",
+        "chào ad",
+        "chao ad",
+        "chào em",
+        "chao em",
+        "chào anh",
+        "chao anh",
+        "chào chị",
+        "chao chi",
+        "hello",
+        "cảm ơn",
+        "cam on",
+        "thanks",
+        "thank you",
+        "bạn là ai",
+        "ban la ai",
+        "bạn là gì",
+        "ban la gi",
+        "bạn làm được gì",
+        "ban lam duoc gi",
+        "bạn có thể làm gì",
+        "ban co the lam gi",
+        "giúp gì",
+        "giup gi",
+        "hỗ trợ gì",
+        "ho tro gi",
+    }
+)
+
+
+def is_chat_greeting(text: str) -> bool:
+    """True nếu câu hỏi thuộc dạng chào hỏi / giao tiếp cơ bản (chat intent)."""
+    low = (text or "").lower().strip()
+    if not low:
+        return False
+    stripped = low.rstrip("!?. ,:;")
+    if stripped in (
+        "hi",
+        "hello",
+        "hey",
+        "alo",
+        "alô",
+        "chào",
+        "chao",
+        "xin chào",
+        "xin chao",
+        "chào bạn",
+        "chao ban",
+        "cảm ơn",
+        "cam on",
+        "thanks",
+        "thank you",
+    ):
+        return True
+    if stripped.startswith(("chào ", "chao ", "xin chào ", "xin chao ", "hello ", "hi ", "hey ", "alo ", "alô ")):
+        return True
+    return any(k in low for k in CHAT_GREETING_KEYWORDS)
+
+
 def in_scope(question: str) -> bool:
-    low = (question or "").lower()
+    low = (question or "").lower().strip()
+    if not low:
+        return False
+    if is_chat_greeting(question):
+        return True
     if any(k in low for k in MEMORY_STATEMENT_KEYWORDS):
         return True
     return any(k in low for k in STAT_KEYWORDS)
@@ -323,6 +393,8 @@ def check_output(answer: str, evidence: list[str], *, tool_empty: bool = False) 
     numbers = re.findall(r"\b\d+\b", normalized_answer)
     unverified = [n for n in numbers if n not in normalized_context]
 
+
+
     if unverified:
         if tool_empty:
             issues.append("fabricated_numbers_on_empty_tool")
@@ -344,7 +416,8 @@ def check_output(answer: str, evidence: list[str], *, tool_empty: bool = False) 
 
     if tool_empty and not re.search(r"\b0\b", text):
         issues.append("empty_stat_missing_zero")
-        text = empty_stat_reply()
+        q_text = str(evidence[0]) if evidence else context_text
+        text = empty_stat_reply(q_text)
 
     return OutputCheckResult(valid=len(issues) == 0, issues=issues, answer=text)
 

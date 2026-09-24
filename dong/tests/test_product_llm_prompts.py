@@ -642,3 +642,45 @@ def test_api_stream_prompt_error_yields_friendly_answer_sse(monkeypatch):
     assert answer.get("output") == "Lỗi cấu hình prompt: thiếu biến hoặc template không hợp lệ. Liên hệ quản trị."
     assert "traceback" not in str(answer.get("output", "")).lower()
 
+
+def test_allowed_tables_resource_json_valid():
+    """Kiểm tra resource/allowed_tables.json tồn tại và chứa đủ 5 database hợp lệ."""
+    import json
+    path = Path(__file__).resolve().parent.parent / "resource" / "allowed_tables.json"
+    assert path.exists()
+    data = json.loads(path.read_text("utf-8"))
+    assert "databases" in data
+    dbs = data["databases"]
+    for expected_db in ["its", "virtual_fence", "smart_face", "firesmoke", "anomaly"]:
+        assert expected_db in dbs
+        assert len(dbs[expected_db]["allowed_tables"]) > 0
+
+
+def test_sql_agent_prompt_strict_no_ramble():
+    """Kiểm tra prompt sql_agent có quy tắc cấm suy luận lan man và chỉ xuất 1 khối ```sql."""
+    from src.prompts import registry
+    rendered = registry().render("sql_agent")
+    assert "CẤM SUY LUẬN LAN MAN" in rendered or "KHÔNG giải thích" in rendered
+    assert "```sql" in rendered
+
+
+def test_invoke_text_passes_stop_words(monkeypatch):
+    """Kiểm tra invoke_text truyền đúng tham số stop vào LLM runnable."""
+    from src.llm.client import invoke_text
+    from unittest.mock import MagicMock, patch
+
+    mock_llm = MagicMock()
+    mock_bound = MagicMock()
+    mock_llm.bind.return_value = mock_bound
+    mock_bound.invoke.return_value = MagicMock(content="SELECT 1;")
+
+    with patch("src.llm.client.base_llm", return_value=mock_llm):
+        out = invoke_text(
+            "system prompt",
+            "user prompt",
+            stop=["```\n\n", "</think>"],
+            substep="test_stop",
+        )
+        mock_llm.bind.assert_called_once_with(stop=["```\n\n", "</think>"])
+        assert out == "SELECT 1;"
+

@@ -1159,3 +1159,20 @@ def test_catalog_loads_from_yaml():
     assert "plate_event" in catalog
     assert "fire_smoke_event" in catalog
 
+
+def test_camera_registry_master_data_loads():
+    root = Path(__file__).resolve().parent.parent
+    registry_file = root / "resource" / "db" / "camera_registry.yaml"
+    assert registry_file.is_file(), "camera_registry.yaml phải tồn tại"
+    import yaml
+    data = yaml.safe_load(registry_file.read_text(encoding="utf-8"))
+    assert data["organization_id"] == 103
+    assert data["total_cameras"] == 10
+    assert len(data["cameras"]) == 10
+    assert data["area_name"] == "Sản xuất & lắp ráp"
+    codes = {c["camera_code"] for c in data["cameras"]}
+    assert "CVN_CONG_BOH" in codes
+    assert "congvanle4" in codes
+    assert "congchinh1" in codes
+
+

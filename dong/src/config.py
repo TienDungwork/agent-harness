@@ -35,9 +35,9 @@ class Settings(BaseSettings):
     # v7 text-to-SQL / QueryPlan repair loop
     sql_repair_max: int = Field(default=2, alias="SQL_REPAIR_MAX")
 
-    # v7 text-to-SQL generate max tokens (support reasoning/think tokens in Qwen/deepseek)
-    sql_generate_max_tokens: int = Field(default=2048, alias="SQL_GENERATE_MAX_TOKENS")
-    sql_respond_max_tokens: int = Field(default=2048, alias="SQL_RESPOND_MAX_TOKENS")
+    # v7 text-to-SQL generate max tokens (tight cap to prevent runaway reasoning loops)
+    sql_generate_max_tokens: int = Field(default=384, alias="SQL_GENERATE_MAX_TOKENS")
+    sql_respond_max_tokens: int = Field(default=1024, alias="SQL_RESPOND_MAX_TOKENS")
 
     # v5 Docs YAML corpus (duy style)
     docs_root: str = Field(default="resource/docs/vms_yaml", alias="DOCS_ROOT")

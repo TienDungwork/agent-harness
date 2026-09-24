@@ -21,20 +21,26 @@ _THINKING_BLOCK = re.compile(r"\x3cthink\x3e.*?\x3c/think\x3e", re.DOTALL | re.I
 def extract_sql(text: str) -> str:
     """Extract SQL from fenced ```sql block or bare text; strip trailing `;`."""
     raw = (text or "").strip()
-    # Strip <think>...</think> blocks (Qwen3)
-    if re.search(r"\x3cthink\x3e", raw, re.IGNORECASE):
-        if re.search(r"\x3c/think\x3e", raw, re.IGNORECASE):
-            raw = _THINKING_BLOCK.sub("", raw).strip()
-        else:
-            # Unclosed thinking block — nothing useful
-            return ""
+    
+    # 1. Try markdown fenced code block
     m = _SQL_FENCE.search(raw)
     if m:
         return m.group(1).strip().rstrip(";")
-    # Bare SQL — only accept if it starts with a SQL keyword
-    stripped = raw.strip()
-    if stripped and re.match(r"(?i)^\s*(SELECT|WITH|INSERT|UPDATE|DELETE|CREATE)\b", stripped):
-        return stripped.rstrip(";")
+
+    # 2. Strip closed <think>...</think> blocks (Qwen3)
+    cleaned = _THINKING_BLOCK.sub("", raw).strip()
+    if cleaned:
+        # Bare SQL starting with keyword
+        if re.match(r"(?i)^\s*(SELECT|WITH|INSERT|UPDATE|DELETE|CREATE)\b", cleaned):
+            return cleaned.rstrip(";")
+
+    # 3. Search for SELECT / WITH embedded in reasoning/think text
+    sql_m = re.search(r"(?is)\b((?:SELECT|WITH)\s+[^\n;]+(?:\s+(?:FROM|WHERE|GROUP|ORDER|UNION|LIMIT)[^\n;]*)*)", raw)
+    if sql_m:
+        cand = sql_m.group(1).strip().rstrip(";")
+        if re.search(r"(?i)\bFROM\b", cand) or re.search(r"(?i)\bSELECT\s+1\b", cand):
+            return cand
+
     return ""
 
 
@@ -117,12 +123,19 @@ def generate_sql_node(state: dict) -> dict:
         if schema_excerpt:
             user_parts.append(f"Schema excerpt:\n{schema_excerpt}")
         user_parts.append(f"Câu hỏi:\n{q_text}")
+        if settings.llm_backend == "self_hosted" or "qwen" in settings.model_name.lower():
+            user_parts.insert(0, "/nothink")
         user_prompt = "\n\n".join(user_parts)
         sub["output"] = {"user_prompt_len": len(user_prompt), "schema_excerpt_len": len(schema_excerpt)}
 
     max_tokens = settings.sql_generate_max_tokens
 
-    raw = invoke_text(system_prompt, user_prompt, max_tokens=max_tokens, substep="generate_sql")
+    raw = invoke_text(
+        system_prompt,
+        user_prompt,
+        max_tokens=max_tokens,
+        substep="generate_sql",
+    )
 
     with trace_substep("extract_sql", kind="tool", input={"raw_len": len(raw)}) as sub:
         sql = extract_sql(raw)

@@ -65,9 +65,20 @@ def judge_answer(question: str, answer: str, *, evidence: str = "", expected: st
         user_prompt += f"\nBằng chứng/Dữ liệu (Evidence):\n{evidence}\n"
 
     try:
-        raw = invoke_text(system_prompt=_SYSTEM_PROMPT, user_prompt=user_prompt, max_tokens=256, substep="judge_eval")
-        # Extract JSON
-        match = re.search(r"\{.*\}", raw, re.DOTALL)
+        raw = invoke_text(
+            system_prompt=_SYSTEM_PROMPT,
+            user_prompt=user_prompt,
+            max_tokens=1024,
+            substep="judge_eval",
+        )
+        # Strip <think>...</think> if model emits reasoning tokens
+        cleaned = re.sub(r"<think>.*?</think>", "", raw, flags=re.DOTALL).strip()
+        if not cleaned:
+            cleaned = raw
+
+        match = re.search(r"\{[^{}]*\"score\"[^{}]*\}", cleaned, re.DOTALL)
+        if not match:
+            match = re.search(r"\{.*\}", cleaned, re.DOTALL)
         if not match:
             return JudgeScore(3, "Đã trả lời nhưng judge không trích xuất được JSON")
         data = json.loads(match.group(0))

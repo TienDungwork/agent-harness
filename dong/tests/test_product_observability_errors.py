@@ -470,6 +470,42 @@ def test_backend_monitoring_reexport():
     assert be_trace_step is trace_step
 
 
+def test_trace_observation_types_agent_vs_tool_vs_retriever(monkeypatch):
+    """Kiểm tra trace_step và trace_substep truyền đúng as_type ('agent', 'tool', 'retriever')."""
+    from src.monitoring.tracing import trace_substep, trace_active_parent
+    monkeypatch.setattr("src.monitoring.tracing.settings.monitoring_enabled", True)
+
+    mock_parent = MagicMock()
+    mock_child = MagicMock()
+    mock_parent.start_observation.return_value = mock_child
+
+    # 1. Test trace_step deduction
+    with trace_step(mock_parent, "agent:classify", input="test") as _:
+        pass
+    mock_parent.start_observation.assert_called_with(
+        name="agent:classify", as_type="agent", input="test", metadata={"latency_s": mock_parent.start_observation.call_args[1]["metadata"]["latency_s"]}
+    )
+
+    with trace_step(mock_parent, "tool:validate_sql", input={"sql": "SELECT 1"}) as _:
+        pass
+    assert mock_parent.start_observation.call_args[1]["as_type"] == "tool"
+
+    with trace_step(mock_parent, "recall", input="recall query") as _:
+        pass
+    assert mock_parent.start_observation.call_args[1]["as_type"] == "retriever"
+
+    # 2. Test trace_substep deduction via active parent
+    with trace_active_parent(mock_parent):
+        with trace_substep("build_prompt", kind="tool") as _:
+            pass
+        assert mock_parent.start_observation.call_args[1]["as_type"] == "tool"
+
+        with trace_substep("respond_stat", kind="agent") as _:
+            pass
+        assert mock_parent.start_observation.call_args[1]["as_type"] == "agent"
+
+
+
 def test_trace_answer_token_sum_via_contextvar(monkeypatch):
     monkeypatch.setattr("src.monitoring.tracing.settings.monitoring_enabled", True)
 

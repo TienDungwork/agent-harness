@@ -57,6 +57,12 @@ _TABLE_ALIASES: dict[str, str] = {
 }
 
 
+_TABLE_REF = re.compile(
+    r'\b(?:from|join)\s+(?:only\s+)?(?:(?:"?[a-zA-Z_][\w]*"?)\.)?"?([a-zA-Z_][\w]*)"?',
+    re.IGNORECASE,
+)
+
+
 def get_database_for_table(table: str) -> str:
     """Xác định tên database kết nối tương ứng với bảng."""
     tbl = table.lower().strip().strip('"')
@@ -76,6 +82,19 @@ def get_database_for_table(table: str) -> str:
             return settings.db_name_anomaly
         return db_key
     return settings.db_name_its
+
+
+def get_database_for_sql(sql: str) -> str:
+    """Xác định database kết nối bằng cách tìm bảng catalog có trong câu SQL."""
+    catalog = _load_catalog()
+    for m in _TABLE_REF.finditer(sql or ""):
+        cand = m.group(1).lower().strip('"')
+        cand = _TABLE_ALIASES.get(cand, cand)
+        if cand in catalog:
+            return get_database_for_table(cand)
+    m = _TABLE_REF.search(sql or "")
+    tbl_name = m.group(1).lower() if m else ""
+    return get_database_for_table(tbl_name)
 
 
 def describe_table(table: str, dbname: str | None = None) -> dict[str, Any]:

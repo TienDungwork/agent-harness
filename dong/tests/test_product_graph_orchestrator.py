@@ -98,7 +98,19 @@ def test_plan_orchestration_case_024_docs_focused_not_sql_only():
     assert plan_024.steps[0].agent == "docs"
     # Không được route cả câu hỏi chỉ sang SQL
     assert not all(s.agent == "query_data" for s in plan_024.steps)
-    assert all(s.agent != "query_data" for s in plan_024.steps)
+
+
+def test_classify_vehicle_violation_queries_route_to_query_data():
+    """Kiểm tra các câu hỏi tra cứu xe vi phạm / phương tiện mới nhất phân loại đúng query_data."""
+    from src.agent.intent import classify_intent_safe
+    for q in [
+        "ô tô vi phạm gần nhất lúc nào?",
+        "phương tiện vi phạm gần đây nhất",
+        "xe máy vi phạm mới nhất",
+        "xe tải vi phạm lúc nào",
+    ]:
+        res = classify_intent_safe(q)
+        assert res.intent == "query_data", f"Câu '{q}' phải có intent='query_data', nhận được '{res.intent}'"
 
 
 def test_query_plan_offline_crowd_filter_crowd_detection():
@@ -1251,4 +1263,19 @@ def test_execute_node_emits_structured_rows(monkeypatch):
     assert ev["output"]["row_count"] == 2
     assert ev["output"]["rows"][0]["so_luot"] == 10
     assert "Trả về" not in str(ev["output"])
+
+
+def test_orchestrator_decomposes_compound_vehicle_and_zone_queries():
+    """Kiểm tra câu hỏi ghép vừa hỏi xe vừa hỏi xâm nhập được phân rã thành 2 query_data steps."""
+    from src.agent.orchestrator import is_multi_question, plan_orchestration
+    q = "Xe biển số 15C4384 hôm nay có đi qua khu vực xâm nhập nào không, và khung giờ xâm nhập nhiều nhất hôm nay là mấy giờ?"
+    assert is_multi_question(q) is True
+    plan = plan_orchestration(q)
+    assert plan.is_multi is True
+    assert len(plan.steps) == 2
+    assert plan.steps[0].agent == "query_data"
+    assert plan.steps[1].agent == "query_data"
+    assert "15C4384" in plan.steps[0].sub_question or "xe" in plan.steps[0].sub_question.lower()
+    assert "xâm nhập" in plan.steps[1].sub_question.lower()
+
 

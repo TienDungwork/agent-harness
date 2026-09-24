@@ -135,12 +135,19 @@ def repair_sql_node(state: dict) -> dict:
             "Hãy viết lại một câu SELECT hợp lệ. Chỉ dùng bảng và cột có trong schema excerpt; "
             "không gắn cột của bảng này vào bảng kia."
         )
+        if settings.llm_backend == "self_hosted" or "qwen" in settings.model_name.lower():
+            user_parts.insert(0, "/nothink")
         user_prompt = "\n\n".join(user_parts)
         sub["output"] = {"user_prompt_len": len(user_prompt), "reason": val_reason}
 
     max_tokens = settings.sql_generate_max_tokens
 
-    raw = invoke_text(system_prompt, user_prompt, max_tokens=max_tokens, substep="repair_sql")
+    raw = invoke_text(
+        system_prompt,
+        user_prompt,
+        max_tokens=max_tokens,
+        substep="repair_sql",
+    )
 
     with trace_substep("extract_sql", kind="tool", input={"raw_len": len(raw)}) as sub:
         repaired_sql = extract_sql(raw)

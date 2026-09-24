@@ -10,7 +10,7 @@ import re
 from typing import Any
 
 from src.config import settings
-from src.db.catalog import get_database_for_table
+from src.db.catalog import get_database_for_sql
 from src.db.connection import get_connection
 from src.db.validator import validate_sql
 
@@ -43,9 +43,7 @@ def execute_sql(
 
     # 3. Xác định database nguồn nếu chưa truyền vào
     if not dbname:
-        m = _TABLE_REF.search(sql)
-        tbl_name = m.group(1).lower() if m else ""
-        dbname = get_database_for_table(tbl_name)
+        dbname = get_database_for_sql(sql)
 
     # 4. Mở kết nối read-only và thực thi
     import psycopg2.extras

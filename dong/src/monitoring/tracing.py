@@ -71,10 +71,15 @@ def trace_substep(
     kind: str = "tool",
     input: Any = None,
     metadata: dict[str, Any] | None = None,
+    as_type: str | None = None,
 ) -> Iterator[dict[str, Any]]:
     """Substep lồng trong graph node — phân tách agent (LLM) vs tool (code/DB).
 
     Tên span: ``agent:<name>`` hoặc ``tool:<name>`` (trừ khi ``name`` đã có prefix).
+    Biểu tượng Langfuse:
+    - kind="agent": Icon Agent 🤖 (as_type='agent')
+    - kind="tool": Icon Tool 🛠️ (as_type='tool')
+    - kind="retriever": Icon Retriever 🔍 (as_type='retriever')
     """
     if not settings.monitoring_enabled:
         yield {}
@@ -84,7 +89,18 @@ def trace_substep(
         yield {}
         return
     step_name = name if ":" in name else f"{kind}:{name}"
-    with trace_step(parent, step_name, input=input, metadata=metadata) as box:
+    obs_type = as_type
+    if not obs_type:
+        if kind == "agent" or step_name.startswith("agent:"):
+            obs_type = "agent"
+        elif kind == "tool" or step_name.startswith("tool:"):
+            obs_type = "tool"
+        elif kind == "retriever" or step_name.startswith("retriever:"):
+            obs_type = "retriever"
+        else:
+            obs_type = "span"
+
+    with trace_step(parent, step_name, input=input, metadata=metadata, as_type=obs_type) as box:
         yield box
 
 def add_request_tokens(usage: dict[str, int]):
@@ -181,7 +197,7 @@ def trace_answer(name: str, question: str, metadata: dict[str, Any] | None = Non
 
     try:
         langfuse = _get_langfuse()
-        kwargs: dict[str, Any] = {"name": name, "input": question, "metadata": meta}
+        kwargs: dict[str, Any] = {"name": name, "as_type": "agent", "input": question, "metadata": meta}
         if "session_id" in meta and meta["session_id"]:
             kwargs["session_id"] = str(meta["session_id"])
         if "user_id" in meta and meta["user_id"]:
@@ -190,6 +206,7 @@ def trace_answer(name: str, question: str, metadata: dict[str, Any] | None = Non
         box["_span"] = span
     except TypeError:
         try:
+            kwargs.pop("as_type", None)
             span = langfuse.start_observation(name=name, input=question, metadata=meta)
             box["_span"] = span
         except Exception as exc:
@@ -273,14 +290,20 @@ def trace_answer(name: str, question: str, metadata: dict[str, Any] | None = Non
 
 
 @contextmanager
-def trace_step(parent_span: Any, name: str, input: Any = None, metadata: dict[str, Any] | None = None):
-    """Nested child span dưới `parent_span` (lấy từ `trace_answer`'s `t["_span"]`).
+def trace_step(
+    parent_span: Any,
+    name: str,
+    input: Any = None,
+    metadata: dict[str, Any] | None = None,
+    as_type: str | None = None,
+):
+    """Nested child span/observation dưới `parent_span`.
 
-    Dùng trong pipeline agent để thấy từng bước (chon_tool/chay_tool/dien_giai)
-    lồng nhau trong Langfuse. Lưu trữ đầy đủ output, token metrics, model, latency_s.
-    No-op nếu `parent_span` là `None` (monitoring tắt hoặc chạy ngoài trace).
-
-    Fail-safe: Bắt mọi lỗi cập nhật/kết thúc span để không làm gián đoạn Agent.
+    Phân biệt loại observation (`as_type`):
+    - "agent": Bước agent / LLM (icon Agent 🤖)
+    - "tool": Bước gọi tool / function / DB (icon Tool 🛠️)
+    - "retriever": Bước truy xuất tri thức / schema (icon Retriever 🔍)
+    - "span": Khối span tổng quát (icon <->)
     """
     if parent_span is None:
         yield {}
@@ -291,8 +314,28 @@ def trace_step(parent_span: Any, name: str, input: Any = None, metadata: dict[st
     box: dict[str, Any] = {}
     meta = dict(metadata or {})
 
+    obs_type = as_type
+    if not obs_type:
+        if name.startswith("agent:") or name in (
+            "classify",
+            "orchestrator",
+            "respond_stat",
+            "generate_sql",
+            "repair_sql",
+            "answer_from_docs",
+            "orchestrator_respond",
+            "respond",
+        ):
+            obs_type = "agent"
+        elif name.startswith("tool:") or name in ("execute_sql", "validate_sql", "render_chart"):
+            obs_type = "tool"
+        elif name in ("recall", "retrieve_schema", "retrieve_docs"):
+            obs_type = "retriever"
+        else:
+            obs_type = "span"
+
     try:
-        kwargs: dict[str, Any] = {"name": name, "input": input, "metadata": meta}
+        kwargs: dict[str, Any] = {"name": name, "as_type": obs_type, "input": input, "metadata": meta}
         if "session_id" in meta and meta["session_id"]:
             kwargs["session_id"] = str(meta["session_id"])
         if "user_id" in meta and meta["user_id"]:
@@ -301,6 +344,7 @@ def trace_step(parent_span: Any, name: str, input: Any = None, metadata: dict[st
         box["_span"] = span
     except TypeError:
         try:
+            kwargs.pop("as_type", None)
             span = parent_span.start_observation(name=name, input=input, metadata=meta)
             box["_span"] = span
         except Exception as exc:

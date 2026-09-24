@@ -93,6 +93,8 @@ _stream_queue = contextvars.ContextVar("_stream_queue", default=None)
 
 def _wrap_node(node_id: str, func):
     def wrapper(state: AgentState):
+        import time
+        t0 = time.perf_counter()
         q = _stream_queue.get()
         parent = state.get("_trace_span") or get_trace_parent()
         user_id = state.get("user_id") or "default"
@@ -108,7 +110,9 @@ def _wrap_node(node_id: str, func):
             try:
                 with trace_active_parent(step.get("_span")):
                     res = func(state)
+                dur_ms = round((time.perf_counter() - t0) * 1000, 1)
             except Exception as e:
+                dur_ms = round((time.perf_counter() - t0) * 1000, 1)
                 err_io = {
                     "input": {"question": state.get("question", ""), "node_id": node_id},
                     "output": {"error": str(e), "error_type": type(e).__name__},
@@ -119,6 +123,7 @@ def _wrap_node(node_id: str, func):
                     q.put({
                         "node_id": node_id,
                         "status": "done",
+                        "duration_ms": dur_ms,
                         "input": err_io["input"],
                         "output": err_io["output"],
                     })
@@ -131,18 +136,20 @@ def _wrap_node(node_id: str, func):
                 meta = dict(ev.get("meta") or {})
                 meta.setdefault("user_id", user_id)
                 meta.setdefault("session_id", session_id)
+                meta["duration_ms"] = dur_ms
                 step["metadata"] = json_safe(meta)
                 if q is not None:
                     for item in res["events"]:
                         q.put({
                             "node_id": item.get("node_id", node_id),
                             "status": "done",
+                            "duration_ms": dur_ms,
                             "input": json_safe(item.get("input")),
                             "output": json_safe(item.get("output")),
                             "chart_png_base64": item.get("chart_png_base64"),
                             "chart_meta": json_safe(item.get("chart_meta")),
                             "chart_spec": json_safe(item.get("chart_spec")),
-                            "meta": json_safe(item.get("meta")),
+                            "meta": json_safe(meta),
                         })
             else:
                 step["input"] = None
@@ -151,11 +158,13 @@ def _wrap_node(node_id: str, func):
                     q.put({
                         "node_id": node_id,
                         "status": "done",
+                        "duration_ms": dur_ms,
                         "input": None,
                         "output": None,
                     })
             return res
     return wrapper
+
 
 def recall_node(state: AgentState) -> dict:
     from src.memory.longterm import recall_long_term
@@ -223,6 +232,8 @@ def run_store_extract(
         "include_answer": include_answer,
     }
 
+    import time
+    t0 = time.perf_counter()
     try:
         with trace_step(
             parent_span,
@@ -233,20 +244,22 @@ def run_store_extract(
                 extracted = extract_and_store_memory(
                     uid, q, ans if include_answer else "", detail=detail, include_answer=include_answer
                 )
+                dur_ms = round((time.perf_counter() - t0) * 1000, 1)
                 ev = node_event(
                     "store_extract",
                     input=input_payload,
                     output={"extracted_memories": extracted},
-                    meta={"user_id": uid, "session_id": sid, "extracted_count": len(extracted)},
+                    meta={"user_id": uid, "session_id": sid, "extracted_count": len(extracted), "duration_ms": dur_ms},
                 )
             except Exception as exc:
+                dur_ms = round((time.perf_counter() - t0) * 1000, 1)
                 logger.warning("extract_and_store_memory failed, degrading safely: %s", exc)
                 err_msg = str(exc)[:200]
                 ev = node_event(
                     "store_extract",
                     input=input_payload,
                     output={"extracted_memories": [], "degraded": True, "error": err_msg},
-                    meta={"user_id": uid, "session_id": sid, "extracted_count": 0, "degraded": True},
+                    meta={"user_id": uid, "session_id": sid, "extracted_count": 0, "degraded": True, "duration_ms": dur_ms},
                 )
             step["input"] = ev["input"]
             step["output"] = ev["output"]
@@ -254,9 +267,10 @@ def run_store_extract(
 
         return [
             {"node_id": "store_extract", "status": "running"},
-            {"node_id": "store_extract", "status": "done", **{k: ev[k] for k in ("input", "output", "meta")}},
+            {"node_id": "store_extract", "status": "done", "duration_ms": dur_ms, **{k: ev[k] for k in ("input", "output", "meta")}},
         ]
     except Exception as exc:
+        dur_ms = round((time.perf_counter() - t0) * 1000, 1)
         logger.warning("run_store_extract failed, degrading safely: %s", exc)
         err_msg = str(exc)[:200]
         return [
@@ -264,9 +278,10 @@ def run_store_extract(
             {
                 "node_id": "store_extract",
                 "status": "done",
+                "duration_ms": dur_ms,
                 "input": input_payload,
                 "output": {"extracted_memories": [], "degraded": True, "error": err_msg},
-                "meta": {"user_id": uid, "session_id": sid, "extracted_count": 0, "degraded": True},
+                "meta": {"user_id": uid, "session_id": sid, "extracted_count": 0, "degraded": True, "duration_ms": dur_ms},
             },
         ]
 
@@ -334,6 +349,9 @@ def respond_inline_node(state: AgentState) -> dict:
     user_id = state.get("user_id") or "default"
     session_id = state.get("session_id") or "default"
     
+    if not ans and intent == "chat":
+        ans = "Chào bạn! Tôi là trợ lý AI giám sát camera VMS KCN Hưng Phú. Tôi có thể hỗ trợ gì cho bạn về dữ liệu camera, sự kiện hoặc hướng dẫn sử dụng hệ thống?"
+
     result = Agent_Output(
         question=q,
         answer=ans,
@@ -342,6 +360,7 @@ def respond_inline_node(state: AgentState) -> dict:
     
     return {
         "result": result,
+        "answer": ans,
         "events": [node_event(
             "respond_inline",
             input={"question": q, "intent": intent},
@@ -398,7 +417,7 @@ def route_orchestrator(state: AgentState) -> str:
             return "query_data"
         return "out"
 
-    if plan and plan.is_multi and len(plan.steps) >= 2:
+    if plan and (plan.is_multi or len(plan.steps) >= 2):
         return "multi"
 
     if plan and plan.steps:
@@ -426,10 +445,9 @@ def orchestrator_respond_node(state: AgentState) -> dict:
     session_id = state.get("session_id") or "default"
     plan: OrchestratorPlan | None = state.get("orchestrator_plan")
 
-    docs_result_text = ""
-    query_result_text = ""
     query_res: QueryResult | None = None
     sub_events: list[dict] = []
+    step_answers: list[str] = []
     rows: list = []
     columns: list = []
 
@@ -439,7 +457,8 @@ def orchestrator_respond_node(state: AgentState) -> dict:
         if step.agent == "docs":
             cards = retrieve_docs(sub_q)
             docs_ans = answer_from_docs(sub_q, cards)
-            docs_result_text = docs_ans.answer_vi
+            docs_text = docs_ans.answer_vi
+            step_answers.append(docs_text)
             sub_events.append(node_event(
                 f"orchestrator_docs_step_{idx+1}",
                 input={"sub_question": sub_q, "agent": "docs"},
@@ -472,19 +491,22 @@ def orchestrator_respond_node(state: AgentState) -> dict:
                 "user_id": user_id,
                 "session_id": session_id,
             })
-            rows = exec_res.get("rows") or []
-            columns = exec_res.get("columns") or []
+            step_rows = exec_res.get("rows") or []
+            step_columns = exec_res.get("columns") or []
+            if step_rows:
+                rows = step_rows
+                columns = step_columns
             err = exec_res.get("error") if not val_res.ok or exec_res.get("error") else ""
 
             if err:
                 query_ans_vi = f"Lỗi khi truy vấn số liệu: {err}"
-            elif not rows:
+            elif not step_rows:
                 from src.guardrails import empty_stat_reply
 
                 query_ans_vi = empty_stat_reply()
             else:
-                lines = [", ".join(f"{c}={r[c]}" for c in columns) for r in rows[:20]]
-                template_ans = f"Số liệu ({len(rows)} dòng):\n" + "\n".join(lines)
+                lines = [", ".join(f"{c}={r[c]}" for c in step_columns) for r in step_rows[:20]]
+                template_ans = f"Số liệu ({len(step_rows)} dòng):\n" + "\n".join(lines)
                 query_ans_vi = template_ans
                 if not use_offline_tools():
                     try:
@@ -499,12 +521,12 @@ def orchestrator_respond_node(state: AgentState) -> dict:
                     except Exception:
                         pass
 
-            query_result_text = query_ans_vi
+            step_answers.append(query_ans_vi)
             query_res = QueryResult(
                 tool="sql_builder",
-                columns=columns,
-                rows=[[r[c] for c in columns] for r in rows] if rows else [],
-                row_count=len(rows),
+                columns=step_columns,
+                rows=[[r[c] for c in step_columns] for r in step_rows] if step_rows else [],
+                row_count=len(step_rows),
                 error=err or "",
                 reply_vi=query_ans_vi,
             )
@@ -517,23 +539,16 @@ def orchestrator_respond_node(state: AgentState) -> dict:
                     "params": exec_res.get("params"),
                 },
                 output={
-                    "columns": columns,
-                    "rows": rows,
-                    "row_count": len(rows),
+                    "columns": step_columns,
+                    "rows": step_rows,
+                    "row_count": len(step_rows),
                     "error": err or "",
                     "answer_vi": query_ans_vi,
                 },
                 meta={"user_id": user_id, "session_id": session_id},
             ))
 
-    parts = []
-    for step in steps:
-        if step.agent == "docs" and docs_result_text:
-            parts.append(docs_result_text)
-        elif step.agent == "query_data" and query_result_text:
-            parts.append(f"Về số liệu thống kê:\n{query_result_text}")
-
-    merged_answer = "\n\n".join(parts) if parts else "Không có kết quả điều phối."
+    merged_answer = "\n\n".join(step_answers) if step_answers else "Không có kết quả điều phối."
 
     result = Agent_Output(
         question=q,
@@ -556,7 +571,7 @@ def orchestrator_respond_node(state: AgentState) -> dict:
             output={
                 "answer": merged_answer,
                 "has_query": query_res is not None,
-                "has_docs": bool(docs_result_text),
+                "has_docs": any(s.agent == "docs" for s in steps),
                 "query": query_res.model_dump() if query_res else None,
             },
             meta={"user_id": user_id, "session_id": session_id, "is_multi": True},
@@ -765,9 +780,46 @@ def respond_node(state: AgentState) -> dict:
     
     answer_source = "template"
     llm_used = False
+    q_low = q.lower()
+    is_cam_list_query = "danh sách" in q_low and "camera" in q_low and any(k in q_low for k in ("khu vực", "hợp lệ", "hiện có", "tất cả"))
+
     if error:
         ans = f"Lỗi khi truy vấn: {error}"
         answer_source = "error"
+    elif is_cam_list_query:
+        from pathlib import Path
+        import yaml
+        reg_path = Path(__file__).resolve().parent.parent.parent / "resource" / "db" / "camera_registry.yaml"
+        if reg_path.exists():
+            try:
+                reg = yaml.safe_load(reg_path.read_text(encoding="utf-8"))
+                cams = reg.get("cameras", [])
+                area = reg.get("area_name", "Sản xuất & lắp ráp")
+                cam_names = [c.get("camera_name") for c in cams if c.get("camera_name")]
+                zones = [f"{z.get('zone_code')} ({z.get('camera_name')})" for z in reg.get("virtual_zones", [])]
+                ans = (
+                    f"Danh sách các khu vực và camera hợp lệ hiện có:\n"
+                    f"- Khu vực: {area}\n"
+                    f"- Danh sách {len(cam_names)} camera: {', '.join(cam_names)}\n"
+                    f"- Khu vực hàng rào ảo / vùng cấm: {', '.join(zones)}."
+                )
+                columns = ["camera_name", "area", "status", "ai_service"]
+                rows = [
+                    {
+                        "camera_name": c.get("camera_name", ""),
+                        "area": c.get("area", area),
+                        "status": c.get("status", "ONLINE"),
+                        "ai_service": c.get("ai_service", ""),
+                    }
+                    for c in cams
+                ]
+                answer_source = "master_registry"
+            except Exception:
+                ans = f"Danh sách camera: {len(rows)} bản ghi."
+                answer_source = "master_registry_fallback"
+        else:
+            ans = f"Danh sách camera: {len(rows)} bản ghi."
+            answer_source = "master_registry_fallback"
     elif not rows:
         from src.guardrails import empty_stat_reply
 
@@ -805,10 +857,11 @@ def respond_node(state: AgentState) -> dict:
                 except Exception as exc:
                     answer_source = f"template_fallback:{type(exc).__name__}"
 
-    q_low = q.lower()
+
     if any(k in q_low for k in ("chỗ", "cho ngoi", "5 chỗ", "7 chỗ", "9 chỗ", "16 chỗ", "29 chỗ", "40 chỗ", "45 chỗ")):
         if "không có thông tin số chỗ ngồi" not in ans.lower():
             ans = f"{ans}\n(Lưu ý: Hệ thống chỉ phân loại 4 nhóm phương tiện CAR, MOTORCYCLE, TRUCK, BUS, không có thông tin số chỗ ngồi.)"
+
 
     stat = StatAnswer(
         answer_vi=ans,
@@ -888,7 +941,7 @@ def _build_graph(checkpointer=None):
     def route_classify(state: AgentState) -> str:
         ans = (state.get("answer") or "").strip()
         intent = state.get("intent", "query_data")
-        if ans and intent in ("chat", "clarify"):
+        if (ans and intent in ("chat", "clarify")) or intent == "chat":
             return "respond_inline"
 
         from src.agent.orchestrator import is_multi_question

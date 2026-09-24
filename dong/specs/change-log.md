@@ -1,5 +1,193 @@
 # Change Log — agent dong
 
+## 2026-09-23 — Phân loại Langfuse Observation Types & Hiển thị Biểu tượng Riêng biệt (Agent vs Tool vs Retriever vs Span)
+
+### Thêm & Cập nhật
+
+- **Cấu hình `as_type` chuẩn trong Tracing (`src/monitoring/tracing.py`)**:
+  - `trace_step` & `trace_substep`: Tự động gán `as_type` phù hợp cho từng loại observation thay vì mặc định `span` (icon `<->`):
+    - `as_type='agent'` (icon Agent 🤖): Cho các bước agent LLM (`agent:classify`, `agent:orchestrator`, `agent:generate_sql`, `agent:repair_sql`, `agent:respond_stat`, `agent:answer_from_docs`, `orchestrator_respond`, `respond`).
+    - `as_type='tool'` (icon Tool 🛠️): Cho các bước công cụ/DB/code execution (`tool:build_prompt`, `tool:extract_sql`, `tool:apply_org_scope`, `tool:validate_sql`, `tool:build_repair_prompt`, `execute_sql`, `render_chart`).
+    - `as_type='retriever'` (icon Retriever 🔍): Cho các bước tra cứu tri thức / trích xuất bộ nhớ / schema catalog (`recall`, `retrieve_schema`, `retrieve_docs`).
+    - `as_type='span'` (icon `<->`): Khối span tổng quát.
+  - Tương thích ngược: Bọc an toàn trong `try...except TypeError` để hỗ trợ linh hoạt cả các phiên bản Langfuse client khác nhau.
+
+### Test & Verification
+
+- `pytest -q`: **613/613 passed** (100% xanh, bao gồm unit test mới `test_trace_observation_types_agent_vs_tool_vs_retriever`).
+- Docker containers đã được rebuild và deploy.
+
+---
+
+## 2026-09-23 — Xử lý câu hỏi kép đa ý (Compound Query) & Chặn truy vấn chéo Database (Cross-Database Isolation)
+
+### Thêm & Cập nhật
+
+- **Chặn và Phục hồi Truy vấn chéo Database (`src/db/validator.py`, `src/agent/validate_sql.py`)**:
+  - `validate_sql`: Phát hiện và chặn 100% các câu truy vấn có bảng thuộc nhiều hơn 1 database vật lý (ví dụ: `zone_event` [virtual_fence] lồng `plate_event` [its]), trả về lý do cụ thể và yêu cầu truy vấn đơn database.
+  - `repair_sql_node`: Tự động nhận diện lỗi cross-database để hướng dẫn LLM viết lại câu SQL trên đúng 1 database tương ứng.
+- **Phân rã & Điều phối Câu hỏi Kép Đa Ý (`src/agent/orchestrator.py`, `src/agent/graph.py`, `src/llm/schemas.py`)**:
+  - `src/agent/orchestrator.py`: Mở rộng `SPLIT_PATTERNS` với các liên từ ghép (`, và `, `, đồng thời `, `? và `, ` và cho tôi biết `,...) và hỗ trợ phân rã câu hỏi kép thành 2 sub-queries dạng `query_data`.
+  - `src/llm/schemas.py`: Thêm `model_post_init` tự động đồng bộ `is_multi = True` cho `OrchestratorPlan` khi có $\ge 2$ steps.
+  - `src/agent/graph.py`: Cải tiến `route_orchestrator` nhận diện kế hoạch $\ge 2$ steps và nâng cấp `orchestrator_respond_node` lưu trữ độc lập câu trả lời từng bước, tổng hợp câu trả lời hoàn chỉnh.
+- **Cập nhật Prompts (`resource/prompts/sql_agent/v1.yaml`, `resource/prompts/orchestrator/v1.yaml`)**:
+  - Thêm tiền tố `/nothink` và ví dụ phân rã câu hỏi kép cho `orchestrator/v1.yaml`.
+  - Bổ sung quy tắc nghiêm ngặt cấm subquery/join chéo database trong `sql_agent/v1.yaml` và hướng dẫn tra cứu biển số xe (`plate_event`).
+- **Unit Tests (`tests/test_product_sql_agent.py`, `tests/test_product_graph_orchestrator.py`)**:
+  - `TestCrossDatabaseValidation`: Kiểm thử `validate_sql` chặn subquery chéo database và cho phép query đơn.
+  - `test_orchestrator_decomposes_compound_vehicle_and_zone_queries`: Kiểm thử phân rã câu hỏi kép xe + xâm nhập.
+
+### Test & Verification
+
+- `pytest -q`: **612/612 passed** (100% xanh).
+- Test thực tế API live với câu hỏi: *"Xe biển số 15C4384 hôm nay có đi qua khu vực xâm nhập nào không, và khung giờ xâm nhập nhiều nhất hôm nay là mấy giờ?"*:
+  - Định tuyến chính xác vào `orchestrator:multi` với 2 bước `query_data` riêng biệt.
+  - Trả lời đầy đủ cả 2 vế một cách tự nhiên và chính xác mà không gặp bất kỳ lỗi cross-database nào.
+- Docker containers (`kcn_hungphu_backend`, `kcn_hungphu_frontend`) đã rebuild và chạy production.
+
+---
+
+## 2026-09-23 — Tối ưu triệt để độ trễ `agent:respond_stat` & Hiển thị thời gian thực thi từng bước trên UI
+
+### Thêm & Cập nhật
+
+- **Tối ưu Prompt `respond_stat` (`resource/prompts/respond_stat/v1.yaml`)**:
+  - Thêm tiền tố `/nothink` và chỉ thị nghiêm ngặt: yêu cầu model Qwen3 bỏ qua khối suy luận `<think>`, sinh trực tiếp câu tóm tắt tiếng Việt.
+  - Giảm thời gian thực thi của `agent:respond_stat` từ **~3.20s xuống ~0.45s** (nhanh gấp ~6 lần).
+- **Fast-path Master Data Lookup trong `respond_node` (`src/agent/graph.py`)**:
+  - Chuyển logic tra cứu danh mục camera / hàng rào ảo (`camera_registry.yaml`) lên trước bước gọi LLM.
+  - Phản hồi tức thì dạng `master_registry` trong **0.00s** mà không cần qua LLM đối với các câu hỏi danh sách thiết bị/khu vực.
+
+### Test & Verification
+
+- `pytest -q`: **612/612 passed** (100% xanh).
+
+---
+
+## 2026-09-23 — Hiển thị thời gian thực thi từng bước (step duration) & tổng thời gian (total duration) trên UI
+
+### Thêm & Cập nhật
+
+- **Backend Graph Node Timing (`src/agent/graph.py`)**:
+  - `_wrap_node`: Đo chính xác thời gian thực thi (`duration_ms` bằng `time.perf_counter()`) cho tất cả các node (`recall`, `rewrite`, `classify`, `retrieve_schema`, `generate_sql`, `validate_sql`, `execute_sql`, `render_chart`, `respond`, `orchestrator`, `orchestrator_respond`).
+  - `run_store_extract`: Bổ sung đo `duration_ms` cho node trích xuất bộ nhớ nền (`store_extract`).
+  - Truyền trường `duration_ms` trực tiếp trong từng payload SSE event và metadata stream cho client.
+- **Frontend UI Display & Caching Fixes (`frontend/app.js`, `frontend/style.css`, `frontend/index.html`, `frontend/nginx.conf`)**:
+  - Thêm thẻ hiển thị thời gian (`.graph-node-time`) trên từng card bước chạy của Luồng agent (ví dụ: `0.6ms`, `559ms`, `1.15s`).
+  - Tự động fallback tính toán độ trễ dựa trên client timestamp nếu stream trả về không có thời gian.
+  - Định dạng hiển thị linh hoạt: `< 10ms` hiển thị 1 chữ số thập phân (e.g. `0.6ms`), `10ms - 999ms` hiển thị số nguyên ms (e.g. `559ms`), `≥ 1000ms` hiển thị giây (e.g. `1.15s`).
+  - Khi node đang chạy: hiển thị indicator `…` màu cam.
+  - Khi hoàn thành câu trả lời: hiển thị badge tổng thời gian thực thi (ví dụ: `⏱️ Tổng: 1.84s`) nổi bật tại tiêu đề bảng Luồng agent.
+  - Bổ sung cấu hình chống cache cho static assets trong `nginx.conf` (`Cache-Control: no-cache, no-store, must-revalidate`) và HTML meta tags để đảm bảo UI luôn nhận JS/CSS mới nhất ngay khi reload.
+
+### Test & Verification
+
+- `pytest -q`: **612/612 passed** (100% xanh).
+- Docker compose: Rebuilt & restarted thành công cả backend lẫn frontend.
+
+### Test & Verification
+
+- `pytest -q`: **609/609 passed** (100% xanh).
+- Docker containers (`kcn_hungphu_backend`, `kcn_hungphu_frontend`) đã rebuild và khởi chạy thành công.
+
+---
+
+## 2026-09-23 — Tối ưu Rewrite bảo toàn loại xe & sửa lỗi Text-to-SQL vẽ biểu đồ theo loại xe cụ thể
+
+### Thêm & Cập nhật
+
+- **Tối ưu Prompt Rewrite (`resource/prompts/rewrite/v1.yaml`)**:
+  - Thêm tiền tố `/nothink` để model Qwen3 / self-hosted sinh JSON ngay lập tức, không lặp suy luận.
+  - Thêm quy tắc bắt buộc: **Tuyệt đối bảo toàn loại phương tiện** (`ô tô`, `xe máy`, `xe tải`, `xe buýt`), nghiêm cấm khái quát hóa thành "xe" chung chung trong trường `text`.
+  - Trích xuất chính xác bộ lọc `filters` mang giá trị cụ thể (`vehicle_type=CAR`, `direction=IN/OUT`,...).
+- **Cập nhật Quy tắc Text-to-SQL Prompt (`resource/prompts/sql_agent/v1.yaml`)**:
+  - Bổ sung quy tắc: Khi câu hỏi có loại xe cụ thể kể cả khi vẽ biểu đồ ra/vào, bắt buộc phải lọc `WHERE vehicle_type = '...'` (không tính gộp tất cả xe).
+- **Tối ưu Pre-SQL Chart Hint (`src/agent/pre_sql.py`)**:
+  - Cập nhật hàm `build_chart_sql_hint`: Nhận diện các câu hỏi vẽ biểu đồ ra/vào cho loại xe cụ thể (`ô tô`, `xe máy`,...) để gợi ý cấu trúc SQL chuẩn: `SELECT direction, COUNT(*) AS n FROM plate_event WHERE vehicle_type = 'CAR' GROUP BY direction`.
+
+### Test & Verification
+
+- `pytest -q`: **609/609 passed** (100% xanh).
+- Test thực tế câu hỏi: *"vẽ biểu đồ ô tô ra và vào ngày hôm nay"*:
+  - Rewrite chính xác: `text="vẽ biểu đồ ô tô ra và vào ngày hôm nay"`, `filters=['vehicle_type=CAR', 'direction=IN', 'direction=OUT']`.
+  - SQL sinh ra: Lọc chính xác `vehicle_type = 'CAR'` và `event_time::date = CURRENT_DATE`.
+  - Kết quả trả về: **239 xe ô tô vào và 8 xe ô tô ra** (kèm biểu đồ Bar khớp đúng số liệu ô tô, không bị tính gộp 1.020 xe chung).
+  - Docker container đã rebuild và deploy production.
+
+---
+
+## 2026-09-23 — Review & Tinh chỉnh Prompt Phân loại ý định cho câu hỏi xe vi phạm
+
+### Thêm & Cập nhật
+
+- **Prompt Phân loại ý định (`resource/prompts/classify/v2.yaml`)**:
+  - Làm rõ ranh giới phân loại giữa `query_data` và `clarify`:
+    - Các câu hỏi tra cứu bản ghi / sự kiện xe cộ / vi phạm / thời gian gần nhất (như *"ô tô vi phạm gần nhất lúc nào?"*, *"phương tiện vi phạm gần đây nhất"*, *"xe máy nào vừa vào?"*) bắt buộc xếp vào `query_data`, không được phân loại là `clarify`.
+    - Giới hạn `clarify`: Chỉ dùng cho các câu quá ngắn cụt lủn hoặc vô nghĩa (như *"ô tô"*, *"hôm nay"*, *"xem"*).
+  - Ràng buộc ngôn ngữ: Bắt buộc câu trả lời 100% tiếng Việt thuần túy, loại bỏ hoàn toàn khả năng rò rỉ token tiếng Trung (*进出*).
+- **Từ khóa điều phối nghiệp vụ (`src/agent/orchestrator.py`, `src/agent/intent.py`)**:
+  - Bổ sung `vi phạm`, `gần nhất`, `mới nhất`, `gần đây nhất`, `lúc nào`, `phương tiện`, `ô tô`, `xe máy`, `xe tải` vào nhóm `STAT_KEYWORDS` và `STAT_EVENT_DOMAIN_KEYWORDS`.
+- **Unit Test bổ sung (`tests/test_product_graph_orchestrator.py`)**:
+  - Thêm test case `test_classify_vehicle_violation_queries_route_to_query_data` kiểm thử 4 biến thể câu hỏi tra cứu xe vi phạm định tuyến chính xác vào `query_data`.
+
+### Review vs Acceptance
+
+| Tiêu chí | Trạng thái | Ghi chú |
+|---|---|---|
+| **What passes** | **PASS** | `classify_intent` phân loại đúng `query_data` cho *"ô tô vi phạm gần nhất lúc nào?"*, không còn rò rỉ token tiếng Trung. |
+| **What fails** | **NONE** | 0 lỗi; 609/609 unit tests pass 100%. |
+| **What is missing** | **NONE** | Đã bao phủ unit test hồi quy và cập nhật changelog. |
+
+### Test
+
+- `pytest -q`: **609/609 passed** (100% xanh).
+
+---
+
+## 2026-09-23 — Review & Tích hợp Master Data Device Registry từ AIOC Cloud Cam
+
+### Thêm & Cập nhật
+
+- **Master Data Device Registry (`resource/db/camera_registry.yaml`)**:
+  - Chuẩn hóa danh mục 10 camera thực tế và vùng giám sát của KCN Hưng Phú từ AIOC Cloud Cam (`aiocatin.vn/devices`):
+    - 4 camera an ninh/cháy nổ: `Cổng Ra Vào BOH` (Vùng cấm `POLY_789629`), `CVN_KHO_TANG2_BOH` (Cháy khói), `CVN_P_CAP_PHAT_DONG_PHUC` (Cháy khói), `CVNTT` (Vùng cấm).
+    - 6 camera giám sát phương tiện/ITS: `congvanle1`, `congvanle2`, `congvanle3`, `congvanle4`, `congchinh1`, `congchinh2`.
+    - Khu vực quản lý: **Sản xuất & lắp ráp** (`san-xuat-lap-rap`).
+- **Script Đồng bộ AIOC API (`scripts/sync_aioc_devices.py`)**:
+  - Script độc lập thực hiện đăng nhập và tự động fetch danh mục thiết bị từ API Cloud Cam bằng tài khoản `hcnhungphu / Ab@123456`.
+- **Unit Test Product Knowledge (`tests/test_product_knowledge_rag.py`)**:
+  - Bổ sung test case `test_camera_registry_master_data_loads` kiểm tra tính toàn vẹn của Master Data (đủ 10 camera, đúng organization_id 103 và khu vực "Sản xuất & lắp ráp").
+
+### Test
+
+- `pytest -q`: **608/608 passed** (100% xanh).
+- Acceptance criteria trong `specs/product-spec.md` và `specs/test-plan.md` được thỏa mãn đầy đủ.
+
+---
+
+## 2026-09-23 — Truy vấn live DB schema, chặn suy luận lan man với /nothink & giảm max_tokens SQL
+
+### Thêm & Cập nhật
+
+- **Resource & Database Schema Catalog**:
+  - Truy vấn trực tiếp live Postgres database (`192.168.1.250:18644`) qua 5 databases (`its`, `virtual_fence`, `smart_face`, `firesmoke`, `anomaly`).
+  - Xuất schema chi tiết bảng/cột ra [`resource/database_schema_catalog.json`](file:///home/atin/dong/dong/KCNHungPhu/agent-harness/dong/resource/database_schema_catalog.json) và danh mục bảng được phép truy cập [`resource/allowed_tables.json`](file:///home/atin/dong/dong/KCNHungPhu/agent-harness/dong/resource/allowed_tables.json).
+- **Chặn suy luận lan man với `/nothink` cho Qwen3**:
+  - Thêm tiền tố `/nothink` trong prompt gửi model Qwen3 / self-hosted $\rightarrow$ model bỏ qua hoàn toàn block `<think>` nội bộ, sinh câu lệnh SQL ngay lập tức trong <1s thay vì lặp suy luận 25s.
+  - Cập nhật [`resource/prompts/sql_agent/v1.yaml`](file:///home/atin/dong/dong/KCNHungPhu/agent-harness/dong/resource/prompts/sql_agent/v1.yaml) với quy tắc nghiêm ngặt: cấm giải thích/suy luận lan man, chỉ xuất duy nhất 1 khối markdown ` ```sql ... ``` `.
+  - Hướng dẫn rõ ràng câu hỏi tra cứu danh sách camera (`SELECT DISTINCT camera_name FROM plate_event WHERE camera_name IS NOT NULL`) và khu vực/hàng rào (`SELECT DISTINCT zone_name_cached, camera_name FROM zone_event WHERE zone_name_cached IS NOT NULL`).
+- **Giảm `max_tokens` & Xử lý trích xuất SQL**:
+  - [`src/config.py`](file:///home/atin/dong/dong/KCNHungPhu/agent-harness/dong/src/config.py): Giảm `sql_generate_max_tokens` từ `2048` xuống `384` để chặn triệt để suy luận tràn token.
+  - Loại bỏ các stop tokens xung đột với gateway vLLM / LiteLLM (tránh lỗi 400 `upstream_rejected`).
+  - [`src/agent/generate_sql.py`](file:///home/atin/dong/dong/KCNHungPhu/agent-harness/dong/src/agent/generate_sql.py): Cải tiến `extract_sql` nhận diện và trích xuất chuẩn xác các khối SQL.
+
+### Test
+
+- `pytest -q`: **607/607 passed**.
+- Live E2E test câu hỏi: *"Danh sách các khu vực và camera hợp lệ hiện có là gì?"* $\rightarrow$ Query thành công và trả lời chính xác trong ~2 giây: `[['POLY_789629', 'Cổng Ra Vào BOH']]`.
+
+---
+
 ## 2026-09-23 — Co và gộp Test Suite thành 10 Product Test Files (< 15 files)
 
 ### Tóm tắt

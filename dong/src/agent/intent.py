@@ -23,6 +23,8 @@ STAT_EVENT_DOMAIN_KEYWORDS = (
     "fight",
     "cảnh báo cháy",
     "cảnh báo khói",
+    "vi phạm",
+    "vi pham",
 )
 
 
@@ -36,29 +38,7 @@ def is_stat_event_domain(text: str) -> bool:
     )
 
 
-CHAT_GREETING_KEYWORDS = (
-    "xin chào",
-    "chào bạn",
-    "hello",
-    "hi ",
-    "bạn làm được gì",
-    "cảm ơn",
-    "thank",
-)
-
-
-def is_chat_greeting(text: str) -> bool:
-    """True nếu câu hỏi thuộc dạng chào hỏi / giao tiếp cơ bản (chat intent)."""
-    low = (text or "").lower().strip()
-    if not low:
-        return False
-    stripped = low.rstrip("!?. ,")
-    if stripped in ("hi", "hello", "chào", "xin chào", "cảm ơn", "thanks", "thank you"):
-        return True
-    if stripped.startswith(("chào ", "xin chào ", "hello ", "hi ")):
-        return True
-    return any(k in low for k in CHAT_GREETING_KEYWORDS)
-
+from src.guardrails import CHAT_GREETING_KEYWORDS, is_chat_greeting
 
 is_chat_like = is_chat_greeting
 

@@ -74,6 +74,14 @@ class TestExtractSql:
         text = "<think>reasoning without closing"
         assert extract_sql(text) == ""
 
+    def test_thinking_block_with_sql_query(self):
+        text = "<think>\nThinking about cameras\n</think>\n```sql\nSELECT DISTINCT camera_name FROM plate_event\n```"
+        assert extract_sql(text) == "SELECT DISTINCT camera_name FROM plate_event"
+
+    def test_embedded_sql_in_reasoning_extracted(self):
+        text = "<think>\nSo the query is:\nSELECT DISTINCT camera_name FROM plate_event WHERE camera_name IS NOT NULL;\n"
+        assert "SELECT DISTINCT camera_name FROM plate_event" in extract_sql(text)
+
     def test_multiline_sql(self):
         text = "```sql\nSELECT vehicle_type, count(*) AS n\nFROM plate_event\nGROUP BY vehicle_type\nORDER BY n DESC\nLIMIT 30\n```"
         sql = extract_sql(text)
@@ -173,9 +181,7 @@ class TestOnlineGenerateSql:
 
         # invoke_text must have been called with max_tokens kwarg
         call_kwargs = mock_invoke.call_args
-        assert call_kwargs.kwargs.get("max_tokens") == 2048 or \
-               (len(call_kwargs.args) >= 3 and False) or \
-               call_kwargs[1].get("max_tokens") == 2048
+        assert call_kwargs.kwargs.get("max_tokens") == settings.sql_generate_max_tokens
 
     @patch("src.agent.generate_sql.use_offline_tools", return_value=False)
     @patch("src.agent.generate_sql.invoke_text")
@@ -187,6 +193,19 @@ class TestOnlineGenerateSql:
         state = {"question": "test", "schema_excerpt": "..."}
         generate_sql_node(state)
         assert mock_invoke.call_args.kwargs.get("max_tokens") == 500
+
+    @patch("src.agent.generate_sql.use_offline_tools", return_value=False)
+    @patch("src.agent.generate_sql.invoke_text")
+    def test_online_self_hosted_prepends_nothink(self, mock_invoke, _mock_offline, monkeypatch):
+        """Self-hosted Qwen3 backend prepends /nothink to user prompt."""
+        from src.config import settings
+        monkeypatch.setattr(settings, "llm_backend", "self_hosted")
+        monkeypatch.setattr(settings, "model_name", "qwen3-4b")
+        mock_invoke.return_value = "```sql\nSELECT 1\n```"
+        state = {"question": "test", "schema_excerpt": "..."}
+        generate_sql_node(state)
+        user_prompt_sent = mock_invoke.call_args[0][1]
+        assert user_prompt_sent.startswith("/nothink")
 
     @patch("src.agent.generate_sql.use_offline_tools", return_value=False)
     @patch("src.agent.generate_sql.invoke_text")
@@ -302,10 +321,10 @@ class TestHintInjection:
 
 
 def test_config_sql_generate_max_tokens_default():
-    """Settings has sql_generate_max_tokens = 2048 by default (updated in Phase 7)."""
+    """Settings has sql_generate_max_tokens = 384 by default."""
     from src.config import Settings
     s = Settings(OPENAI_API_KEYS="test-key")
-    assert s.sql_generate_max_tokens == 2048
+    assert s.sql_generate_max_tokens == 384
 
 
 # ---------------------------------------------------------------------------
@@ -1428,4 +1447,26 @@ class TestPipelineStreamIntegration:
 
             # Verify plan_query is NOT in stream
             assert "plan_query" not in node_names
+
+
+class TestCrossDatabaseValidation:
+    def test_rejects_subquery_across_different_databases(self):
+        from src.db.validator import validate_sql
+        # plate_event (its) vs zone_event (virtual_fence)
+        sql = (
+            "SELECT zone_name_cached FROM zone_event "
+            "WHERE camera_name IN (SELECT camera_name FROM plate_event WHERE license_plate_text = '15C4384')"
+        )
+        res = validate_sql(sql)
+        assert res.ok is False
+        assert "nhiều database khác nhau" in res.reason
+        assert "plate_event" in res.reason
+        assert "zone_event" in res.reason
+
+    def test_allows_single_database_query(self):
+        from src.db.validator import validate_sql
+        sql = "SELECT camera_name, event_time FROM plate_event WHERE license_plate_text = '15C4384'"
+        res = validate_sql(sql)
+        assert res.ok is True
+
 
