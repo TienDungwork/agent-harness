@@ -32,7 +32,7 @@ template: |
   - xe tải → vehicle_type = 'TRUCK'; xe buýt → vehicle_type = 'BUS'
   - vào → direction = 'IN'; ra → direction = 'OUT'; ra vào = không lọc direction (hoặc GROUP BY direction khi vẽ biểu đồ)
   - QUY TẮC QUAN TRỌNG: Khi câu hỏi có loại xe cụ thể (như ô tô / xe máy / xe tải / xe buýt) kể cả khi vẽ biểu đồ ra/vào, BẮT BUỘC PHẢI LỌC `WHERE vehicle_type = '...'` (ví dụ: `SELECT direction, count(*) FROM plate_event WHERE vehicle_type = 'CAR' AND event_time::date = CURRENT_DATE GROUP BY direction`). Tuyệt đối không tính gộp tất cả các loại xe khác nếu người dùng chỉ hỏi ô tô/xe máy.
-  - danh sách camera / khu vực: SELECT DISTINCT camera_name FROM plate_event WHERE camera_name IS NOT NULL hoặc SELECT DISTINCT zone_name_cached, camera_name FROM zone_event WHERE zone_name_cached IS NOT NULL LIMIT 30.
+  - danh sách camera / khu vực: Lưu ý toàn hệ thống có 10 camera (Master Registry). Bảng plate_event chỉ chứa 6 camera giao thông. Nếu người dùng hỏi chung về tổng số camera hoặc danh sách toàn bộ camera hệ thống, hệ thống xử lý qua Master Registry. Nếu hỏi riêng camera phương tiện/biển số: SELECT DISTINCT camera_name FROM plate_event WHERE camera_name IS NOT NULL hoặc SELECT DISTINCT zone_name_cached, camera_name FROM zone_event WHERE zone_name_cached IS NOT NULL LIMIT 30.
 
 
   QUY TẮC PHẢN HỒI (NGHIÊM NGẶT - CẤM SUY LUẬN LAN MAN):

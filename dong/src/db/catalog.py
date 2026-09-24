@@ -309,6 +309,23 @@ def select_relevant_tables(question: str, limit: int = 4) -> list[str]:
     allowed = set(catalog.keys())
     q = (question or "").strip()
 
+    if re.search(
+        r"tất\s*c(?:ả|à)\s*(?:các\s*)?(?:event|events|sự\s*kiện|su\s*kien)|"
+        r"(?:toàn\s*bộ|mọi)\s*(?:các\s*)?(?:event|events|sự\s*kiện|su\s*kien)",
+        q,
+        re.IGNORECASE,
+    ):
+        all_event_tables = [
+            "plate_event",
+            "zone_event",
+            "smf_face_events",
+            "fire_smoke_event",
+            "anomaly_event",
+        ]
+        picked_all = [t for t in all_event_tables if t in allowed]
+        if picked_all:
+            return picked_all
+
     # 1. Domain heuristics
     matched_domains: list[str] = []
     for pattern, tbl in _DOMAIN_RULES:

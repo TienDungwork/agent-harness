@@ -53,6 +53,7 @@ from src.guardrails import (
     _is_tool_empty,
 )
 from src.monitoring.tracing import trace_answer
+from src.llm.schemas import FeedbackRequest
 
 app = FastAPI(
     title="agent_ATIN v3 API",
@@ -130,12 +131,29 @@ def _build_chart_sse_event(
     return event
 
 
+def _split_into_chunks(text: str, chunk_words: int = 3) -> list[str]:
+    """Tách câu trả lời thành các chunk nhỏ để phát SSE token/chunk stream."""
+    if not text:
+        return []
+    words = text.split(" ")
+    chunks: list[str] = []
+    for i in range(0, len(words), chunk_words):
+        group = words[i : i + chunk_words]
+        delta = " ".join(group)
+        if i + chunk_words < len(words):
+            delta += " "
+        chunks.append(delta)
+    return chunks
+
+
 class ChatRequest(BaseModel):
     question: str = Field(min_length=1, description="Câu hỏi thống kê tự nhiên")
     model_provider: str | None = Field(default=None, description="Tùy chọn: 'openai' hoặc 'self_hosted'")
     model_override: str | None = Field(default=None, description="Tùy chọn ghi đè model name")
     session_id: str = Field(default="default", description="ID phiên hội thoại")
     user_id: str = Field(default="default", description="ID người dùng")
+    stream_tokens: bool = Field(default=False, description="Phát các SSE chunk events cho câu trả lời")
+
 
 
 class ChatResponse(BaseModel):
@@ -292,6 +310,33 @@ def api_get_session_messages(
     return SessionMessagesResponse(messages=messages)
 
 
+def _extract_sql_from_trace_nodes(nodes: list[dict[str, Any]]) -> str | None:
+    """Lấy SQL cuối cùng từ các node generate_sql / validate_sql / execute_sql."""
+    for node in reversed(nodes):
+        node_id = node.get("node_id") or ""
+        if node_id not in ("generate_sql", "validate_sql", "execute_sql", "repair_sql"):
+            continue
+        output = node.get("output")
+        if isinstance(output, dict):
+            sql = output.get("sql")
+            if isinstance(sql, str) and sql.strip():
+                return sql.strip()
+    return None
+
+
+def _build_agent_trace(
+    nodes: list[dict[str, Any]],
+    detail: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    trace: dict[str, Any] = {"nodes": nodes}
+    if detail:
+        trace["detail"] = detail.get("agent_detail") or detail.get("tool") or detail
+    sql = _extract_sql_from_trace_nodes(nodes)
+    if sql:
+        trace["sql"] = sql
+    return trace
+
+
 def _persist_session_turn(
     *,
     session_id: str,
@@ -300,6 +345,7 @@ def _persist_session_turn(
     answer: str,
     detail: dict[str, Any] | None = None,
     chart: dict[str, Any] | None = None,
+    agent_trace: dict[str, Any] | None = None,
 ) -> None:
     """Lưu một lượt hỏi–đáp vào session store (short-term UI history)."""
     from datetime import datetime, timezone
@@ -315,6 +361,8 @@ def _persist_session_turn(
         assistant_msg["detail"] = detail
     if chart:
         assistant_msg["chart"] = chart
+    if agent_trace:
+        assistant_msg["agent_trace"] = agent_trace
     append_session_messages(session_id, user_id, [user_msg, assistant_msg])
 
 
@@ -558,7 +606,10 @@ def ask(req: AskRequest) -> AskResponse:
 
         query = out.query
         evidence = [question] + (
-            [f"{c}={v}" for row in query.rows for c, v in zip(query.columns, row)] if query else []
+            [f"row_count={query.row_count}", getattr(query, "reply_vi", "")]
+            + [f"{c}={v}" for row in query.rows for c, v in zip(query.columns, row)]
+            if query
+            else []
         )
         tool_empty = _is_tool_empty(query)
         result = check_output(out.answer, evidence, tool_empty=tool_empty)
@@ -608,6 +659,39 @@ def guardrail_violation_handler(request: Request, exc: GuardrailViolation) -> JS
     )
 
 
+@app.post("/api/feedback", tags=["feedback"])
+def submit_feedback(req: FeedbackRequest) -> dict[str, Any]:
+    """Lưu trữ phản hồi người dùng (Like/Dislike kèm lý do, ảnh và agent trace)."""
+    if req.rating not in ("positive", "negative"):
+        raise HTTPException(status_code=400, detail="rating phải là 'positive' hoặc 'negative'.")
+    if not req.question or not req.question.strip():
+        raise HTTPException(status_code=400, detail="question không được để trống.")
+    if not req.answer or not req.answer.strip():
+        raise HTTPException(status_code=400, detail="answer không được để trống.")
+
+    from src.feedback import save_feedback_record
+
+    try:
+        record = save_feedback_record(req)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    return {
+        "status": "ok",
+        "feedback_id": record["id"],
+        "message": "Phản hồi đã được ghi nhận thành công.",
+        "record": record,
+    }
+
+
+@app.get("/api/feedback", tags=["feedback"])
+def list_feedback() -> dict[str, Any]:
+    """Danh sách phản hồi người dùng đã lưu trữ trong data/feedback.json."""
+    from src.feedback import get_all_feedback
+
+    items = get_all_feedback()
+    return {"status": "ok", "total": len(items), "feedback": items}
+
+
 @app.post("/api/agent/stream", tags=["agent"])
 def stream_agent(req: ChatRequest) -> StreamingResponse:
     if not req.session_id or not req.session_id.strip():
@@ -637,6 +721,9 @@ def stream_agent(req: ChatRequest) -> StreamingResponse:
                     detail={"status": "out_of_scope"},
                 )
                 yield f'data: {json.dumps({"node_id": "guardrail", "status": "done", "input": req.question, "output": OUT_OF_SCOPE_REPLY}, ensure_ascii=False)}\n\n'
+                if req.stream_tokens:
+                    for delta in _split_into_chunks(OUT_OF_SCOPE_REPLY):
+                        yield f'data: {json.dumps({"node_id": "__answer__", "status": "chunk", "delta": delta}, ensure_ascii=False)}\n\n'
                 yield f'data: {json.dumps({"node_id": "__answer__", "status": "done", "output": OUT_OF_SCOPE_REPLY, "detail": {"status": "out_of_scope"}}, ensure_ascii=False)}\n\n'
                 return
 
@@ -671,6 +758,9 @@ def stream_agent(req: ChatRequest) -> StreamingResponse:
                     answer=cached["answer"],
                     detail=detail_payload,
                 )
+                if req.stream_tokens:
+                    for delta in _split_into_chunks(cached["answer"]):
+                        yield f'data: {json.dumps({"node_id": "__answer__", "status": "chunk", "delta": delta}, ensure_ascii=False)}\n\n'
                 yield f'data: {json.dumps({"node_id": "__answer__", "status": "done", "output": cached["answer"], "detail": detail_payload}, ensure_ascii=False)}\n\n'
                 return
 
@@ -711,16 +801,20 @@ def stream_agent(req: ChatRequest) -> StreamingResponse:
                 last_chart_spec: dict[str, Any] | None = None
                 last_chart_type: str | None = None
                 last_chart_rows: list[dict] | None = None
+                stream_trace_nodes: list[dict[str, Any]] = []
 
                 for event in run_agent_stream(
-                    Agent_Input(question=question, rewritten=rewritten, user_id=req.user_id),
+                    Agent_Input(question=question, rewritten=rewritten, user_id=req.user_id, stream_tokens=req.stream_tokens),
                     **stream_kwargs,
                 ):
                     if "__final_result__" in event:
                         out = event["__final_result__"]
                         query = getattr(out, "query", None)
                         evidence = [question] + (
-                            [f"{c}={v}" for row in getattr(query, "rows", []) for c, v in zip(getattr(query, "columns", []), row)] if query else []
+                            [f"row_count={getattr(query, 'row_count', 0)}", getattr(query, "reply_vi", "")]
+                            + [f"{c}={v}" for row in getattr(query, "rows", []) for c, v in zip(getattr(query, "columns", []), row)]
+                            if query
+                            else []
                         )
                         tool_empty = _is_tool_empty(query)
                         result = check_output(out.answer, evidence, tool_empty=tool_empty)
@@ -767,6 +861,7 @@ def stream_agent(req: ChatRequest) -> StreamingResponse:
                                 "type": detail_payload.get("chart_type", "bar"),
                                 "rows": detail_payload.get("chart_rows"),
                             }
+                        agent_trace = _build_agent_trace(stream_trace_nodes, detail_payload)
                         _persist_session_turn(
                             session_id=req.session_id.strip(),
                             user_id=req.user_id.strip(),
@@ -774,7 +869,9 @@ def stream_agent(req: ChatRequest) -> StreamingResponse:
                             answer=result.answer,
                             detail=detail_payload,
                             chart=chart_payload,
+                            agent_trace=agent_trace,
                         )
+                        detail_payload["agent_trace"] = agent_trace
                         ans_event = {
                             "node_id": "__answer__",
                             "status": "done",
@@ -784,8 +881,18 @@ def stream_agent(req: ChatRequest) -> StreamingResponse:
                         yield f"data: {json.dumps(ans_event, ensure_ascii=False)}\n\n"
                         continue
 
-                    # Detect render_chart node event — emit dedicated __chart__ SSE event
                     event_node = event.get("node_id", "")
+                    if event_node and event_node not in ("__answer__", "__chart__", "error"):
+                        stream_trace_nodes.append({
+                            "node_id": event_node,
+                            "status": event.get("status"),
+                            "input": event.get("input"),
+                            "output": event.get("output"),
+                            "meta": event.get("meta"),
+                            "duration_ms": event.get("duration_ms"),
+                        })
+
+                    # Detect render_chart node event — emit dedicated __chart__ SSE event
                     event_chart_png = event.get("chart_png_base64") or ""
                     event_chart_spec = event.get("chart_spec")
                     if event_node == "render_chart" and event_chart_png:

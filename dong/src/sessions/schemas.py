@@ -33,6 +33,7 @@ class SessionMessage(BaseModel):
     timestamp: str = Field(description="Thời gian ISO8601")
     detail: dict | None = Field(default=None, description="Metadata trợ lý (tool, row_count, …)")
     chart: dict | None = Field(default=None, description="Payload biểu đồ {png, spec, type, rows}")
+    agent_trace: dict | None = Field(default=None, description="Vết thực thi agent cho Human Feedback")
 
 
 class SessionMessagesResponse(BaseModel):

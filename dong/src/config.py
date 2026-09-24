@@ -5,8 +5,18 @@ from __future__ import annotations
 from functools import lru_cache
 from pathlib import Path
 
-from pydantic import Field
+from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+
+def _parse_env_bool(value: object) -> object:
+    if isinstance(value, bool) or value is None:
+        return value
+    if isinstance(value, str):
+        return value.strip().lower() in ("true", "1", "yes", "on")
+    if isinstance(value, int):
+        return value != 0
+    return value
 
 
 class Settings(BaseSettings):
@@ -43,6 +53,11 @@ class Settings(BaseSettings):
     docs_root: str = Field(default="resource/docs/vms_yaml", alias="DOCS_ROOT")
     memory_ttl_seconds: int = Field(default=300, alias="MEMORY_TTL_SECONDS")
 
+    # Memory layers — MEMORY_ENABLED=false tắt cả 3 lớp (short / long / TTL)
+    memory_enabled: bool = Field(default=True, alias="MEMORY_ENABLED")
+    memory_short_term_enabled: bool = Field(default=True, alias="MEMORY_SHORT_TERM_ENABLED")
+    memory_long_term_enabled: bool = Field(default=True, alias="MEMORY_LONG_TERM_ENABLED")
+
     # ── Database Nguồn Thống Kê (Postgres, Read-Only) ─────────────────────────
     db_host: str = Field(default="", alias="DB_HOST")
     db_port: int = Field(default=5432, alias="DB_PORT")
@@ -74,13 +89,38 @@ class Settings(BaseSettings):
     langfuse_secret_key: str = Field(default="", alias="LANGFUSE_SECRET_KEY")
     langfuse_host: str = Field(default="http://localhost:3000", alias="LANGFUSE_HOST")
 
-    # ── Cache ────────────────────────────────────────────────────────────────
+    # ── Cache / TTL response cache (trước graph) ─────────────────────────────
     cache_enabled: bool = Field(default=True, alias="CACHE_ENABLED")
     cache_ttl_s: int = Field(default=60, alias="CACHE_TTL_S")
 
+    # Rewrite + decompose (gom trong rewrite_node — bỏ LLM khi câu ngắn/đơn)
+    agent_decompose_min_chars: int = Field(default=48, alias="AGENT_DECOMPOSE_MIN_CHARS")
+    agent_max_sub_questions: int = Field(default=4, alias="AGENT_MAX_SUB_QUESTIONS")
+
+    @field_validator(
+        "memory_enabled",
+        "memory_short_term_enabled",
+        "memory_long_term_enabled",
+        "cache_enabled",
+        "monitoring_enabled",
+        "answer_use_llm",
+        mode="before",
+    )
+    @classmethod
+    def _coerce_bool_fields(cls, value: object) -> object:
+        return _parse_env_bool(value)
+
+    @property
+    def short_term_memory_enabled(self) -> bool:
+        return self.memory_enabled and self.memory_short_term_enabled
+
+    @property
+    def long_term_memory_enabled(self) -> bool:
+        return self.memory_enabled and self.memory_long_term_enabled
+
     @property
     def ttl_cache_enabled(self) -> bool:
-        return self.cache_enabled
+        return self.memory_enabled and self.cache_enabled
 
     @ttl_cache_enabled.setter
     def ttl_cache_enabled(self, value: bool) -> None:

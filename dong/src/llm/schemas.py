@@ -9,6 +9,7 @@ from pydantic import BaseModel, Field, field_validator
 
 class RewrittenQuestion(BaseModel):
     text: str
+    sub_questions: list[str] = Field(default_factory=list)
     filters: list[str] = Field(default_factory=list)
     time_range: str | None = None
     intent_hint: str | None = None
@@ -97,4 +98,45 @@ class QueryResult(BaseModel):
     row_count: int = 0
     error: str = ""
     reply_vi: str = ""
+
+
+import base64
+
+
+class FeedbackRequest(BaseModel):
+    session_id: str
+    user_id: str = "default"
+    question: str
+    answer: str
+    rating: Literal["positive", "negative"]
+    feedback_reason: str | None = None
+    image_base64: str | None = None
+    image_filename: str | None = None
+    agent_trace: dict[str, Any] | None = None
+
+    @field_validator("session_id", "question", "answer", mode="after")
+    @classmethod
+    def _validate_non_empty(cls, v: str) -> str:
+        if not v or not v.strip():
+            raise ValueError("Trường này không được để trống.")
+        return v.strip()
+
+    @field_validator("image_base64", mode="after")
+    @classmethod
+    def _validate_image_base64(cls, v: str | None) -> str | None:
+        if not v or not v.strip():
+            return None
+        raw = v.strip()
+        if "," in raw:
+            raw = raw.split(",", 1)[1]
+        try:
+            decoded = base64.b64decode(raw, validate=True)
+        except Exception:
+            raise ValueError("Dữ liệu ảnh base64 không hợp lệ.")
+        if len(decoded) > 5 * 1024 * 1024:
+            raise ValueError("Kích thước ảnh vượt quá giới hạn 5MB.")
+        return v
+
+
+
 

@@ -407,7 +407,9 @@ def test_out_of_scope_still_runs_store_extract():
     node_ids = [e.get("node_id") for e in events if e.get("node_id")]
     assert "out_of_scope" in node_ids
     assert "store_extract" in node_ids
-    assert node_ids.index("store_extract") > node_ids.index("out_of_scope")
+    assert "respond" in node_ids
+    assert node_ids.index("respond") > node_ids.index("out_of_scope")
+    assert node_ids.index("store_extract") > node_ids.index("respond")
 
 
 def test_api_chat_propagates_user_id_and_stores_memory():
@@ -924,4 +926,39 @@ def test_stream_integration_recall_fail_agent_ok_store_extract_degraded(monkeypa
     assert store_event is not None
     assert store_event.get("output", {}).get("degraded") is True
     assert store_event.get("output", {}).get("extracted_memories") == []
+
+
+def test_memory_master_disabled_turns_off_all_layers(monkeypatch):
+    """MEMORY_ENABLED=false tắt short-term checkpointer, long-term recall/store, TTL cache."""
+    from src.agent.graph import recall_node, run_store_extract, Agent_Output
+    from src.config import settings
+
+    clear_ttl_cache()
+    monkeypatch.setattr(settings, "memory_enabled", False)
+
+    assert settings.short_term_memory_enabled is False
+    assert settings.long_term_memory_enabled is False
+    assert settings.ttl_cache_enabled is False
+    assert get_checkpointer() is None
+
+    recall_out = recall_node({"question": "Hôm nay có bao nhiêu xe?", "user_id": "u1"})
+    assert recall_out["recalled_memories"] == []
+    assert recall_out["events"][0]["output"].get("disabled") is True
+
+    stored = run_store_extract("u1", "s1", "q", Agent_Output(question="q", answer="a", detail="query_data"))
+    assert stored == []
+
+    key = make_cache_key("test")
+    set_ttl_cached(key, {"answer": "x"})
+    assert get_ttl_cached(key) is None
+
+
+def test_memory_env_bool_accepts_one(monkeypatch):
+    """MEMORY_ENABLED=1 được coi là true."""
+    from src.config import Settings
+
+    s = Settings(MEMORY_ENABLED="1")
+    assert s.memory_enabled is True
+    s0 = Settings(MEMORY_ENABLED="0")
+    assert s0.memory_enabled is False
 

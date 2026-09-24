@@ -23,6 +23,11 @@
     lastChartType: null,
     lastChartRows: null,
     lastStreamError: null,
+    lastQuestion: '',
+    lastAgentTrace: [],
+    feedbackContext: null,
+    attachedImageBase64: null,
+    attachedImageFilename: null,
   };
 
   // DOM Elements
@@ -54,6 +59,18 @@
     graphIoEmpty: document.getElementById('graph-io-empty'),
     graphIoBody: document.getElementById('graph-io-body'),
     graphPanelHint: document.getElementById('graph-panel-hint'),
+    feedbackModal: document.getElementById('feedback-modal'),
+    btnCloseFeedback: document.getElementById('btn-close-feedback'),
+    btnCancelFeedback: document.getElementById('btn-cancel-feedback'),
+    btnSubmitFeedback: document.getElementById('btn-submit-feedback'),
+    feedbackReasonInput: document.getElementById('feedback-reason-input'),
+    feedbackFileInput: document.getElementById('feedback-file-input'),
+    feedbackUploadZone: document.getElementById('feedback-upload-zone'),
+    uploadPrompt: document.getElementById('upload-prompt'),
+    uploadPreview: document.getElementById('upload-preview'),
+    feedbackPreviewImg: document.getElementById('feedback-preview-img'),
+    btnRemovePreview: document.getElementById('btn-remove-preview'),
+    toastContainer: document.getElementById('toast-container'),
   };
 
 
@@ -251,7 +268,7 @@
     el.welcomeScreen.style.display = 'none';
     state.messages = messages;
     messages.forEach(msg => {
-      appendMessage(msg.role, msg.content, msg.detail, msg.chart);
+      appendMessage(msg.role, msg.content, msg.detail, msg.chart, msg.agent_trace);
     });
     scrollToBottom();
   }
@@ -365,6 +382,83 @@
 
     el.btnSaveSettings.addEventListener('click', saveSettings);
     el.btnCheckHealth.addEventListener('click', checkSystemHealthInModal);
+
+    // Feedback Modal Events (Phase 2 Core UI)
+    if (el.btnCloseFeedback) el.btnCloseFeedback.addEventListener('click', closeFeedbackModal);
+    if (el.btnCancelFeedback) el.btnCancelFeedback.addEventListener('click', closeFeedbackModal);
+    if (el.feedbackModal) {
+      el.feedbackModal.addEventListener('click', (e) => {
+        if (e.target === el.feedbackModal) closeFeedbackModal();
+      });
+    }
+    if (el.btnSubmitFeedback) el.btnSubmitFeedback.addEventListener('click', submitFeedback);
+
+    // Close modal on Escape
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape') {
+        if (el.feedbackModal && el.feedbackModal.classList.contains('active')) {
+          closeFeedbackModal();
+        } else if (el.settingsModal && el.settingsModal.classList.contains('active')) {
+          closeSettings();
+        }
+      }
+    });
+
+    // Image Upload Zone Interactions
+    if (el.feedbackUploadZone && el.feedbackFileInput) {
+      el.feedbackUploadZone.addEventListener('click', (e) => {
+        if (e.target.closest('#btn-remove-preview')) return;
+        el.feedbackFileInput.click();
+      });
+      el.feedbackFileInput.addEventListener('change', (e) => {
+        if (e.target.files && e.target.files[0]) {
+          handleImageFile(e.target.files[0]);
+        }
+      });
+    }
+
+    if (el.btnRemovePreview) {
+      el.btnRemovePreview.addEventListener('click', (e) => {
+        e.stopPropagation();
+        clearFeedbackImage();
+      });
+    }
+
+    // Drag and Drop Image
+    if (el.feedbackUploadZone) {
+      el.feedbackUploadZone.addEventListener('dragover', (e) => {
+        e.preventDefault();
+        el.feedbackUploadZone.classList.add('dragover');
+      });
+      el.feedbackUploadZone.addEventListener('dragleave', (e) => {
+        e.preventDefault();
+        el.feedbackUploadZone.classList.remove('dragover');
+      });
+      el.feedbackUploadZone.addEventListener('drop', (e) => {
+        e.preventDefault();
+        el.feedbackUploadZone.classList.remove('dragover');
+        if (e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files[0]) {
+          handleImageFile(e.dataTransfer.files[0]);
+        }
+      });
+    }
+
+    // Clipboard Paste (Ctrl+V) Image Support
+    document.addEventListener('paste', (e) => {
+      if (!el.feedbackModal || !el.feedbackModal.classList.contains('active')) return;
+      const items = (e.clipboardData || window.clipboardData)?.items;
+      if (!items) return;
+      for (let i = 0; i < items.length; i++) {
+        if (items[i].type && items[i].type.indexOf('image') !== -1) {
+          const file = items[i].getAsFile();
+          if (file) {
+            handleImageFile(file);
+            showToast('Đã dán ảnh từ clipboard!', 'info');
+            break;
+          }
+        }
+      }
+    });
   }
 
   function applyStateToUI() {
@@ -934,7 +1028,191 @@
     _chartInstances.set(canvas, instance);
   }
 
-  function appendMessage(role, content, detail, chartPayload) {
+  function appendToolAccordion(contentDiv, detail, prepend = false) {
+    if (!detail) return;
+    const hasToolStr = typeof detail.tool === 'string' && detail.tool.trim() !== '';
+    const hasToolsArr = Array.isArray(detail.tools_used) && detail.tools_used.length > 0;
+    const hasRowCount = (typeof detail.row_count === 'number' && detail.row_count > 0) || (typeof detail.rows_count === 'number' && detail.rows_count > 0);
+    const hasCols = Array.isArray(detail.columns) && detail.columns.length > 0;
+    const hasRealMetadata = hasToolStr || hasToolsArr || hasRowCount || hasCols;
+    if (!hasRealMetadata) return;
+
+    const accordion = document.createElement('details');
+    accordion.className = 'tool-accordion';
+    
+    const summary = document.createElement('summary');
+    summary.className = 'tool-accordion-summary';
+    
+    const toolName = detail.tool || (detail.tools_used ? detail.tools_used.join(', ') : 'Database Query');
+    summary.innerHTML = `
+      <div class="tool-summary-left">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg>
+        <span>Công cụ đã gọi:</span>
+        <span class="tool-badge">${escapeHtml(toolName)}</span>
+      </div>
+      <span style="font-size: 0.75rem;">Chi tiết ▼</span>
+    `;
+
+    const detailContent = document.createElement('div');
+    detailContent.className = 'tool-accordion-content';
+    detailContent.textContent = JSON.stringify(detail, null, 2);
+
+    accordion.appendChild(summary);
+    accordion.appendChild(detailContent);
+
+    if (prepend && contentDiv.firstChild) {
+      contentDiv.insertBefore(accordion, contentDiv.firstChild);
+    } else {
+      contentDiv.appendChild(accordion);
+    }
+  }
+
+  function appendChartSlot(contentDiv, chartPayload) {
+    if (!chartPayload) return;
+    let chartObj = null;
+    if (typeof chartPayload === 'object') {
+      chartObj = chartPayload;
+    } else if (typeof chartPayload === 'string' && chartPayload.trim().length > 0) {
+      chartObj = { png: chartPayload.trim() };
+    }
+    if (!chartObj) return;
+
+    const chartSpec = chartObj.spec || null;
+    const chartRows = chartObj.rows || null;
+    const chartType = chartObj.type || 'bar';
+    const chartPng = chartObj.png || null;
+
+    const hasChartJsData = Boolean(
+      chartSpec &&
+      Array.isArray(chartRows) &&
+      chartRows.length > 0 &&
+      typeof Chart !== 'undefined'
+    );
+
+    const chartSlot = document.createElement('div');
+    chartSlot.className = 'chart-slot';
+
+    if (hasChartJsData) {
+      renderChartJs(chartSlot, { chartType, chartSpec, rows: chartRows });
+      contentDiv.appendChild(chartSlot);
+    } else if (chartPng) {
+      chartSlot.innerHTML = `<img src="data:image/png;base64,${chartPng}" alt="Biểu đồ" style="max-width:100%; border-radius:8px; display:block; margin:0 auto;">`;
+      contentDiv.appendChild(chartSlot);
+    } else if (chartSpec || chartObj.type || (Array.isArray(chartRows) && chartRows.length === 0) || chartObj.empty) {
+      chartSlot.classList.add('chart-slot-empty');
+      chartSlot.innerHTML = `
+        <div class="chart-placeholder chart-empty-state">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <circle cx="12" cy="10" r="10"></circle>
+            <line x1="12" y1="8" x2="12" y2="12"></line>
+            <line x1="12" y1="16" x2="12.01" y2="16"></line>
+          </svg>
+          <span>Chưa có dữ liệu để hiển thị biểu đồ</span>
+        </div>
+      `;
+      contentDiv.appendChild(chartSlot);
+    }
+  }
+
+  function extractSqlFromTraceNodes(nodes) {
+    if (!Array.isArray(nodes)) return null;
+    for (let i = nodes.length - 1; i >= 0; i -= 1) {
+      const node = nodes[i];
+      const nodeId = node && node.node_id;
+      if (!nodeId || !['generate_sql', 'validate_sql', 'execute_sql', 'repair_sql'].includes(nodeId)) continue;
+      const output = node.output;
+      if (output && typeof output.sql === 'string' && output.sql.trim()) {
+        return output.sql.trim();
+      }
+    }
+    return null;
+  }
+
+  function buildAgentTrace(nodes, detail) {
+    const trace = { nodes: Array.isArray(nodes) ? nodes.slice() : [] };
+    if (detail) {
+      trace.detail = detail.agent_detail || detail.tool || detail;
+    }
+    const sql = extractSqlFromTraceNodes(trace.nodes);
+    if (sql) trace.sql = sql;
+    return trace;
+  }
+
+  function createMessageActionsBar(content, detail, storedTrace) {
+    const actionsBar = document.createElement('div');
+    actionsBar.className = 'message-actions-bar';
+
+    const likeBtn = document.createElement('button');
+    likeBtn.type = 'button';
+    likeBtn.className = 'btn-feedback btn-feedback-like';
+    likeBtn.title = 'Đánh giá câu trả lời tốt';
+    likeBtn.innerHTML = `
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 9V5a3 3 0 0 0-3-3l-4 9v11h11.28a2 2 0 0 0 2-1.7l1.38-9a2 2 0 0 0-2-2.3zM7 22H4a2 2 0 0 1-2-2v-7a2 2 0 0 1 2-2h3"/></svg>
+      <span>Hài lòng</span>
+    `;
+
+    const dislikeBtn = document.createElement('button');
+    dislikeBtn.type = 'button';
+    dislikeBtn.className = 'btn-feedback btn-feedback-dislike';
+    dislikeBtn.title = 'Đánh giá câu trả lời chưa đúng';
+    dislikeBtn.innerHTML = `
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10 15v4a3 3 0 0 0 3 3l4-9V2H5.72a2 2 0 0 0-2 1.7l-1.38 9a2 2 0 0 0 2 2.3zm7-13h3a2 2 0 0 1 2 2v7a2 2 0 0 1-2 2h-3"/></svg>
+      <span>Chưa đúng</span>
+    `;
+
+    const agentTrace = storedTrace || buildAgentTrace(state.lastAgentTrace || [], detail);
+
+    const messageContext = {
+      question: state.lastQuestion || '',
+      answer: content,
+      detail: detail || null,
+      agent_trace: agentTrace,
+      sessionId: state.activeSessionId,
+      userId: state.userId,
+      likeBtn,
+      dislikeBtn,
+    };
+
+    likeBtn.addEventListener('click', () => {
+      handleLikeClick(messageContext);
+    });
+
+    dislikeBtn.addEventListener('click', () => {
+      handleDislikeClick(messageContext);
+    });
+
+    actionsBar.appendChild(likeBtn);
+    actionsBar.appendChild(dislikeBtn);
+    return actionsBar;
+  }
+
+  function appendRetryButton(contentDiv, question) {
+    if (!contentDiv || !question) return;
+    const retryContainer = document.createElement('div');
+    retryContainer.className = 'retry-action-wrapper';
+    const retryBtn = document.createElement('button');
+    retryBtn.type = 'button';
+    retryBtn.className = 'btn-retry-stream';
+    retryBtn.title = 'Bấm để thử lại câu hỏi này';
+    retryBtn.innerHTML = `
+      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <polyline points="23 4 23 10 17 10"></polyline>
+        <polyline points="1 20 1 14 7 14"></polyline>
+        <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path>
+      </svg>
+      <span>Thử lại</span>
+    `;
+    const targetQ = question;
+    retryBtn.addEventListener('click', () => {
+      if (state.isGenerating) return;
+      if (el.questionInput) el.questionInput.value = targetQ;
+      handleSendMessage();
+    });
+    retryContainer.appendChild(retryBtn);
+    contentDiv.appendChild(retryContainer);
+  }
+
+  function appendMessage(role, content, detail, chartPayload, agentTrace) {
     el.welcomeScreen.style.display = 'none';
 
     const item = document.createElement('div');
@@ -947,97 +1225,33 @@
     const contentDiv = document.createElement('div');
     contentDiv.className = 'message-content';
 
-    let hasRealMetadata = false;
-    if (detail) {
-      const hasToolStr = typeof detail.tool === 'string' && detail.tool.trim() !== '';
-      const hasToolsArr = Array.isArray(detail.tools_used) && detail.tools_used.length > 0;
-      const hasRowCount = (typeof detail.row_count === 'number' && detail.row_count > 0) || (typeof detail.rows_count === 'number' && detail.rows_count > 0);
-      const hasCols = Array.isArray(detail.columns) && detail.columns.length > 0;
-      hasRealMetadata = hasToolStr || hasToolsArr || hasRowCount || hasCols;
-    }
-
     // Tool Execution Accordion if detail has real metadata
-    if (hasRealMetadata) {
-      const accordion = document.createElement('details');
-      accordion.className = 'tool-accordion';
-      
-      const summary = document.createElement('summary');
-      summary.className = 'tool-accordion-summary';
-      
-      const toolName = detail.tool || (detail.tools_used ? detail.tools_used.join(', ') : 'Database Query');
-      summary.innerHTML = `
-        <div class="tool-summary-left">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg>
-          <span>Công cụ đã gọi:</span>
-          <span class="tool-badge">${escapeHtml(toolName)}</span>
-        </div>
-        <span style="font-size: 0.75rem;">Chi tiết ▼</span>
-      `;
-
-      const detailContent = document.createElement('div');
-      detailContent.className = 'tool-accordion-content';
-      detailContent.textContent = JSON.stringify(detail, null, 2);
-
-      accordion.appendChild(summary);
-      accordion.appendChild(detailContent);
-      contentDiv.appendChild(accordion);
+    if (role === 'assistant') {
+      appendToolAccordion(contentDiv, detail);
     }
 
     const bubble = document.createElement('div');
     bubble.className = 'message-bubble';
-    bubble.innerHTML = parseMarkdown(content);
+    const bubbleText = document.createElement('div');
+    bubbleText.className = 'bubble-text';
+    bubbleText.innerHTML = parseMarkdown(content);
+    bubble.appendChild(bubbleText);
     contentDiv.appendChild(bubble);
 
     // Chart rendering in assistant messages: only render when chartPayload is present
     if (role === 'assistant' && chartPayload) {
-      // Normalize chartPayload: can be string (legacy PNG base64) or object {png, spec, type, rows, empty}
-      let chartObj = null;
-      if (typeof chartPayload === 'object') {
-        chartObj = chartPayload; // {png, spec, type, rows, empty}
-      } else if (typeof chartPayload === 'string' && chartPayload.trim().length > 0) {
-        chartObj = { png: chartPayload.trim() };
-      }
+      appendChartSlot(contentDiv, chartPayload);
+    }
 
-      if (chartObj) {
-        const chartSpec = chartObj.spec || null;
-        const chartRows = chartObj.rows || null;
-        const chartType = chartObj.type || 'bar';
-        const chartPng = chartObj.png || null;
+    // Human Feedback Action Bar for assistant messages (Phase 4 Connect UI to Data)
+    if (role === 'assistant') {
+      const actionsBar = createMessageActionsBar(content, detail, agentTrace);
+      contentDiv.appendChild(actionsBar);
+    }
 
-        const hasChartJsData = Boolean(
-          chartSpec &&
-          Array.isArray(chartRows) &&
-          chartRows.length > 0 &&
-          typeof Chart !== 'undefined'
-        );
-
-        const chartSlot = document.createElement('div');
-        chartSlot.className = 'chart-slot';
-
-        if (hasChartJsData) {
-          // Prefer Chart.js interactive render
-          renderChartJs(chartSlot, { chartType, chartSpec, rows: chartRows });
-          contentDiv.appendChild(chartSlot);
-        } else if (chartPng) {
-          // PNG fallback
-          chartSlot.innerHTML = `<img src="data:image/png;base64,${chartPng}" alt="Biểu đồ" style="max-width:100%; border-radius:8px; display:block; margin:0 auto;">`;
-          contentDiv.appendChild(chartSlot);
-        } else if (chartSpec || chartObj.type || (Array.isArray(chartRows) && chartRows.length === 0) || chartObj.empty) {
-          // Explicit empty chart state: payload present but no renderable data (empty/missing rows, etc.)
-          chartSlot.classList.add('chart-slot-empty');
-          chartSlot.innerHTML = `
-            <div class="chart-placeholder chart-empty-state">
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <circle cx="12" cy="12" r="10"></circle>
-                <line x1="12" y1="8" x2="12" y2="12"></line>
-                <line x1="12" y1="16" x2="12.01" y2="16"></line>
-              </svg>
-              <span>Chưa có dữ liệu để hiển thị biểu đồ</span>
-            </div>
-          `;
-          contentDiv.appendChild(chartSlot);
-        }
-      }
+    // Retry button if message is an error/warning
+    if (role === 'assistant' && typeof content === 'string' && content.startsWith('⚠️')) {
+      appendRetryButton(contentDiv, state.lastQuestion);
     }
 
     item.appendChild(avatar);
@@ -1091,6 +1305,9 @@
     const question = el.questionInput.value.trim();
     if (!question || state.isGenerating) return;
 
+    state.lastQuestion = question;
+    state.lastAgentTrace = [];
+
     let sess = state.sessions.find(s => s.id === state.activeSessionId);
     if (!sess) {
       await createNewSession();
@@ -1142,6 +1359,7 @@
         model_provider: state.activeModel,
         session_id: state.activeSessionId,
         user_id: state.userId,
+        stream_tokens: true,
       }),
       signal: state.streamAbortController.signal
     }).then(async (res) => {
@@ -1166,6 +1384,11 @@
       const decoder = new TextDecoder('utf-8');
       let buffer = '';
       let hasAnswer = false;
+      let streamingItem = null;
+      let streamingContentDiv = null;
+      let streamingBubbleText = null;
+      let streamedText = '';
+
       while (true) {
         const { value, done } = await reader.read();
         if (done) break;
@@ -1193,10 +1416,58 @@
                 continue;
               }
 
+              if (event.node_id && event.node_id !== '__answer__' && event.node_id !== '__chart__') {
+                state.lastAgentTrace.push({
+                  node_id: event.node_id,
+                  status: event.status,
+                  input: event.input,
+                  output: event.output,
+                  meta: event.meta,
+                  duration_ms: event.duration_ms
+                });
+              }
+
               if (event.node_id === 'error') {
                 state.lastStreamError = event.output || 'Đã xảy ra lỗi.';
               }
 
+              // Live Chunk Streaming Event
+              if (event.node_id === '__answer__' && event.status === 'chunk') {
+                if (currentRunId !== graphRunId) return;
+                hasAnswer = true;
+                removeThinkingIndicator();
+
+                if (!streamingItem) {
+                  el.welcomeScreen.style.display = 'none';
+                  streamingItem = document.createElement('div');
+                  streamingItem.className = 'message-item assistant';
+
+                  const avatar = document.createElement('div');
+                  avatar.className = 'message-avatar';
+                  avatar.textContent = 'AI';
+
+                  streamingContentDiv = document.createElement('div');
+                  streamingContentDiv.className = 'message-content';
+
+                  const bubble = document.createElement('div');
+                  bubble.className = 'message-bubble';
+                  streamingBubbleText = document.createElement('div');
+                  streamingBubbleText.className = 'bubble-text';
+                  bubble.appendChild(streamingBubbleText);
+                  streamingContentDiv.appendChild(bubble);
+
+                  streamingItem.appendChild(avatar);
+                  streamingItem.appendChild(streamingContentDiv);
+                  el.messagesList.appendChild(streamingItem);
+                }
+
+                streamedText += (event.delta || '');
+                streamingBubbleText.innerHTML = parseMarkdown(streamedText);
+                scrollToBottom();
+                continue;
+              }
+
+              // Stream Completion Event
               if (event.node_id === '__answer__') {
                 if (currentRunId !== graphRunId) return;
                 hasAnswer = true;
@@ -1204,7 +1475,7 @@
 
                 const isError = event.status === 'error' ||
                   (event.detail && event.detail.status === 'error');
-                let answerText = event.output || 'Không có câu trả lời.';
+                let answerText = event.output || streamedText || 'Không có câu trả lời.';
                 if (isError) {
                   state.lastStreamError = answerText;
                   if (!answerText.startsWith('⚠️')) {
@@ -1224,6 +1495,9 @@
                 state.lastChartType = null;
                 state.lastChartRows = null;
 
+                const agentTrace = (event.detail && event.detail.agent_trace)
+                  || buildAgentTrace(state.lastAgentTrace || [], event.detail);
+
                 const targetSession = state.sessions.find(item => item.id === currentSessionId);
                 if (targetSession) {
                   if (!Array.isArray(targetSession.messages)) targetSession.messages = [];
@@ -1232,6 +1506,7 @@
                     content: answerText,
                     detail: event.detail,
                     chart: chartPayload,
+                    agent_trace: agentTrace,
                     timestamp: new Date().toISOString()
                   });
                   const now = new Date().toISOString();
@@ -1247,7 +1522,31 @@
                   const totalStr = totalMs >= 1000 ? (totalMs / 1000).toFixed(2) + 's' : totalMs + 'ms';
                   el.graphPanelHint.innerHTML = '<span class="graph-panel-total">⏱️ Tổng: ' + totalStr + '</span>';
                 }
-                appendMessage('assistant', answerText, event.detail, chartPayload);
+
+                // Mở khóa UI ngay lập tức khi câu trả lời hoàn tất, không bắt người dùng phải đợi store_extract
+                state.isGenerating = false;
+                el.btnSend.disabled = false;
+                el.questionInput.focus();
+
+                if (streamingContentDiv && streamingBubbleText) {
+                  streamingBubbleText.innerHTML = parseMarkdown(answerText);
+                  if (event.detail) {
+                    appendToolAccordion(streamingContentDiv, event.detail, true);
+                  }
+                  if (chartPayload) {
+                    appendChartSlot(streamingContentDiv, chartPayload);
+                  }
+                  const actionsBar = createMessageActionsBar(answerText, event.detail, agentTrace);
+                  streamingContentDiv.appendChild(actionsBar);
+                  scrollToBottom();
+
+                  streamingItem = null;
+                  streamingContentDiv = null;
+                  streamingBubbleText = null;
+                  streamedText = '';
+                } else {
+                  appendMessage('assistant', answerText, event.detail, chartPayload, agentTrace);
+                }
                 continue;
               }
 
@@ -1287,7 +1586,16 @@
           targetSession.preview = fallbackText;
           renderSessionList();
         }
-        appendMessage('assistant', fallbackText);
+        if (streamingContentDiv && streamingBubbleText) {
+          streamingBubbleText.innerHTML = parseMarkdown(fallbackText);
+          appendRetryButton(streamingContentDiv, state.lastQuestion);
+          streamingItem = null;
+          streamingContentDiv = null;
+          streamingBubbleText = null;
+          streamedText = '';
+        } else {
+          appendMessage('assistant', fallbackText);
+        }
       }
     }).catch(err => {
       if (currentRunId !== graphRunId || err.name === 'AbortError') return;
@@ -1414,6 +1722,179 @@
     applyStateToUI();
     closeSettings();
     checkSystemHealth();
+  }
+
+  // ==========================================================================
+  // Toast Notification Helper
+  // ==========================================================================
+  function showToast(message, type = 'info', duration = 3500) {
+    let container = el.toastContainer || document.getElementById('toast-container');
+    if (!container) {
+      container = document.createElement('div');
+      container.id = 'toast-container';
+      container.className = 'toast-container';
+      document.body.appendChild(container);
+      el.toastContainer = container;
+    }
+    const toast = document.createElement('div');
+    toast.className = `toast toast-${type}`;
+    const icon = type === 'success' ? '✓' : type === 'error' ? '⚠' : 'ℹ';
+    toast.innerHTML = `
+      <span class="toast-icon">${icon}</span>
+      <span class="toast-message">${escapeHtml(message)}</span>
+    `;
+    container.appendChild(toast);
+    setTimeout(() => {
+      toast.classList.add('toast-fade-out');
+      setTimeout(() => {
+        if (toast.parentNode) toast.parentNode.removeChild(toast);
+      }, 300);
+    }, duration);
+  }
+
+  // ==========================================================================
+  // Human Feedback Management (Phase 4 Connect UI to Data)
+  // ==========================================================================
+  async function handleLikeClick(ctx) {
+    if (!ctx) return;
+    try {
+      const payload = {
+        session_id: ctx.sessionId || state.activeSessionId || 'default',
+        user_id: ctx.userId || state.userId || 'default',
+        question: ctx.question || state.lastQuestion || '',
+        answer: ctx.answer || '',
+        rating: 'positive',
+        agent_trace: ctx.agent_trace || { nodes: state.lastAgentTrace || [] },
+      };
+      const res = await fetch(getApiEndpoint('/api/feedback'), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+      if (!res.ok) {
+        throw new Error(`HTTP ${res.status}`);
+      }
+      ctx.likeBtn.classList.add('active');
+      ctx.dislikeBtn.classList.remove('active');
+      showToast('Cảm ơn bạn đã đánh giá câu trả lời!', 'success');
+    } catch (err) {
+      console.error('Lỗi khi gửi đánh giá:', err);
+      showToast('Không thể gửi đánh giá, vui lòng thử lại', 'error');
+    }
+  }
+
+  function handleDislikeClick(ctx) {
+    if (!ctx) return;
+    state.feedbackContext = ctx;
+    openFeedbackModal();
+  }
+
+  function openFeedbackModal() {
+    if (!el.feedbackModal) return;
+    if (el.feedbackReasonInput) el.feedbackReasonInput.value = '';
+    clearFeedbackImage();
+    el.feedbackModal.classList.add('active');
+    el.feedbackModal.setAttribute('aria-hidden', 'false');
+    setTimeout(() => {
+      if (el.feedbackReasonInput) el.feedbackReasonInput.focus();
+    }, 120);
+  }
+
+  function closeFeedbackModal() {
+    if (!el.feedbackModal) return;
+    el.feedbackModal.classList.remove('active');
+    el.feedbackModal.setAttribute('aria-hidden', 'true');
+    clearFeedbackImage();
+  }
+
+  function clearFeedbackImage() {
+    state.attachedImageBase64 = null;
+    state.attachedImageFilename = null;
+    if (el.feedbackFileInput) el.feedbackFileInput.value = '';
+    if (el.uploadPreview) el.uploadPreview.style.display = 'none';
+    if (el.uploadPrompt) el.uploadPrompt.style.display = 'flex';
+    if (el.feedbackPreviewImg) el.feedbackPreviewImg.src = '';
+  }
+
+  function handleImageFile(file) {
+    if (!file) return;
+    if (!file.type || !file.type.startsWith('image/')) {
+      showToast('Vui lòng chọn tệp hình ảnh hợp lệ (PNG, JPG, WebP)', 'error');
+      return;
+    }
+    if (file.size > 5 * 1024 * 1024) {
+      showToast('Dung lượng ảnh vượt quá giới hạn 5MB', 'error');
+      return;
+    }
+    state.attachedImageFilename = file.name || 'screenshot.png';
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      state.attachedImageBase64 = e.target.result;
+      if (el.feedbackPreviewImg) el.feedbackPreviewImg.src = e.target.result;
+      if (el.uploadPrompt) el.uploadPrompt.style.display = 'none';
+      if (el.uploadPreview) el.uploadPreview.style.display = 'inline-block';
+    };
+    reader.onerror = () => {
+      showToast('Không thể đọc file ảnh, vui lòng thử lại', 'error');
+    };
+    reader.readAsDataURL(file);
+  }
+
+  async function submitFeedback() {
+    const reason = el.feedbackReasonInput ? el.feedbackReasonInput.value.trim() : '';
+    const finalReason = reason || 'Chưa đúng (không có lý do chi tiết)';
+
+    const ctx = state.feedbackContext;
+    const submitBtn = el.btnSubmitFeedback;
+    const submitText = document.getElementById('btn-submit-feedback-text');
+    if (submitBtn) submitBtn.disabled = true;
+    if (submitText) submitText.textContent = 'Đang gửi...';
+
+    try {
+      const payload = {
+        session_id: (ctx && ctx.sessionId) || state.activeSessionId || 'default',
+        user_id: (ctx && ctx.userId) || state.userId || 'default',
+        question: (ctx && ctx.question) || state.lastQuestion || '',
+        answer: (ctx && ctx.answer) || '',
+        rating: 'negative',
+        feedback_reason: finalReason,
+        image_base64: state.attachedImageBase64 || null,
+        image_filename: state.attachedImageFilename || null,
+        agent_trace: (ctx && ctx.agent_trace) || { nodes: state.lastAgentTrace || [] },
+      };
+
+      const res = await fetch(getApiEndpoint('/api/feedback'), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+
+      if (!res.ok) {
+        let errMsg = 'Gửi phản hồi thất bại, vui lòng thử lại';
+        try {
+          const errData = await res.json();
+          if (errData.detail) errMsg = errData.detail;
+        } catch (e) {}
+        throw new Error(errMsg);
+      }
+
+      if (ctx && ctx.dislikeBtn) {
+        ctx.dislikeBtn.classList.add('active');
+        if (ctx.likeBtn) ctx.likeBtn.classList.remove('active');
+      }
+      closeFeedbackModal();
+      if (!reason) {
+        showToast('Đã ghi nhận phản hồi chưa đúng!', 'info');
+      } else {
+        showToast('Đã ghi nhận góp ý của bạn!', 'success');
+      }
+    } catch (err) {
+      console.error('Lỗi gửi feedback:', err);
+      showToast(err.message || 'Gửi phản hồi thất bại, vui lòng thử lại', 'error');
+    } finally {
+      if (submitBtn) submitBtn.disabled = false;
+      if (submitText) submitText.textContent = 'Xác nhận gửi phản hồi';
+    }
   }
 
   // Start app

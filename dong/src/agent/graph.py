@@ -1,10 +1,12 @@
 """Graph Agent v5 — LangGraph pipeline thay thế ReAct.
 
 Pipeline chính:
-  START → rewrite → classify → [route]
-    - query_data: retrieve_schema → plan_query → validate → execute → [render_chart] → respond → END
-    - docs: retrieve_docs → answer_from_docs → END
-    - out: out_of_scope_node → END
+  START → recall → rewrite → classify → [route]
+    - query_data: retrieve_schema → … → respond → END
+    - docs: retrieve_docs → answer_from_docs → respond → END
+    - chat/clarify: respond_inline → respond → END
+    - out_of_scope: out_of_scope → respond → END
+    - multihop: orchestrator → orchestrator_respond → respond → END
 """
 
 from __future__ import annotations
@@ -52,6 +54,7 @@ class Agent_Input(BaseModel):
     question: str
     rewritten: Any | None = None
     user_id: str = "default"
+    stream_tokens: bool = False
 
 class Agent_Output(BaseModel):
     question: str
@@ -61,16 +64,22 @@ class Agent_Output(BaseModel):
 
 class AgentState(TypedDict, total=False):
     question: str
+    original_question: str
     rewritten: RewrittenQuestion
     intent: str
     answer: str
+    stream_tokens: bool
     messages: Annotated[list, add_messages]
     user_id: str
     session_id: str
     recalled_memories: list[str]
     extracted_memories: list[str]
     orchestrator_plan: OrchestratorPlan
-    
+    orchestrator_step_results: list[dict]
+    multi_hop_ready: bool
+    respond_mode: str
+    docs_answer: dict
+
     # Query Data branch
     selected_tables: list[str]
     schema_excerpt: str
@@ -89,6 +98,22 @@ class AgentState(TypedDict, total=False):
     _trace_span: Any
 
 _stream_queue = contextvars.ContextVar("_stream_queue", default=None)
+
+
+def emit_answer_chunks(ans_text: str, chunk_words: int = 3, enabled: bool = True) -> None:
+    """Phát các SSE chunk event cho câu trả lời thời gian thực qua _stream_queue."""
+    if not enabled:
+        return
+    q = _stream_queue.get()
+    if q is None or not ans_text:
+        return
+    words = ans_text.split(" ")
+    for i in range(0, len(words), chunk_words):
+        group = words[i : i + chunk_words]
+        delta = " ".join(group)
+        if i + chunk_words < len(words):
+            delta += " "
+        q.put({"node_id": "__answer__", "status": "chunk", "delta": delta})
 
 
 def _wrap_node(node_id: str, func):
@@ -167,11 +192,39 @@ def _wrap_node(node_id: str, func):
 
 
 def recall_node(state: AgentState) -> dict:
+    from src.config import settings
     from src.memory.longterm import recall_long_term
 
     q = state.get("question", "")
     user_id = state.get("user_id") or "default"
     session_id = state.get("session_id") or "default"
+    if not settings.long_term_memory_enabled:
+        return {
+            "user_id": user_id,
+            "session_id": session_id,
+            "original_question": q,
+            "recalled_memories": [],
+            "rewritten": None,
+            "intent": "",
+            "answer": "",
+            "respond_mode": "",
+            "docs_answer": None,
+            "orchestrator_plan": None,
+            "orchestrator_step_results": [],
+            "multi_hop_ready": False,
+            "result": None,
+            "rows": [],
+            "columns": [],
+            "sql": "",
+            "error": "",
+            "repair_count": 0,
+            "events": [node_event(
+                "recall",
+                input={"user_id": user_id, "question": q},
+                output={"recalled_memories": [], "disabled": True},
+                meta={"user_id": user_id, "session_id": session_id, "recalled_count": 0, "disabled": True},
+            )],
+        }
     try:
         memories = recall_long_term(user_id, q, k=3)
         ev_output: dict[str, Any] = {"recalled_memories": memories}
@@ -197,7 +250,22 @@ def recall_node(state: AgentState) -> dict:
     return {
         "user_id": user_id,
         "session_id": session_id,
+        "original_question": q,
         "recalled_memories": memories,
+        "rewritten": None,
+        "intent": "",
+        "answer": "",
+        "respond_mode": "",
+        "docs_answer": None,
+        "orchestrator_plan": None,
+        "orchestrator_step_results": [],
+        "multi_hop_ready": False,
+        "result": None,
+        "rows": [],
+        "columns": [],
+        "sql": "",
+        "error": "",
+        "repair_count": 0,
         "events": [node_event(
             "recall",
             input={"user_id": user_id, "question": q},
@@ -214,7 +282,11 @@ def run_store_extract(
     parent_span: Any = None,
 ) -> list[dict]:
     """Post-pipeline: extract + store memory sau khi đã trả lời (không chặn respond)."""
+    from src.config import settings
     from src.memory.extract import extract_and_store_memory, memory_detail_includes_answer
+
+    if not settings.long_term_memory_enabled:
+        return []
 
     q = question or ""
     uid = user_id or "default"
@@ -287,18 +359,18 @@ def run_store_extract(
 
 def rewrite_node(state: AgentState) -> dict:
     from src.agent.intent import is_chat_greeting
-    from src.llm.client import use_offline_tools
 
     q = state.get("question", "")
     user_id = state.get("user_id") or "default"
     session_id = state.get("session_id") or "default"
     rewritten = state.get("rewritten")
-    llm_used = False
     is_chat = is_chat_greeting(q)
+    from src.agent.rewrite import _needs_rewrite_llm
+
     if not rewritten:
-        if not is_chat:
-            llm_used = not use_offline_tools()
         rewritten = rewrite_question(q)
+    skip_llm = is_chat or not _needs_rewrite_llm(q.strip())
+    llm_used = not skip_llm
     return {
         "rewritten": rewritten,
         "question": rewritten.text,
@@ -311,7 +383,8 @@ def rewrite_node(state: AgentState) -> dict:
                 "llm_used": llm_used,
                 "user_id": user_id,
                 "session_id": session_id,
-                **({"skipped": True} if is_chat else {}),
+                "sub_question_count": len(rewritten.sub_questions or []),
+                **({"skipped": True} if skip_llm else {}),
             },
         )],
     }
@@ -348,23 +421,17 @@ def respond_inline_node(state: AgentState) -> dict:
     intent = state.get("intent", "chat")
     user_id = state.get("user_id") or "default"
     session_id = state.get("session_id") or "default"
-    
+
     if not ans and intent == "chat":
         ans = "Chào bạn! Tôi là trợ lý AI giám sát camera VMS KCN Hưng Phú. Tôi có thể hỗ trợ gì cho bạn về dữ liệu camera, sự kiện hoặc hướng dẫn sử dụng hệ thống?"
 
-    result = Agent_Output(
-        question=q,
-        answer=ans,
-        detail=intent or "chat",
-    )
-    
     return {
-        "result": result,
         "answer": ans,
+        "respond_mode": "inline",
         "events": [node_event(
             "respond_inline",
             input={"question": q, "intent": intent},
-            output={"answer": ans},
+            output={"answer": ans, "respond_mode": "inline"},
             meta={"user_id": user_id, "session_id": session_id},
         )],
     }
@@ -389,18 +456,24 @@ def orchestrator_node(state: AgentState) -> dict:
     intent = state.get("intent", "query_data")
     llm_used = not use_offline_tools()
 
+    sub_questions = list(getattr(rewritten, "sub_questions", None) or [])
+    original_q = state.get("original_question") or q
     if intent == "out_of_scope" and is_stat_event_domain(q_text):
-        plan = plan_orchestration(q_text)
+        plan = plan_orchestration(
+            q_text, sub_questions=sub_questions, original=original_q, intent=intent,
+        )
     elif intent == "out_of_scope":
         plan = OrchestratorPlan(steps=[], is_multi=False, reason="out_of_scope")
     else:
-        plan = plan_orchestration(q_text)
+        plan = plan_orchestration(
+            q_text, sub_questions=sub_questions, original=original_q, intent=intent,
+        )
 
     return {
         "orchestrator_plan": plan,
         "events": [node_event(
             "orchestrator",
-            input={"question": q_text, "intent": intent},
+            input={"question": q_text, "intent": intent, "sub_questions": sub_questions},
             output={"orchestrator_plan": plan.model_dump()},
             meta={"llm_used": llm_used, "user_id": user_id, "session_id": session_id},
         )],
@@ -432,22 +505,229 @@ def route_orchestrator(state: AgentState) -> str:
     return "query_data"
 
 
+def _extract_primary_count(rows: list, columns: list) -> float | int | None:
+    if not rows or len(rows) != 1 or not isinstance(rows[0], dict):
+        return None
+    row = rows[0]
+    for c in columns:
+        v = row.get(c)
+        if isinstance(v, bool):
+            continue
+        if isinstance(v, (int, float)):
+            return v
+        if isinstance(v, str):
+            try:
+                return float(v.replace(",", ""))
+            except ValueError:
+                pass
+    return None
+
+
+def _domain_label_from_sub_question(sub_q: str) -> str:
+    from src.agent.orchestrator import _ALL_EVENT_DOMAIN_LABELS
+
+    low = (sub_q or "").lower()
+    for label in _ALL_EVENT_DOMAIN_LABELS:
+        if label in low:
+            return label
+    m = re.search(r"sự kiện\s+([^?]+)", low)
+    return m.group(1).strip() if m else (sub_q or "khác")
+
+
+def _aggregate_all_events_rows(step_results: list[dict]) -> tuple[list[str], list[dict]]:
+    columns = ["domain", "count"]
+    rows: list[dict] = []
+    for sr in step_results:
+        if sr.get("agent") != "query_data":
+            continue
+        cnt = _extract_primary_count(sr.get("rows") or [], sr.get("columns") or [])
+        rows.append({
+            "domain": _domain_label_from_sub_question(sr.get("sub_question") or ""),
+            "count": 0 if cnt is None else cnt,
+        })
+    return columns, rows
+
+
+def _try_format_all_events_answer(
+    question: str,
+    step_results: list[dict],
+    plan: OrchestratorPlan | None,
+) -> str | None:
+    from src.agent.orchestrator import _time_lead_from_question, is_all_events_plan
+    from src.agent.simple_answer import _fmt_num
+
+    if not is_all_events_plan(plan) or len(step_results) < 2:
+        return None
+    if any(sr.get("agent") != "query_data" for sr in step_results):
+        return None
+
+    lead = _time_lead_from_question(question)
+    parts: list[str] = []
+    total = 0.0
+    for sr in step_results:
+        cnt = _extract_primary_count(sr.get("rows") or [], sr.get("columns") or [])
+        if cnt is None:
+            continue
+        label = _domain_label_from_sub_question(sr.get("sub_question") or "")
+        total += float(cnt)
+        parts.append(f"{label}: {_fmt_num(cnt)}")
+
+    if not parts:
+        return None
+    return f"{lead}, tổng {_fmt_num(total)} sự kiện ({', '.join(parts)})."
+
+
+def _multi_step_evidence_text(step_results: list[dict]) -> str:
+    lines: list[str] = []
+    for idx, sr in enumerate(step_results, start=1):
+        sub_q = sr.get("sub_question", "")
+        if sr.get("agent") == "docs":
+            lines.append(f"Bước {idx} (docs — {sub_q}):\n{sr.get('answer_vi', '')}")
+            continue
+        if sr.get("error"):
+            lines.append(f"Bước {idx} ({sub_q}): Lỗi — {sr['error']}")
+            continue
+        step_rows = sr.get("rows") or []
+        step_columns = sr.get("columns") or []
+        if not step_rows:
+            lines.append(f"Bước {idx} ({sub_q}): 0 bản ghi")
+            continue
+        row_lines = [
+            ", ".join(f"{c}={r[c]}" for c in step_columns)
+            for r in step_rows[:20]
+        ]
+        lines.append(f"Bước {idx} ({sub_q}):\n" + "\n".join(row_lines))
+    return "\n\n".join(lines)
+
+
+def _comparison_direction(question: str) -> str:
+    """'less' cho ít hơn/thấp hơn; mặc định 'more'."""
+    low = (question or "").lower()
+    if any(m in low for m in ("ít hơn", "it hon", "thấp hơn", "thap hon")):
+        return "less"
+    return "more"
+
+
+def _try_format_hay_comparison_answer(question: str, step_results: list[dict]) -> str | None:
+    """Trả lời trực tiếp câu 'A hay B nhiều/ít hơn' từ 2 bước query_data."""
+    from src.agent.orchestrator import _split_hay_comparison
+    from src.agent.simple_answer import _fmt_num
+
+    parts = _split_hay_comparison(question)
+    if not parts or len(step_results) != 2:
+        return None
+    if any(sr.get("agent") != "query_data" for sr in step_results):
+        return None
+    prefix, left_lbl, right_lbl = parts
+    c_left = _extract_primary_count(step_results[0].get("rows") or [], step_results[0].get("columns") or [])
+    c_right = _extract_primary_count(step_results[1].get("rows") or [], step_results[1].get("columns") or [])
+    if c_left is None or c_right is None:
+        return None
+
+    n_left, n_right = _fmt_num(c_left), _fmt_num(c_right)
+    time_ctx = prefix.rstrip(",").strip()
+    lead = f"{time_ctx}, " if time_ctx else ""
+    direction = _comparison_direction(question)
+    cmp_word = "ít hơn" if direction == "less" else "nhiều hơn"
+
+    if direction == "less":
+        if c_left < c_right:
+            return (
+                f"{lead}{left_lbl.capitalize()} xảy ra {cmp_word} "
+                f"({n_left} sự kiện {left_lbl} so với {n_right} sự kiện {right_lbl})."
+            )
+        if c_right < c_left:
+            return (
+                f"{lead}{right_lbl.capitalize()} xảy ra {cmp_word} "
+                f"({n_right} sự kiện {right_lbl} so với {n_left} sự kiện {left_lbl})."
+            )
+    else:
+        if c_left > c_right:
+            return (
+                f"{lead}{left_lbl.capitalize()} xảy ra {cmp_word} "
+                f"({n_left} sự kiện {left_lbl} so với {n_right} sự kiện {right_lbl})."
+            )
+        if c_right > c_left:
+            return (
+                f"{lead}{right_lbl.capitalize()} xảy ra {cmp_word} "
+                f"({n_right} sự kiện {right_lbl} so với {n_left} sự kiện {left_lbl})."
+            )
+    return f"{lead}{left_lbl} và {right_lbl} xảy ra bằng nhau ({n_left} sự kiện mỗi loại)."
+
+
+def _build_orchestrator_query_result(step_results: list[dict], answer: str) -> QueryResult:
+    columns = ["label", "count"]
+    rows: list[list] = []
+    for sr in step_results:
+        if sr.get("agent") != "query_data":
+            continue
+        cnt = _extract_primary_count(sr.get("rows") or [], sr.get("columns") or [])
+        if cnt is None:
+            continue
+        label = (sr.get("sub_question") or "").strip() or "bước"
+        rows.append([label, cnt])
+    return QueryResult(
+        tool="sql_builder",
+        columns=columns,
+        rows=rows,
+        row_count=len(rows),
+        error="",
+        reply_vi=answer,
+    )
+
+
+def _synthesize_orchestrator_answer(question: str, step_results: list[dict], state: AgentState) -> tuple[str, str]:
+    """Tổng hợp câu trả lời multi-hop; trả (answer, answer_source)."""
+    from src.llm.client import invoke_text, use_offline_tools
+
+    plan = state.get("orchestrator_plan")
+    compare_q = _original_question(state) or question
+    all_events = _try_format_all_events_answer(compare_q, step_results, plan)
+    if all_events:
+        return all_events, "template_all_events"
+
+    comparison = _try_format_hay_comparison_answer(compare_q, step_results)
+    if comparison:
+        return comparison, "template_comparison"
+
+    evidence = _multi_step_evidence_text(step_results)
+    if not evidence.strip():
+        return "Không có kết quả điều phối.", "empty"
+
+    if not use_offline_tools():
+        try:
+            with trace_substep("respond_stat", kind="agent", input={"multi_hop": True}):
+                raw = invoke_text(
+                    registry().render("respond_stat"),
+                    (
+                        f"{_memory_context_block(state, for_stat=True, question=question)}"
+                        f"Câu hỏi gốc: {question}\n"
+                        f"Kết quả từng bước:\n{evidence}"
+                    ),
+                    max_tokens=settings.sql_respond_max_tokens,
+                    substep=None,
+                )
+            polished = _strip_thinking(raw)
+            if polished:
+                return polished, "llm_text"
+        except Exception as exc:
+            return evidence, f"template_fallback:{type(exc).__name__}"
+
+    return evidence, "template"
+
+
 def orchestrator_respond_node(state: AgentState) -> dict:
-    from src.agent.execute_sql import execute_sql_node
-    from src.agent.generate_sql import generate_sql_node
     from src.agent.validate_sql import validate_and_repair_sql
     from src.knowledge.answer import answer_from_docs
     from src.knowledge.retrieval import retrieve_docs
-    from src.llm.client import invoke_text, use_offline_tools
 
     q = state.get("question", "")
     user_id = state.get("user_id") or "default"
     session_id = state.get("session_id") or "default"
     plan: OrchestratorPlan | None = state.get("orchestrator_plan")
 
-    query_res: QueryResult | None = None
     sub_events: list[dict] = []
-    step_answers: list[str] = []
+    step_results: list[dict] = []
     rows: list = []
     columns: list = []
 
@@ -457,8 +737,11 @@ def orchestrator_respond_node(state: AgentState) -> dict:
         if step.agent == "docs":
             cards = retrieve_docs(sub_q)
             docs_ans = answer_from_docs(sub_q, cards)
-            docs_text = docs_ans.answer_vi
-            step_answers.append(docs_text)
+            step_results.append({
+                "agent": "docs",
+                "sub_question": sub_q,
+                "answer_vi": docs_ans.answer_vi,
+            })
             sub_events.append(node_event(
                 f"orchestrator_docs_step_{idx+1}",
                 input={"sub_question": sub_q, "agent": "docs"},
@@ -498,38 +781,14 @@ def orchestrator_respond_node(state: AgentState) -> dict:
                 columns = step_columns
             err = exec_res.get("error") if not val_res.ok or exec_res.get("error") else ""
 
-            if err:
-                query_ans_vi = f"Lỗi khi truy vấn số liệu: {err}"
-            elif not step_rows:
-                from src.guardrails import empty_stat_reply
-
-                query_ans_vi = empty_stat_reply()
-            else:
-                lines = [", ".join(f"{c}={r[c]}" for c in step_columns) for r in step_rows[:20]]
-                template_ans = f"Số liệu ({len(step_rows)} dòng):\n" + "\n".join(lines)
-                query_ans_vi = template_ans
-                if not use_offline_tools():
-                    try:
-                        raw = invoke_text(
-                            registry().render("respond_stat"),
-                            f"{_memory_context_block(state)}Câu hỏi: {sub_q}\nDữ liệu:\n{template_ans}",
-                            substep="respond_stat",
-                        )
-                        polished = _strip_thinking(raw)
-                        if polished:
-                            query_ans_vi = polished
-                    except Exception:
-                        pass
-
-            step_answers.append(query_ans_vi)
-            query_res = QueryResult(
-                tool="sql_builder",
-                columns=step_columns,
-                rows=[[r[c] for c in step_columns] for r in step_rows] if step_rows else [],
-                row_count=len(step_rows),
-                error=err or "",
-                reply_vi=query_ans_vi,
-            )
+            step_results.append({
+                "agent": "query_data",
+                "sub_question": sub_q,
+                "rows": step_rows,
+                "columns": step_columns,
+                "error": err or "",
+                "sql": exec_res.get("sql") or repaired_sql,
+            })
             sub_events.append(node_event(
                 f"orchestrator_query_step_{idx+1}",
                 input={
@@ -543,22 +802,13 @@ def orchestrator_respond_node(state: AgentState) -> dict:
                     "rows": step_rows,
                     "row_count": len(step_rows),
                     "error": err or "",
-                    "answer_vi": query_ans_vi,
                 },
                 meta={"user_id": user_id, "session_id": session_id},
             ))
 
-    merged_answer = "\n\n".join(step_answers) if step_answers else "Không có kết quả điều phối."
-
-    result = Agent_Output(
-        question=q,
-        answer=merged_answer,
-        query=query_res,
-        detail="orchestrator:multi",
-    )
-
-    return {
-        "result": result,
+    out: dict = {
+        "orchestrator_step_results": step_results,
+        "multi_hop_ready": True,
         "rows": rows,
         "columns": columns,
         "events": sub_events + [node_event(
@@ -569,14 +819,21 @@ def orchestrator_respond_node(state: AgentState) -> dict:
                 "step_count": len(steps),
             },
             output={
-                "answer": merged_answer,
-                "has_query": query_res is not None,
+                "step_count": len(steps),
+                "has_query": any(s.agent == "query_data" for s in steps),
                 "has_docs": any(s.agent == "docs" for s in steps),
-                "query": query_res.model_dump() if query_res else None,
             },
             meta={"user_id": user_id, "session_id": session_id, "is_multi": True},
         )],
     }
+    from src.agent.orchestrator import is_all_events_plan
+
+    if is_all_events_plan(plan):
+        agg_columns, agg_rows = _aggregate_all_events_rows(step_results)
+        if agg_rows:
+            out["columns"] = agg_columns
+            out["rows"] = agg_rows
+    return out
 
 def retrieve_docs_node(state: AgentState) -> dict:
     from src.knowledge import retrieve_docs
@@ -606,13 +863,15 @@ def answer_from_docs_node(state: AgentState) -> dict:
     cards = state.get("rows", [])
     card_ids = [str(c.get("id")) for c in cards if isinstance(c, dict) and c.get("id")]
     docs_ans = answer_from_docs(q, cards)
-    result = Agent_Output(question=q, answer=docs_ans.answer_vi, detail="docs")
+    dumped = docs_ans.model_dump()
     return {
-        "result": result,
+        "answer": docs_ans.answer_vi,
+        "respond_mode": "docs",
+        "docs_answer": dumped,
         "events": [node_event(
             "answer_from_docs",
             input={"question": q, "cards": cards, "card_ids": card_ids},
-            output={"docs_answer": docs_ans.model_dump()},
+            output={"docs_answer": dumped, "respond_mode": "docs"},
             meta={"user_id": user_id, "session_id": session_id},
         )],
     }
@@ -621,13 +880,13 @@ def out_of_scope_node(state: AgentState) -> dict:
     q = state.get("question", "")
     user_id = state.get("user_id") or "default"
     session_id = state.get("session_id") or "default"
-    result = Agent_Output(question=q, answer=OUT_OF_SCOPE_REPLY, detail="out_of_scope")
     return {
-        "result": result,
+        "answer": OUT_OF_SCOPE_REPLY,
+        "respond_mode": "out_of_scope",
         "events": [node_event(
             "out_of_scope",
             input={"question": q},
-            output={"answer": OUT_OF_SCOPE_REPLY, "intent": "out_of_scope"},
+            output={"answer": OUT_OF_SCOPE_REPLY, "respond_mode": "out_of_scope"},
             meta={"user_id": user_id, "session_id": session_id},
         )],
     }
@@ -758,68 +1017,235 @@ def _strip_thinking(text: str) -> str:
     return _THINKING_BLOCK.sub("", text).strip()
 
 
-def _memory_context_block(state: AgentState) -> str:
+_STAT_MEMORY_RE = re.compile(
+    r"\d[\d.,]*\s*(?:sự kiện|su kien|lượt|luot|cảnh báo|canh bao|phát hiện|phat hien)",
+    re.IGNORECASE,
+)
+
+
+def _domains_in_text(text: str) -> set[str]:
+    from src.agent.orchestrator import _DOMAIN_PHRASES
+
+    low = (text or "").lower()
+    return {tbl for phrases, tbl in _DOMAIN_PHRASES if any(p in low for p in phrases)}
+
+
+def _filter_memories_for_stat(memories: list[str], question: str) -> list[str]:
+    """Bỏ memory chứa số liệu thống kê hoặc domain ngoài phạm vi câu hỏi hiện tại."""
+    q_domains = _domains_in_text(question)
+    kept: list[str] = []
+    for memory in memories:
+        if _STAT_MEMORY_RE.search(memory):
+            continue
+        m_domains = _domains_in_text(memory)
+        if q_domains and m_domains and not m_domains <= q_domains:
+            continue
+        kept.append(memory)
+    return kept
+
+
+def _rewritten_text(state: AgentState) -> str:
+    rewritten = state.get("rewritten")
+    if rewritten is None:
+        return ""
+    if hasattr(rewritten, "text"):
+        return (rewritten.text or "").strip()
+    if isinstance(rewritten, dict):
+        return (rewritten.get("text") or "").strip()
+    return ""
+
+
+def _original_question(state: AgentState) -> str:
+    return (state.get("original_question") or state.get("question") or "").strip()
+
+
+def _effective_question(state: AgentState) -> str:
+    return _rewritten_text(state) or (state.get("question") or "").strip()
+
+
+def _respond_event_input(state: AgentState, **extra) -> dict:
+    return {
+        "question": _original_question(state),
+        "rewritten_question": _effective_question(state),
+        **extra,
+    }
+
+
+def _memory_context_block(state: AgentState, *, for_stat: bool = False, question: str = "") -> str:
     """Chèn recalled long-term memories vào prompt downstream."""
     memories = state.get("recalled_memories") or []
+    if for_stat:
+        memories = _filter_memories_for_stat(memories, question)
     if not memories:
         return ""
     lines = "\n".join(f"- {m}" for m in memories)
-    return f"Thông tin đã biết về người dùng:\n{lines}\n\n"
+    stat_rule = ""
+    if for_stat:
+        stat_rule = (
+            "Chỉ dùng bối cảnh người dùng khi liên quan trực tiếp; "
+            "KHÔNG bổ sung số liệu ngoài dữ liệu truy vấn.\n\n"
+        )
+    return f"Thông tin đã biết về người dùng:\n{lines}\n\n{stat_rule}"
 
 
 def respond_node(state: AgentState) -> dict:
-    q = state.get("question", "")
+    q_original = _original_question(state)
+    q = _effective_question(state)
     error = state.get("error")
     rows = state.get("rows", [])
     columns = state.get("columns", [])
     chart_png = state.get("chart_png_base64") or ""
-    
+    plan = state.get("orchestrator_plan")
+    step_results = state.get("orchestrator_step_results") or []
+    respond_mode = state.get("respond_mode") or ""
+    intent = state.get("intent", "query_data")
+    user_id = state.get("user_id") or "default"
+    session_id = state.get("session_id") or "default"
+    is_multi_respond = bool(
+        state.get("multi_hop_ready")
+        and step_results
+        and plan
+        and (getattr(plan, "is_multi", False) or len(getattr(plan, "steps", []) or []) >= 2)
+    )
+
     from src.agent.simple_answer import try_format_simple_answer
     from src.config import settings
     from src.llm.client import invoke_text, use_offline_tools
-    
+
     answer_source = "template"
     llm_used = False
     q_low = q.lower()
-    is_cam_list_query = "danh sách" in q_low and "camera" in q_low and any(k in q_low for k in ("khu vực", "hợp lệ", "hiện có", "tất cả"))
 
-    if error:
+    if respond_mode == "inline":
+        ans = (state.get("answer") or "").strip()
+        if not ans and intent == "chat":
+            ans = "Chào bạn! Tôi là trợ lý AI giám sát camera VMS KCN Hưng Phú. Tôi có thể hỗ trợ gì cho bạn về dữ liệu camera, sự kiện hoặc hướng dẫn sử dụng hệ thống?"
+        detail = intent or "chat"
+        result = Agent_Output(question=q_original, answer=ans, detail=detail)
+        emit_answer_chunks(ans, enabled=bool(state.get("stream_tokens")))
+        return {
+            "result": result,
+            "events": [node_event(
+                "respond",
+                input=_respond_event_input(state, respond_mode="inline", intent=intent),
+                output={"answer_vi": ans, "answer_source": "inline"},
+                meta={"llm_used": False, "user_id": user_id, "session_id": session_id},
+            )],
+        }
+
+    if respond_mode == "docs":
+        docs_payload = state.get("docs_answer") or {}
+        ans = (state.get("answer") or docs_payload.get("answer_vi") or "").strip()
+        if not ans:
+            ans = "Không tìm thấy tài liệu hướng dẫn phù hợp."
+        result = Agent_Output(question=q_original, answer=ans, detail="docs")
+        emit_answer_chunks(ans, enabled=bool(state.get("stream_tokens")))
+        return {
+            "result": result,
+            "events": [node_event(
+                "respond",
+                input=_respond_event_input(state, respond_mode="docs"),
+                output={"answer_vi": ans, "docs_answer": docs_payload},
+                meta={"llm_used": False, "user_id": user_id, "session_id": session_id},
+            )],
+        }
+
+    if respond_mode == "out_of_scope":
+        ans = OUT_OF_SCOPE_REPLY
+        result = Agent_Output(question=q_original, answer=ans, detail="out_of_scope")
+        emit_answer_chunks(ans, enabled=bool(state.get("stream_tokens")))
+        return {
+            "result": result,
+            "events": [node_event(
+                "respond",
+                input=_respond_event_input(state, respond_mode="out_of_scope"),
+                output={"answer_vi": ans, "answer_source": "out_of_scope"},
+                meta={"llm_used": False, "user_id": user_id, "session_id": session_id},
+            )],
+        }
+
+    if is_multi_respond:
+        from src.agent.orchestrator import is_all_events_plan
+
+        ans, answer_source = _synthesize_orchestrator_answer(q, step_results, state)
+        llm_used = answer_source == "llm_text"
+        agg_columns, agg_rows = _aggregate_all_events_rows(step_results) if is_all_events_plan(plan) else ([], [])
+        if agg_rows:
+            query_res = QueryResult(
+                tool="sql_builder",
+                columns=agg_columns,
+                rows=[[r["domain"], r["count"]] for r in agg_rows],
+                row_count=len(agg_rows),
+                error="",
+                reply_vi=ans,
+            )
+        else:
+            query_res = _build_orchestrator_query_result(step_results, ans)
+
+        chart_rows = agg_rows if agg_rows else []
+        chart_spec = None
+        if should_render_chart(q) and len(chart_rows) >= 2 and not chart_png:
+            try:
+                chart_spec = plan_chart(chart_rows, q)
+                chart_png = render_chart(chart_rows, chart_spec) or ""
+            except Exception:
+                chart_png = ""
+                chart_spec = None
+
+        if chart_png and len(chart_rows) > 1 and should_render_chart(q):
+            ans = f"{ans} Biểu đồ phân bố theo loại sự kiện ({len(chart_rows)} nhóm)."
+            answer_source = "chart_template" if answer_source == "template_all_events" else answer_source
+
+        stat = StatAnswer(
+            answer_vi=ans,
+            highlights=[],
+            chart_requested=should_render_chart(q) or bool(chart_png),
+        )
+        ans = stat.answer_vi
+        result = Agent_Output(question=q_original, answer=ans, query=query_res, detail="orchestrator:multi")
+        emit_answer_chunks(ans, enabled=bool(state.get("stream_tokens")))
+        chart_meta = chart_spec.model_dump() if chart_spec else {}
+        return {
+            "result": result,
+            "chart_png_base64": chart_png,
+            "events": [node_event(
+                "respond",
+                input=_respond_event_input(
+                    state,
+                    respond_mode="multi",
+                    orchestrator_step_results=step_results,
+                    step_count=len(step_results),
+                ),
+                output={
+                    "answer_vi": ans,
+                    "answer_source": answer_source,
+                    "stat_answer": stat.model_dump(),
+                    "query": query_res.model_dump(),
+                },
+                chart_png_base64=chart_png,
+                chart_meta=chart_meta,
+                chart_spec=chart_meta,
+                meta={"llm_used": llm_used, "user_id": user_id, "session_id": session_id, "is_multi": True},
+            )],
+        }
+    from src.agent.camera_registry import (
+        is_camera_count_query,
+        is_camera_list_query,
+        format_camera_count_answer,
+        format_camera_list_answer,
+    )
+
+    if is_camera_count_query(q):
+        ans, rows, columns = format_camera_count_answer()
+        answer_source = "master_registry"
+    elif is_camera_list_query(q) or (
+        "danh sách" in q_low and "camera" in q_low and any(k in q_low for k in ("khu vực", "hợp lệ", "hiện có", "tất cả"))
+    ):
+        ans, rows, columns = format_camera_list_answer()
+        answer_source = "master_registry"
+    elif error:
         ans = f"Lỗi khi truy vấn: {error}"
         answer_source = "error"
-    elif is_cam_list_query:
-        from pathlib import Path
-        import yaml
-        reg_path = Path(__file__).resolve().parent.parent.parent / "resource" / "db" / "camera_registry.yaml"
-        if reg_path.exists():
-            try:
-                reg = yaml.safe_load(reg_path.read_text(encoding="utf-8"))
-                cams = reg.get("cameras", [])
-                area = reg.get("area_name", "Sản xuất & lắp ráp")
-                cam_names = [c.get("camera_name") for c in cams if c.get("camera_name")]
-                zones = [f"{z.get('zone_code')} ({z.get('camera_name')})" for z in reg.get("virtual_zones", [])]
-                ans = (
-                    f"Danh sách các khu vực và camera hợp lệ hiện có:\n"
-                    f"- Khu vực: {area}\n"
-                    f"- Danh sách {len(cam_names)} camera: {', '.join(cam_names)}\n"
-                    f"- Khu vực hàng rào ảo / vùng cấm: {', '.join(zones)}."
-                )
-                columns = ["camera_name", "area", "status", "ai_service"]
-                rows = [
-                    {
-                        "camera_name": c.get("camera_name", ""),
-                        "area": c.get("area", area),
-                        "status": c.get("status", "ONLINE"),
-                        "ai_service": c.get("ai_service", ""),
-                    }
-                    for c in cams
-                ]
-                answer_source = "master_registry"
-            except Exception:
-                ans = f"Danh sách camera: {len(rows)} bản ghi."
-                answer_source = "master_registry_fallback"
-        else:
-            ans = f"Danh sách camera: {len(rows)} bản ghi."
-            answer_source = "master_registry_fallback"
     elif not rows:
         from src.guardrails import empty_stat_reply
 
@@ -829,7 +1255,12 @@ def respond_node(state: AgentState) -> dict:
         with trace_substep("simple_answer", kind="tool", input={"row_count": len(rows)}) as sub:
             simple_ans = try_format_simple_answer(q, rows)
             sub["output"] = {"matched": simple_ans is not None}
-        if simple_ans is not None:
+        if chart_png and len(rows) > 1 and should_render_chart(q):
+            label = (columns[0] if columns else "dữ liệu").replace("_", " ")
+            ans = f"Biểu đồ phân bố theo {label} ({len(rows)} nhóm)."
+            answer_source = "chart_template"
+            llm_used = False
+        elif simple_ans is not None:
             ans = simple_ans
             if chart_png:
                 ans = f"{ans} Biểu đồ đã tạo từ kết quả truy vấn."
@@ -846,7 +1277,10 @@ def respond_node(state: AgentState) -> dict:
                     with trace_substep("respond_stat", kind="agent", input={"row_count": len(rows)}):
                         raw = invoke_text(
                             registry().render("respond_stat"),
-                            f"{_memory_context_block(state)}Câu hỏi: {q}\nDữ liệu:\n{template_ans}",
+                            (
+                                f"{_memory_context_block(state, for_stat=True, question=q)}"
+                                f"Câu hỏi: {q}\nDữ liệu:\n{template_ans}"
+                            ),
                             max_tokens=settings.sql_respond_max_tokens,
                             substep=None,
                         )
@@ -879,21 +1313,23 @@ def respond_node(state: AgentState) -> dict:
         reply_vi=ans
     )
     
-    result = Agent_Output(question=q, answer=ans, query=query_res, detail="query_data")
-    user_id = state.get("user_id") or "default"
-    session_id = state.get("session_id") or "default"
+    result = Agent_Output(question=q_original, answer=ans, query=query_res, detail="query_data")
+    emit_answer_chunks(ans, enabled=bool(state.get("stream_tokens")))
     return {
         "result": result,
         "events": [node_event(
             "respond",
-            input={
-                "question": q,
-                "columns": columns,
-                "rows": rows,
-                "row_count": len(rows),
-                "recalled_memories": state.get("recalled_memories") or [],
-                "error": error or "",
-            },
+            input=_respond_event_input(
+                state,
+                respond_mode="stat",
+                columns=columns,
+                rows=rows,
+                row_count=len(rows),
+                recalled_memories=_filter_memories_for_stat(
+                    state.get("recalled_memories") or [], q
+                ),
+                error=error or "",
+            ),
             output={
                 "answer_vi": ans,
                 "answer_source": answer_source,
@@ -948,8 +1384,9 @@ def _build_graph(checkpointer=None):
         q = state.get("question", "")
         rewritten = state.get("rewritten")
         q_text = rewritten.text if rewritten else q
+        original_q = state.get("original_question") or q
 
-        if is_multi_question(q_text):
+        if is_multi_question(q_text, rewritten=rewritten, original=original_q, intent=intent):
             return "orchestrator"
 
         if intent == "query_data":
@@ -974,7 +1411,7 @@ def _build_graph(checkpointer=None):
         "out_of_scope": "out_of_scope",
         "orchestrator": "orchestrator",
     })
-    graph.add_edge("respond_inline", END)
+    graph.add_edge("respond_inline", "respond")
     
     graph.add_conditional_edges("orchestrator", route_orchestrator, {
         "query_data": "retrieve_schema",
@@ -1027,12 +1464,12 @@ def _build_graph(checkpointer=None):
     
     # Docs branch
     graph.add_edge("retrieve_docs", "answer_from_docs")
-    graph.add_edge("answer_from_docs", END)
-    
-    # Multi orchestrator branch
-    graph.add_edge("orchestrator_respond", END)
+    graph.add_edge("answer_from_docs", "respond")
 
-    graph.add_edge("out_of_scope", END)
+    # Multi orchestrator branch — execute steps rồi tổng hợp qua respond
+    graph.add_edge("orchestrator_respond", "respond")
+
+    graph.add_edge("out_of_scope", "respond")
     
     return graph.compile(checkpointer=checkpointer)
 
@@ -1052,6 +1489,31 @@ def _get_graph():
     return _compiled
 
 
+def _fresh_invoke_state(question: str, inp: Agent_Input, uid: str, session_id: str) -> dict:
+    """State khởi tạo mỗi lượt — xóa orchestrator cũ khỏi checkpointer."""
+    return {
+        "question": question,
+        "original_question": question,
+        "rewritten": None,
+        "user_id": uid,
+        "session_id": session_id,
+        "stream_tokens": getattr(inp, "stream_tokens", False),
+        "events": [],
+        "sql": "",
+        "repair_count": 0,
+        "error": "",
+        "rows": [],
+        "columns": [],
+        "orchestrator_plan": None,
+        "orchestrator_step_results": [],
+        "multi_hop_ready": False,
+        "intent": "",
+        "answer": "",
+        "respond_mode": "",
+        "docs_answer": None,
+    }
+
+
 def run_agent(inp: Agent_Input, parent_span: Any = None, session_id: str = "default", user_id: str | None = None) -> Agent_Output:
     question = (inp.question or "").strip()
     uid = user_id or getattr(inp, "user_id", "default") or "default"
@@ -1059,18 +1521,7 @@ def run_agent(inp: Agent_Input, parent_span: Any = None, session_id: str = "defa
     token = bind_trace_root(parent_span)
     try:
         state = _get_graph().invoke(
-            {
-                "question": question,
-                "rewritten": inp.rewritten,
-                "user_id": uid,
-                "session_id": session_id,
-                "events": [],
-                "sql": "",
-                "repair_count": 0,
-                "error": "",
-                "rows": [],
-                "columns": [],
-            },
+            _fresh_invoke_state(question, inp, uid, session_id),
             config=config,
         )
         result = state.get("result")
@@ -1100,18 +1551,7 @@ def run_agent_stream(inp: Agent_Input, parent_span: Any = None, session_id: str 
         try:
             res = ctx.run(
                 _get_graph().invoke,
-                {
-                    "question": question,
-                    "rewritten": inp.rewritten,
-                    "user_id": uid,
-                    "session_id": session_id,
-                    "events": [],
-                    "sql": "",
-                    "repair_count": 0,
-                    "error": "",
-                    "rows": [],
-                    "columns": [],
-                },
+                _fresh_invoke_state(question, inp, uid, session_id),
                 config=config,
             )
             if res and "result" in res:

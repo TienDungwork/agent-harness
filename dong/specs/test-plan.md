@@ -1,90 +1,72 @@
-# Test Plan — agent dong v7
+# Test Plan — agent dong v8
 
-**Trạng thái:** Spec only. Verify **sau từng task** trong `implementation-plan.md`.  
-**Baseline:** pytest v6 xanh; Docker + smoke script đã có.
-
----
-
-## Offline (pytest)
-
-```bash
-cd agent-harness/dong
-pytest -q
-```
-
-| Chủ đề | Kỳ vọng |
-|--------|---------|
-| **Classify fast path** | Chào hỏi → END sớm, không node SQL (`tests/test_classify_fast_path.py`) |
-| **Pre-SQL** | Schema ≤4 bảng; time_range + chart hint trong prompt — acceptance pytest: `tests/test_phase3b_pre_sql_context.py` (16 tests, Phase 3b done) |
-| **generate_sql** | Extract SQL fenced; empty → lỗi rõ |
-| **validate / repair** | SELECT-only; DDL fail; repair ≤2 |
-| **execute** | Re-validate trước chạy (mock PG) |
-| **Simple answer** | 1-row COUNT → template; không gọi respond LLM |
-| **Chart** | Detect bar/pie; fallback mock; PNG/spec không rỗng; nhãn/meta có title |
-| **SSE chart** | Event chart tới FE; FE wiring test (`tests/test_phase2_chart_ui_audit.py`, `test_frontend_chartjs.py`); audit: `specs/v7-chart-ui-audit.md` |
-| **Errors** | Stream không crash; message ngắn VI |
-| **Regression** | Sessions, TTL, guardrails, Docker spec vẫn pass |
-| **Cleanup** | Sau Phase 8: graph không import dead modules |
-
-### Danh mục 10 Product Test Files (Consolidated)
-
-1. `tests/test_product_api_gateway.py` — FastAPI server, routes fast-path, sessions CRUD, message history, SSE streaming session, static UI wiring.
-2. `tests/test_product_sql_agent.py` — End-to-end Text-to-SQL: generation, validation & repair, execution, readonly & scope security, graph flow.
-3. `tests/test_product_graph_orchestrator.py` — Graph state machine, Intent classification, Domain routing, Skip rewrite, Inline answers, Node I/O.
-4. `tests/test_product_chart_visualization.py` — Chart planner, Pre-SQL chart hint, Post-SQL Chart.js generation, Empty stats, SSE chart events, Frontend Chart.js validation.
-5. `tests/test_product_guardrails_safety.py` — Input/Output guardrails, Prompt injection prevention, Vietnamese policy enforcement.
-6. `tests/test_product_memory_cache.py` — Short-term session memory, Long-term summarization, Memory nodes, TTL caching, Graceful degradation.
-7. `tests/test_product_knowledge_rag.py` — AIOC doc retrieval, Pre-SQL contextual grounding, Document search, Resource path resolution.
-8. `tests/test_product_llm_prompts.py` — Multi-backend connectivity, Prompt template registry & variable formatting, Structured output schemas.
-9. `tests/test_product_observability_errors.py` — Langfuse tracing, Trace caching & metrics telemetry, Error state acceptance & LLM/DB resilience.
-10. `tests/test_product_deployment_smoke.py` — Docker configuration, Self-hosted backend verification, Smoke test acceptance suite, Eval harness integration.
+**Trạng thái:** Spec only — chuẩn bị thực hiện.  
+**Mục tiêu:** Kiểm thử toàn diện 3 tính năng mới: Chuẩn hóa 10 camera từ Master Registry, Hệ thống Human Feedback (Like/Dislike + Lý do + Ảnh) và Chunk Streaming câu trả lời.
 
 ---
 
-## Live — Docker + LLM 196
+## 1. Phạm vi kiểm thử
 
-```bash
-docker compose up --build -d
-./scripts/verify-docker-self-hosted.sh
-./scripts/smoke-production.sh
-```
-
-| Case | Kỳ vọng |
-|------|---------|
-| Greeting | `"chào bạn"` nhanh, không SQL trên live graph |
-| Stat simple | COUNT → trả lời ngắn / template |
-| Chart bar | UI hiện cột rõ, nhãn category VI, title VI, canvas không méo/blank, tooltip số liệu |
-| Chart pie | UI hiện tròn rõ, legend đọc được với nhãn VI + %, tooltip có %, lát cắt rõ |
-| Fire / AIOC | Smoke cases pass |
-| TTL | Lần 2 = cache hit |
-
-Checklist UI chi tiết: `specs/smoke-manual-checklist.md` (đã cập nhật Phase 2; kiểm thử smoke live toàn diện ở Phase 7).
+| Nhóm tính năng | Mục tiêu kiểm thử | Phương thức |
+|----------------|-------------------|-------------|
+| **Camera Count (10 Cams)** | Đảm bảo hệ thống trả lời đủ 10 camera (không bị nhầm sang 6 camera giao thông). | Unit test pytest + Live test |
+| **Human Feedback API** | API `POST /api/feedback` xử lý đúng payload, lưu file JSON và file ảnh an toàn. | Unit test pytest |
+| **Human Feedback UI** | Giao diện nút 👍/👎, modal dislike nhập lý do, upload ảnh và gửi phản hồi. | Manual Browser test |
+| **Response Streaming** | SSE stream token/chunk mượt mà, bubble chat hiển thị gõ chữ trực tiếp. | Manual Browser test |
+| **Hồi quy hệ thống** | Không làm ảnh hưởng các luồng v7: Text-to-SQL, Chart.js, Guardrails, Memory. | Pytest toàn bộ suite |
 
 ---
 
-## Eval golden-30
+## 2. Kế hoạch kiểm thử tự động (Unit Tests)
 
-```bash
-python eval/run.py
-python eval/run.py --judge
-```
+### Test Suite 1: Camera Registry & Multi-domain Count
+- **File**: `tests/test_product_sql_agent.py`
+- **Các ca kiểm thử**:
+  1. `test_query_total_camera_count_returns_10_cams`:
+     - Input: *"Hiện có bao nhiêu camera đang hoạt động?"*
+     - Kỳ vọng: Câu trả lời chứa số "10", không chứa "6", liệt kê hoặc phân loại theo 3 phân hệ.
+  2. `test_query_camera_list_contains_all_10_cameras`:
+     - Input: *"Kể tên các camera trong hệ thống"*
+     - Kỳ vọng: Kết quả chứa cả các camera ngoài ITS như `CVN_CONG_BOH`, `CVNTT`, `CVN_KHO_TANG2_BOH`, `CVN_P_CAP_PHAT_DONG_PHUC`.
 
-| Metric | Target |
-|--------|--------|
-| Pass | ≥28/30 |
-| Output | `eval/results/golden-30.md` |
-| Log | Delta vs baseline trong `specs/change-log.md` |
+### Test Suite 2: Human Feedback Endpoint
+- **File**: `tests/test_product_observability_errors.py` (hoặc test file mới `tests/test_product_feedback.py`)
+- **Các ca kiểm thử**:
+  1. `test_feedback_positive_saved_successfully`:
+     - Gửi request `POST /api/feedback` với `rating="positive"`, `session_id`, `question`, `answer`, `agent_trace`.
+     - Kiểm tra status code `200`.
+     - Đọc database SQLite `data/feedback.db` (và file `data/feedback.json`), xác nhận bản ghi tồn tại với đầy đủ các trường.
+  2. `test_feedback_negative_with_reason_and_image`:
+     - Gửi request `POST /api/feedback` với `rating="negative"`, `feedback_reason="Sai số lượng camera"`, ảnh base64 mẫu.
+     - Kiểm tra status code `200`.
+     - Xác nhận file ảnh được lưu vào `data/feedback/attachments/` và SQLite/JSON ghi nhận đúng đường dẫn ảnh cùng lý do.
+  3. `test_feedback_validation_error`:
+     - Gửi request thiếu `rating` hoặc `question`.
+     - Kiểm tra API trả về status `422 Unprocessable Entity` hoặc `400 Bad Request`.
 
 ---
 
-## Review mỗi task
+## 3. Kịch bản kiểm thử thủ công (Manual / Smoke Checklist)
 
-1. Diff đúng scope task.
-2. `pytest -q` xanh.
-3. Manual / smoke nếu chạm API hoặc UI chart.
-4. Cập nhật `specs/change-log.md`.
+| STT | Thao tác trên giao diện | Kỳ vọng đạt được |
+|:---:|-------------------------|------------------|
+| 1 | Nhập câu hỏi: *"Hiện có bao nhiêu camera đang hoạt động?"* | Trợ lý trả lời chính xác: **10 camera đang hoạt động** (phân loại 6 xe, 2 vùng cấm, 2 cháy khói). Không trả lời 6 camera. |
+| 2 | Nhập câu hỏi: *"Kể tên các camera"* | Trợ lý liệt kê đủ danh sách 10 camera (bao gồm cả camera vùng cấm và cháy khói). |
+| 3 | Quan sát quá trình hiển thị câu trả lời | Chữ xuất hiện dần dần theo luồng stream (hiệu ứng gõ chữ), không bị khựng lại rồi hiện một khối. |
+| 4 | Bấm vào nút Like (👍) dưới câu trả lời | Nút Like sáng lên / đổi màu, hiển thị toast ngắn: "Cảm ơn bạn đã đánh giá!". Kiểm tra SQLite `data/feedback.db` (và file `data/feedback.json`) có bản ghi mới. |
+| 5 | Bấm vào nút Dislike (👎) dưới câu trả lời | Hiển thị modal/hộp thoại góp ý: có ô nhập lý do, nút tải ảnh và nút xác nhận. |
+| 6 | Nhập lý do: *"Dữ liệu chưa cập nhật đủ"* + đính kèm 1 ảnh chụp màn hình → Bấm "Lưu phản hồi" | Modal đóng lại, hiện thông báo thành công. Mở SQLite `data/feedback.db` / file `data/feedback.json` kiểm tra: có trường `rating: "negative"`, trường `feedback_reason`, đường dẫn file ảnh đính kèm, và `agent_trace` chi tiết. |
+| 7 | Mở file `data/feedback.db` (bằng sqlite3) hoặc `data/feedback.json` | Đảm bảo định dạng chuẩn UTF-8, các trường thông tin rõ ràng để AI / Kỹ sư đọc hiểu ngay ngữ cảnh để sửa lỗi. |
 
-## Không bắt buộc mỗi commit
+---
 
-- Full golden live (chỉ Phase 9).
-- Browser E2E tự động.
+## 4. Tiêu chí Pass / Fail
+
+- **PASS**:
+  - `pytest -q` pass 100% không có lỗi.
+  - Cả 7 bước kiểm thử thủ công trên trình duyệt đều hoạt động chính xác như mô tả.
+  - SQLite `data/feedback.db` và file `data/feedback.json` lưu trữ đầy đủ, an toàn, không bị ghi đè hay mất dữ liệu khi lưu nhiều lần.
+- **FAIL**:
+  - Trợ lý vẫn trả lời 6 camera khi hỏi tổng số camera.
+  - Bấm Like/Dislike không lưu được vào SQLite/JSON hoặc thiếu `agent_trace`.
+  - Câu trả lời vẫn hiển thị kiểu giật cục một lần thay vì stream.

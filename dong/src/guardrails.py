@@ -181,6 +181,62 @@ STAT_KEYWORDS = frozenset(
     }
 )
 
+_GUIDE_TRIGGERS = frozenset(
+    {
+        "làm sao",
+        "lam sao",
+        "làm thế nào",
+        "lam the nao",
+        "cách ",
+        "cach ",
+        "hướng dẫn",
+        "huong dan",
+        "how to",
+        "tại sao",
+        "tai sao",
+        "là gì",
+        "la gi",
+        "khái niệm",
+        "khai niem",
+    }
+)
+
+_VMS_NAV_CONTEXT = frozenset(
+    {
+        "dashboard",
+        "dasboard",
+        "trang ",
+        "menu",
+        "vms",
+        "giám sát",
+        "giam sat",
+        "vùng cấm",
+        "vung cam",
+        "lịch sử",
+        "lich su",
+        "playback",
+        "xem lại",
+        "xem lai",
+        "aioc",
+        "atin.vn",
+        "devices",
+        "camera",
+        "cam",
+        "kcn",
+        "hưng phú",
+        "hung phu",
+    }
+)
+
+
+def _guide_question_in_scope(low: str) -> bool:
+    """How-to/docs/troubleshoot/concept có ngữ cảnh VMS/AIOC — không chặn oan trước classify."""
+    if not any(t in low for t in _GUIDE_TRIGGERS):
+        return False
+    if any(c in low for c in _VMS_NAV_CONTEXT):
+        return True
+    return any(k in low for k in STAT_KEYWORDS)
+
 OUT_OF_SCOPE_REPLY = (
     "Xin lỗi, câu hỏi này ngoài phạm vi hỗ trợ. Tôi hỗ trợ thống kê sự kiện VMS "
     "KCN Hưng Phú, hướng dẫn dùng AIOC (https://aioc.atin.vn/devices), và vẽ sơ đồ "
@@ -348,6 +404,8 @@ def in_scope(question: str) -> bool:
     if is_chat_greeting(question):
         return True
     if any(k in low for k in MEMORY_STATEMENT_KEYWORDS):
+        return True
+    if _guide_question_in_scope(low):
         return True
     return any(k in low for k in STAT_KEYWORDS)
 

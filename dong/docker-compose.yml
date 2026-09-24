@@ -33,6 +33,7 @@ services:
     volumes:
       - ./src:/app/src
       - ./resource:/app/resource
+      - ./data:/app/data
     env_file:
       - path: .env
         required: false
@@ -44,6 +45,14 @@ services:
       MODEL_API_KEY: ${MODEL_API_KEY:-}
       MODEL_ENDPOINT: ${MODEL_ENDPOINT:-http://192.168.1.196:18083/v1/chat/completions}
       MONITORING_ENABLED: ${MONITORING_ENABLED:-false}
+      MEMORY_ENABLED: ${MEMORY_ENABLED:-true}
+      MEMORY_SHORT_TERM_ENABLED: ${MEMORY_SHORT_TERM_ENABLED:-true}
+      MEMORY_LONG_TERM_ENABLED: ${MEMORY_LONG_TERM_ENABLED:-true}
+      CACHE_ENABLED: ${CACHE_ENABLED:-true}
+      CACHE_TTL_S: ${CACHE_TTL_S:-60}
+      MEMORY_TTL_SECONDS: ${MEMORY_TTL_SECONDS:-300}
+      AGENT_DECOMPOSE_MIN_CHARS: ${AGENT_DECOMPOSE_MIN_CHARS:-48}
+      AGENT_MAX_SUB_QUESTIONS: ${AGENT_MAX_SUB_QUESTIONS:-4}
       LANGFUSE_PUBLIC_KEY: ${LANGFUSE_PUBLIC_KEY:-}
       LANGFUSE_SECRET_KEY: ${LANGFUSE_SECRET_KEY:-}
       # Langfuse stack riêng (langfuse/) — không dùng LANGFUSE_HOST từ .env (localhost)

@@ -1,21 +1,42 @@
 name: rewrite
 version: 1
 model: qwen3-4b
-description: Chuẩn hóa câu hỏi tiếng Việt và trích xuất filters, time_range, intent_hint
+description: Chuẩn hóa câu hỏi tiếng Việt, tách ý, trích filters/time_range/intent_hint
 owner: team-ai@kcn.vn
 created: "2026-09-22"
-changelog: "v1: prompt chuẩn hóa câu hỏi hệ thống VMS KCN Hưng Phú có bảo toàn thực thể và /nothink"
+changelog: "v1.4: decompose gom rewrite; câu đơn passthrough; tối đa 4 sub_questions; /nothink"
 template: |
   /nothink
-  Bạn là trợ lý chuẩn hóa câu hỏi cho hệ thống giám sát và vận hành VMS KCN Hưng Phú.
+  Chuẩn hóa + decompose câu hỏi tiếng Việt cho trợ lý VMS KCN Hưng Phú + AIOC (https://aioc.atin.vn/devices).
+  Trả structured: text, sub_questions, filters, time_range, intent_hint.
 
-  Quy tắc bắt buộc:
-  1. TUYỆT ĐỐI BẢO TOÀN LOẠI PHƯƠNG TIỆN & THỰC THỂ:
-     - Nếu câu hỏi nhắc đến loại xe cụ thể ("ô tô", "xe máy", "xe tải", "xe buýt"), trong trường `text` BẮT BUỘC PHẢI GIỮ NGUYÊN loại xe đó (ví dụ: "ô tô" -> "xe ô tô", KHÔNG ĐƯỢC khái quát hóa thành "xe" chung chung).
-     - Bảo toàn 100% biển số xe, tên camera, mã khu vực, không được tự ý xóa hoặc thay thế.
-  2. Trích xuất bộ lọc (filters):
-     - Loại xe: `vehicle_type=CAR` (ô tô), `vehicle_type=MOTORCYCLE` (xe máy), `vehicle_type=TRUCK` (xe tải), `vehicle_type=BUS` (xe buýt).
-     - Hướng di chuyển: `direction=IN` (vào), `direction=OUT` (ra).
-     - Biển số: `license_plate_text=...`
-  3. Trích xuất khoảng thời gian (time_range): "today", "yesterday", "this_month", hoặc ngày cụ thể YYYY-MM-DD.
-  4. Gợi ý ý định (intent_hint): "query_data", "how_to", "troubleshoot", "concept", "out_of_scope".
+  DECOMPOSE (sub_questions):
+  - Chia câu phức tạp thành 2–4 sub-questions đơn giản; mỗi câu trả lời độc lập được bằng SQL hoặc docs.
+  - Câu đã đơn giản (một ý): sub_questions = [một câu duy nhất] — KHÔNG tách thêm.
+  - Mỗi sub-question: súc tích, có time_range + domain nếu câu gốc có.
+  - Tối đa 4 sub_questions (trừ *tất cả event* → đúng 5 domain).
+
+  OUTPUT:
+  - `text`: MỘT dòng tóm tắt ý chính.
+  - `sub_questions`: danh sách câu con (xem DECOMPOSE).
+
+  GIỮ NGUYÊN thông tin quan trọng khi tách:
+  - Biển số, camera, zone, URL AIOC/devices.
+  - Loại xe cụ thể (ô tô, xe máy, xe tải, xe buýt).
+  - Biểu đồ/phân loại/theo giờ/hãng/hướng nếu có.
+
+  PHÂN BIỆT DOMAIN (không hoán đổi):
+  - PLATE | ZONE | FACE | FIGHT | CROWD | FIRE/SMOKE | WATER | AIOC/howto
+  - BIỂU ĐỒ DỮ LIỆU (vẽ sơ đồ + số liệu/event) → query_data, KHÔNG howto
+  - Sơ đồ AIOC/howto (đăng nhập, thêm camera) → howto
+
+  filters: vehicle_type, direction, license_plate_text, event_type (khi rõ).
+  time_range: today | yesterday | this_month | YYYY-MM-DD | YYYY-MM-DD..YYYY-MM-DD
+  intent_hint: query_data | how_to | troubleshoot | concept | out_of_scope
+
+  Ví dụ:
+  Gốc: "Xe 15C4384 hôm nay qua vùng cấm nào, và giờ nào xâm nhập nhiều nhất?"
+  text: "Truy vết xe 15C4384 và thống kê xâm nhập hôm nay"
+  sub_questions:
+  - "Hôm nay xe biển số 15C4384 đi qua khu vực xâm nhập nào?"
+  - "Hôm nay khung giờ nào có nhiều sự kiện xâm nhập nhất?"

@@ -1,38 +1,49 @@
 # AGENTS.md — agent dong
 
-Hướng dẫn ngắn cho AI agent trong `agent-harness/dong`.
+Hướng dẫn thực thi chuẩn cho AI agent trong `agent-harness/dong`.
 
-## Trạng thái
+## Trạng thái dự án (v8)
 
-- **v7:** Production verified — Docker + `self_hosted` @ 196, smoke 7/7, pytest 595, eval **27/30** (chưa đạt ≥28; residual 018/021/023).
-- Phase 1–6 done; Phase 7 còn 1 dòng eval target trong `specs/implementation-plan.md`.
+- **Mục tiêu v8:**
+  1. Fix lỗi số lượng camera (trả về đúng 10 camera theo AIOC Master Registry).
+  2. Hệ thống Human Feedback (Like/Dislike + Lý do + Ảnh đính kèm lưu vào `data/feedback.json` có agent trace).
+  3. Token / Chunk Response Streaming (hiển thị câu trả lời gõ chữ dần dần qua SSE).
+- **Môi trường chạy:** Docker Compose (`docker compose up -d`).
 
-## Specs (tài liệu bắt buộc đọc trước khi code)
+---
 
-1. `specs/product-spec.md` — Yêu cầu nghiệp vụ, luồng xử lý và tiêu chuẩn nghiệm thu.
-2. `specs/implementation-plan.md` — Danh sách các phase triển khai tuần tự.
-3. `specs/test-plan.md` — Kế hoạch kiểm thử tự động, thủ công và golden-30.
-4. `specs/change-log.md` — Nhật ký thay đổi và kết quả review qua từng bước.
+## Tài liệu bắt buộc đọc trước khi code
+
+1. [`specs/product-spec.md`](specs/product-spec.md) — Yêu cầu nghiệp vụ, luồng xử lý và tiêu chí nghiệm thu.
+2. [`specs/implementation-plan.md`](specs/implementation-plan.md) — Danh sách 7 phase triển khai tuần tự.
+3. [`specs/test-plan.md`](specs/test-plan.md) — Kế hoạch kiểm thử tự động và checklist thủ công.
+4. [`specs/change-log.md`](specs/change-log.md) — Nhật ký thay đổi qua từng bước.
+
+---
 
 ## Quy tắc thực thi (Rules)
 
-- Luôn đọc kỹ specs trước khi viết code.
-- Thực hiện từng mục chưa hoàn thành (`[ ]`) một cách tuần tự, không nhảy cóc hay gộp nhiều phase.
-- Giữ ứng dụng gọn gàng, đúng thiết kế, không tự ý thêm thư viện ngoài hoặc thay đổi kiến trúc.
-- Sau mỗi lần triển khai:
-  - Đánh dấu hoàn thành `[x]` trong `specs/implementation-plan.md`.
-  - Cập nhật chi tiết trong `specs/change-log.md`.
-  - Cung cấp các bước kiểm thử thủ công rõ ràng.
-- Chế độ chạy chính thức là **Docker**: `docker compose up --build -d`.
-- Backend production sử dụng `LLM_BACKEND=self_hosted` trỏ tới `192.168.1.196:18083` (model `qwen3-4b`).
+1. **Always read the specs before coding**: Luôn đọc kỹ `specs/product-spec.md` và `specs/implementation-plan.md` trước khi viết bất kỳ dòng code nào.
+2. **Implement only one phase or task at a time**: Chỉ thực hiện duy nhất 1 phase hoặc 1 task (`[ ]`) tại một thời điểm. Không nhảy cóc, không gộp nhiều task.
+3. **Keep the app simple**: Giữ mã nguồn đơn giản, rõ ràng, tập trung vào phạm vi MVP, không làm quá mức cần thiết (over-engineering).
+4. **Do not add unnecessary libraries**: Tận dụng tối đa thư viện và công cụ sẵn có trong dự án, không tự ý cài đặt thêm dependency nếu không bắt buộc.
+5. **Do not change architecture unless the spec is updated**: Tuyệt đối không thay đổi kiến trúc hệ thống trừ khi spec đã được thảo luận và cập nhật trước.
+6. **After each implementation, update specs/change-log.md**: Sau mỗi lần hoàn thành 1 task, đánh dấu `[x]` trong `specs/implementation-plan.md` và ghi nhận chi tiết vào `specs/change-log.md`.
+7. **After each implementation, explain how to test the change**: Luôn giải thích rõ ràng và cung cấp lệnh/kịch bản kiểm thử cụ thể để người dùng có thể tự kiểm tra lại thay đổi.
 
-## Kiểm thử nhanh
+---
+
+## Lệnh kiểm thử nhanh
 
 ```bash
 cd agent-harness/dong
-pytest -q
-docker compose up --build -d
-./scripts/verify-docker-self-hosted.sh
-./scripts/smoke-production.sh
-PYTHONPATH=. python eval/run.py   # golden-30 → eval/results/golden-30.md
+
+# 1. Chạy unit tests
+PYTHONPATH=. pytest -q
+
+# 2. Khởi động Docker container
+docker compose up -d
+
+# 3. Kiểm tra logs
+docker compose logs -f ai_backend
 ```

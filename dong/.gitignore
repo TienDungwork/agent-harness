@@ -5,9 +5,16 @@ langfuse/.env
 .venv/
 venv/
 *.sqlite3
+*.db
+*.db-wal
+*.db-shm
 .pytest_cache/
 
 # Eval outputs (giữ thư mục bằng .gitkeep)
 eval/results/*
 !eval/results/.gitkeep
 !eval/results/golden-30.md
+
+# Feedback attachments
+data/feedback/attachments/*
+!data/feedback/attachments/.gitkeep

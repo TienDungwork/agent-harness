@@ -164,6 +164,19 @@ def _is_how_to_override(text: str) -> bool:
     return any(k in low for k in _HOW_TO_OVERRIDE_KEYWORDS)
 
 
+def _is_data_chart_question(text: str) -> bool:
+    """Biểu đồ/sơ đồ thống kê dữ liệu VMS — không phải howto AIOC."""
+    low = (text or "").lower()
+    if not any(k in low for k in ("vẽ sơ đồ", "sơ đồ", "biểu đồ", "chart")):
+        return False
+    if any(k in low for k in ("aioc", "devices", "đăng nhập", "thêm camera", "phân biệt", "khác gì")):
+        return False
+    return any(
+        k in low
+        for k in ("số lượng", "thống kê", "event", "sự kiện", "tất cả", "bao nhiêu", "đếm")
+    )
+
+
 def classify_intent_safe(question: str | RewrittenQuestion) -> IntentResult:
     """classify_intent với fallback offline khi LLM lỗi — tránh im lặng/crash."""
     if hasattr(question, "text"):
@@ -176,6 +189,11 @@ def classify_intent_safe(question: str | RewrittenQuestion) -> IntentResult:
     try:
         result = classify_intent(question)
         low = cleaned.lower()
+        if _is_data_chart_question(cleaned):
+            return sanitize_intent_result(IntentResult(
+                intent="query_data",
+                reason="Override: biểu đồ/sơ đồ thống kê dữ liệu VMS",
+            ))
         # Override 1: nếu LLM trả clarify cho câu hỏi rõ ràng là how_to → sửa lại
         if result.intent == "clarify" and _is_how_to_override(cleaned):
             return sanitize_intent_result(IntentResult(

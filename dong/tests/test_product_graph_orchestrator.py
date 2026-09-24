@@ -302,23 +302,117 @@ def test_intent_routing(mock_invoke_structured, mock_offline, mock_rewrite):
     assert mock_invoke_structured.call_count == 4
 
 
-def test_rewrite_question_offline():
-    """Test rewrite_question chế độ offline (không gọi LAN)."""
-    res = rewrite_question("Hôm nay có bao nhiêu xe vào cổng 1?")
-    assert isinstance(res, RewrittenQuestion)
-    assert res.text == "Hôm nay có bao nhiêu xe vào cổng 1?"
-    assert res.time_range == "today"
-    assert "direction=IN" in res.filters
-    assert res.intent_hint == "query_data"
+def test_rewrite_short_question_skips_llm():
+    from unittest.mock import patch
+    from src.agent.rewrite import rewrite_question, _needs_rewrite_llm
 
+    q = "Hôm nay có bao nhiêu lượt xe vào?"
+    assert _needs_rewrite_llm(q) is False
+    with patch("src.agent.rewrite.invoke_structured") as mock_llm:
+        out = rewrite_question(q)
+    mock_llm.assert_not_called()
+    assert out.text == q
+    assert out.sub_questions == [q]
+
+
+def test_rewrite_compound_question_calls_llm():
+    from unittest.mock import patch
+    from src.agent.rewrite import rewrite_question, _needs_rewrite_llm
+    from src.llm.schemas import RewrittenQuestion
+
+    q = (
+        "Xe biển số 15C4384 hôm nay có đi qua khu vực xâm nhập nào không, "
+        "và khung giờ xâm nhập nhiều nhất hôm nay là mấy giờ?"
+    )
+    assert _needs_rewrite_llm(q) is True
+    expected = RewrittenQuestion(
+        text="Truy vết xe 15C4384 và thống kê xâm nhập hôm nay",
+        sub_questions=[
+            "Hôm nay xe biển số 15C4384 đi qua khu vực xâm nhập nào?",
+            "Hôm nay khung giờ nào có nhiều sự kiện xâm nhập nhất?",
+        ],
+        intent_hint="query_data",
+    )
+    with patch("src.agent.rewrite.invoke_structured", return_value=expected):
+        out = rewrite_question(q)
+    assert out.sub_questions == expected.sub_questions
+
+
+def test_rewrite_caps_max_sub_questions():
+    from src.agent.rewrite import _normalize_rewritten
+    from src.llm.schemas import RewrittenQuestion
+    from src.config import settings
+
+    many = [f"câu {i}" for i in range(6)]
+    out = _normalize_rewritten(RewrittenQuestion(text="tóm tắt", sub_questions=many))
+    assert len(out.sub_questions) == settings.agent_max_sub_questions
+
+
+def test_rewrite_normalize_sub_questions():
+    from src.agent.rewrite import _normalize_rewritten
+    from src.llm.schemas import RewrittenQuestion
+
+    only_text = _normalize_rewritten(RewrittenQuestion(text="Hôm nay có bao nhiêu lượt xe vào?"))
+    assert only_text.sub_questions == ["Hôm nay có bao nhiêu lượt xe vào?"]
+
+    only_subs = _normalize_rewritten(RewrittenQuestion(
+        text="",
+        sub_questions=["Hôm nay có bao nhiêu sự kiện phương tiện?", "Hôm nay có bao nhiêu sự kiện vùng cấm?"],
+    ))
+    assert only_subs.text == "Hôm nay có bao nhiêu sự kiện phương tiện?"
+    assert len(only_subs.sub_questions) == 2
+
+
+def test_plan_from_rewrite_sub_questions():
+    from src.agent.orchestrator import plan_from_rewrite_sub_questions, REWRITE_SUBQUESTIONS_PLAN_REASON
+
+    subs = [
+        "Hôm nay xe biển số 15C4384 đi qua khu vực xâm nhập nào?",
+        "Hôm nay khung giờ nào có nhiều sự kiện xâm nhập nhất?",
+    ]
+    plan = plan_from_rewrite_sub_questions(subs)
+    assert plan is not None
+    assert plan.reason == REWRITE_SUBQUESTIONS_PLAN_REASON
+    assert plan.is_multi is True
+    assert len(plan.steps) == 2
+    assert all(s.agent == "query_data" for s in plan.steps)
+
+
+def test_plan_orchestration_prefers_rewrite_sub_questions():
+    from src.agent.orchestrator import plan_orchestration, REWRITE_SUBQUESTIONS_PLAN_REASON
+
+    subs = [
+        "Trong khoảng từ 23/09/2026 đến 24/09/2026, có bao nhiêu sự kiện phương tiện?",
+        "Trong khoảng từ 23/09/2026 đến 24/09/2026, có bao nhiêu sự kiện vùng cấm?",
+    ]
+    plan = plan_orchestration("so sánh phương tiện và vùng cấm", sub_questions=subs)
+    assert plan.reason == REWRITE_SUBQUESTIONS_PLAN_REASON
+    assert len(plan.steps) == 2
+
+
+def test_is_rewrite_multi_routes_orchestrator():
+    from src.agent.orchestrator import is_multi_question
+    from src.llm.schemas import RewrittenQuestion
+
+    rw = RewrittenQuestion(
+        text="So sánh phương tiện và vùng cấm",
+        sub_questions=[
+            "Hôm nay có bao nhiêu sự kiện phương tiện?",
+            "Hôm nay có bao nhiêu sự kiện vùng cấm?",
+        ],
+    )
+    assert is_multi_question("câu gốc", rewritten=rw, original="câu gốc") is True
+
+
+def test_rewrite_question_empty_passthrough():
+    """Câu rỗng không gọi LLM."""
     empty = rewrite_question("   ")
     assert empty.text == ""
     assert empty.filters == []
 
 
-@patch("src.agent.rewrite.use_offline_tools", return_value=False)
 @patch("src.agent.rewrite.invoke_structured")
-def test_rewrite_question_mock_structured(mock_structured, _mock_offline):
+def test_rewrite_question_mock_structured(mock_structured):
     """Test rewrite_question gọi invoke_structured khi online."""
     expected = RewrittenQuestion(
         text="Thống kê xe vào hôm nay",
@@ -328,9 +422,15 @@ def test_rewrite_question_mock_structured(mock_structured, _mock_offline):
     )
     mock_structured.return_value = expected
 
-    out = rewrite_question("xe vào hôm nay")
-    assert out == expected
-    assert out.filters == ["direction=IN"]
+    long_q = (
+        "Hôm nay có bao nhiêu lượt xe vào, và cho biết thêm lượt xe ra cổng trong cùng ngày?"
+    )
+    out = rewrite_question(long_q)
+    assert out.text == expected.text
+    assert out.sub_questions == [expected.text]
+    assert out.filters == expected.filters
+    assert out.time_range == expected.time_range
+    assert out.intent_hint == expected.intent_hint
     assert mock_structured.called
 
 
@@ -393,7 +493,7 @@ def test_sanitize_intent_result_clears_pipeline_intents():
 
 
 def test_sanitize_intent_result_preserves_chat_and_clarify():
-    """Chat and clarify intents must preserve inline answer for respond_inline END."""
+    """Chat and clarify intents must preserve inline answer through respond_inline → respond."""
     chat_res = IntentResult(intent="chat", reason="chào", answer="Chào bạn!")
     assert sanitize_intent_result(chat_res).answer == "Chào bạn!"
 
@@ -450,7 +550,7 @@ Acceptance criteria verified:
 A. Chào → 1 hop / fast END:
    - "xin chào" / "chào bạn" via run_agent and graph.invoke
    - result.detail in ("chat", "clarify"), answer non-empty, query is None
-   - Node path has classify + respond_inline; NO retrieve_schema, plan_query, execute,
+   - Node path has classify + respond_inline + respond; NO retrieve_schema, plan_query, execute,
      retrieve_docs, answer_from_docs, orchestrator
    - 1 hop meaning:
      * Online: classify is the only structured LLM hop (intent invoke_structured called once;
@@ -479,7 +579,6 @@ FORBIDDEN_NODES_FOR_GREETING = (
     "validate",
     "execute",
     "render_chart",
-    "respond",
     "retrieve_docs",
     "answer_from_docs",
     "orchestrator",
@@ -517,7 +616,7 @@ def test_greeting_offline_fast_path_run_agent(greeting: str):
 
 @pytest.mark.parametrize("greeting", ["xin chào", "chào bạn"])
 def test_greeting_offline_fast_path_graph_events(greeting: str):
-    """Greeting offline node path: classify + respond_inline; no SQL/docs/orchestrator nodes; 0 LLM hops."""
+    """Greeting offline node path: classify + respond_inline + respond; no SQL/docs/orchestrator; 0 LLM hops."""
     with patch("src.llm.client.use_offline_tools", return_value=True):
         graph = _get_graph()
         state = graph.invoke(
@@ -528,9 +627,11 @@ def test_greeting_offline_fast_path_graph_events(greeting: str):
         events = state.get("events", [])
         node_ids = [ev.get("node_id") for ev in events]
 
-        # 1. Path must contain classify and respond_inline
+        # 1. Path must contain classify, respond_inline, and unified respond exit
         assert "classify" in node_ids
         assert "respond_inline" in node_ids
+        assert "respond" in node_ids
+        assert node_ids[-1] == "respond"
 
         # 2. Path must NOT contain any SQL, Docs, or Orchestrator nodes
         for forbidden in FORBIDDEN_NODES_FOR_GREETING:
@@ -562,7 +663,7 @@ def test_greeting_online_one_hop_meaning(greeting: str):
     - mock invoke_structured on intent path called exactly once.
     - mock invoke_structured on rewrite path not called.
     - Events with meta.llm_used=True == 1 (classify only).
-    - Routes to respond_inline -> END; no SQL/docs/orchestrator nodes.
+    - Routes to respond_inline -> respond -> END; no SQL/docs/orchestrator nodes.
     """
     mock_chat_intent = IntentResult(
         intent="chat",
@@ -572,7 +673,6 @@ def test_greeting_online_one_hop_meaning(greeting: str):
 
     with patch("src.llm.client.use_offline_tools", return_value=False), \
          patch("src.agent.intent.use_offline_tools", return_value=False), \
-         patch("src.agent.rewrite.use_offline_tools", return_value=False), \
          patch("src.agent.intent.invoke_structured", return_value=mock_chat_intent) as mock_intent_invoke, \
          patch("src.agent.rewrite.invoke_structured") as mock_rewrite_invoke:
 
@@ -582,16 +682,18 @@ def test_greeting_online_one_hop_meaning(greeting: str):
             config={"configurable": {"thread_id": f"test_thread_{uuid.uuid4().hex}"}},
         )
 
-        # 1. Hop check: rewrite LLM NOT called; classify LLM called ONCE
+        # 1. Hop check: greeting passthrough — rewrite LLM NOT called; classify LLM called ONCE
         mock_rewrite_invoke.assert_not_called()
         mock_intent_invoke.assert_called_once()
 
         events = state.get("events", [])
         node_ids = [ev.get("node_id") for ev in events]
 
-        # 2. Node path has classify and respond_inline
+        # 2. Node path has classify, respond_inline, and unified respond exit
         assert "classify" in node_ids
         assert "respond_inline" in node_ids
+        assert "respond" in node_ids
+        assert node_ids[-1] == "respond"
 
         # 3. No SQL, Docs, or Orchestrator nodes
         for forbidden in FORBIDDEN_NODES_FOR_GREETING:
@@ -625,7 +727,6 @@ def test_greeting_run_agent_online_one_hop():
 
     with patch("src.llm.client.use_offline_tools", return_value=False), \
          patch("src.agent.intent.use_offline_tools", return_value=False), \
-         patch("src.agent.rewrite.use_offline_tools", return_value=False), \
          patch("src.agent.intent.invoke_structured", return_value=mock_chat_intent) as mock_intent_invoke, \
          patch("src.agent.rewrite.invoke_structured") as mock_rewrite_invoke:
 
@@ -652,7 +753,13 @@ def test_stat_question_routes_to_sql_path_offline(question: str):
     """Stat questions offline route to SQL path: retrieve_schema, plan_query, validate, execute, respond."""
     mock_rows = [{"so_luot": 120}]
 
+    def _rewrite_passthrough(messages, _schema, **_kwargs):
+        user = next(m["content"] for m in messages if m["role"] == "user")
+        raw = user.replace("Câu hỏi gốc: ", "").strip()
+        return RewrittenQuestion(text=raw, intent_hint="query_data")
+
     with patch("src.llm.client.use_offline_tools", return_value=True), \
+         patch("src.agent.rewrite.invoke_structured", side_effect=_rewrite_passthrough), \
          patch("src.agent.graph.execute_sql", return_value=mock_rows):
 
         # 1. run_agent test
@@ -710,7 +817,6 @@ def test_stat_question_routes_to_sql_path_online_mocked():
 
     with patch("src.llm.client.use_offline_tools", return_value=False), \
          patch("src.agent.intent.use_offline_tools", return_value=False), \
-         patch("src.agent.rewrite.use_offline_tools", return_value=False), \
          patch("src.agent.intent.invoke_structured", return_value=mock_query_intent), \
          patch("src.agent.rewrite.invoke_structured", return_value=mock_rewritten), \
          patch("src.agent.graph.execute_sql", return_value=mock_rows):
@@ -910,12 +1016,18 @@ def test_docs_intent_fake_inline_answer_cleared_routes_to_docs():
 
 def test_multi_heuristic_hits_orchestrator():
     """Test that a multi question still hits orchestrator."""
-    with patch("src.llm.client.use_offline_tools", return_value=True):
+    multi_q = "hôm nay có bao nhiêu người vào, và cho biết cách xem lại camera"
+
+    with patch("src.llm.client.use_offline_tools", return_value=True), \
+         patch(
+             "src.agent.rewrite.invoke_structured",
+             return_value=RewrittenQuestion(text=multi_q, intent_hint="query_data"),
+         ):
         from src.agent.graph import _get_graph
         graph = _get_graph()
 
         state = graph.invoke(
-            {"question": "hôm nay có bao nhiêu người vào, và cho biết cách xem lại camera", "events": []},
+            {"question": multi_q, "events": []},
             config={"configurable": {"thread_id": "test_multi"}}
         )
 
@@ -972,9 +1084,8 @@ def test_is_chat_greeting_heuristics():
     assert is_chat_greeting("Thời tiết hôm nay thế nào?") is False
 
 
-@patch("src.agent.rewrite.use_offline_tools", return_value=False)
 @patch("src.agent.rewrite.invoke_structured")
-def test_chat_greeting_skips_invoke_structured(mock_invoke_structured, _mock_offline):
+def test_chat_greeting_skips_invoke_structured(mock_invoke_structured):
     """Chat greeting passthrough does not call LLM structured rewrite."""
     greetings = ["xin chào", "chào bạn", "hello", "cảm ơn", "bạn làm được gì"]
     for g in greetings:
@@ -1004,18 +1115,9 @@ def test_rewrite_node_meta_llm_used_false_for_chat(mock_invoke, _mock_offline):
     mock_invoke.assert_not_called()
 
 
-def test_stat_question_rewrites_normally_offline():
-    """Stat question still rewrites normally offline with filters/time_range."""
-    res = rewrite_question("hôm nay có bao nhiêu xe vào cổng 1?")
-    assert res.time_range == "today"
-    assert "direction=IN" in res.filters
-    assert res.intent_hint == "query_data"
-
-
-@patch("src.agent.rewrite.use_offline_tools", return_value=False)
 @patch("src.agent.rewrite.invoke_structured")
-def test_stat_question_calls_invoke_structured_online(mock_invoke_structured, _mock_offline):
-    """Stat question online calls invoke_structured as normal."""
+def test_stat_question_calls_invoke_structured(mock_invoke_structured):
+    """Câu stat dài / nhiều vế mới gọi invoke_structured."""
     expected = RewrittenQuestion(
         text="Thống kê xe vào hôm nay",
         filters=["direction=IN"],
@@ -1024,17 +1126,31 @@ def test_stat_question_calls_invoke_structured_online(mock_invoke_structured, _m
     )
     mock_invoke_structured.return_value = expected
 
-    res = rewrite_question("hôm nay có bao nhiêu xe vào")
+    short = rewrite_question("hôm nay có bao nhiêu xe vào")
+    mock_invoke_structured.assert_not_called()
+    assert short.sub_questions == ["hôm nay có bao nhiêu xe vào"]
+
+    long_q = (
+        "Hôm nay có bao nhiêu lượt xe vào, và cho biết thêm lượt xe ra cổng trong cùng ngày?"
+    )
+    res = rewrite_question(long_q)
     assert mock_invoke_structured.called
-    assert res == expected
+    assert res.text == expected.text
+    assert res.sub_questions == [expected.text]
 
 
-@patch("src.llm.client.use_offline_tools", return_value=False)
 @patch("src.agent.rewrite.invoke_structured")
-def test_rewrite_node_meta_llm_used_true_for_stat(mock_invoke, _mock_offline):
-    """rewrite_node marks llm_used=True for stat questions when online."""
+def test_rewrite_node_meta_llm_used_true_for_stat(mock_invoke):
+    """rewrite_node: câu phức tạp llm_used=True; câu ngắn skipped."""
     mock_invoke.return_value = RewrittenQuestion(text="xe vào", filters=["direction=IN"])
-    out = rewrite_node({"question": "hôm nay có bao nhiêu xe vào", "events": []})
+    short = rewrite_node({"question": "hôm nay có bao nhiêu xe vào", "events": []})
+    assert short["events"][0]["meta"]["llm_used"] is False
+    assert short["events"][0]["meta"].get("skipped") is True
+
+    long_q = (
+        "Hôm nay có bao nhiêu lượt xe vào, và cho biết thêm lượt xe ra cổng trong cùng ngày?"
+    )
+    out = rewrite_node({"question": long_q, "events": []})
     ev = out["events"][0]
     assert ev["meta"]["llm_used"] is True
     assert ev["meta"].get("skipped") is not True
@@ -1277,5 +1393,363 @@ def test_orchestrator_decomposes_compound_vehicle_and_zone_queries():
     assert plan.steps[1].agent == "query_data"
     assert "15C4384" in plan.steps[0].sub_question or "xe" in plan.steps[0].sub_question.lower()
     assert "xâm nhập" in plan.steps[1].sub_question.lower()
+
+
+def test_orchestrator_decomposes_cross_db_hay_comparison():
+    """So sánh 'phương tiện hay vùng cấm' phải tách 2 query_data — không gộp SQL chéo DB."""
+    from src.agent.orchestrator import is_cross_domain_comparison, is_multi_question, plan_orchestration
+
+    q = "Trong khoảng từ 23/09/2026 đến 24/09/2026, phương tiện hay vùng cấm xảy ra nhiều hơn?"
+    assert is_cross_domain_comparison(q) is True
+    assert is_multi_question(q) is True
+    plan = plan_orchestration(q)
+    assert plan.is_multi is True
+    assert len(plan.steps) == 2
+    assert all(s.agent == "query_data" for s in plan.steps)
+    assert "phương tiện" in plan.steps[0].sub_question.lower()
+    assert "vùng cấm" in plan.steps[1].sub_question.lower()
+    assert "23/09/2026" in plan.steps[0].sub_question
+    assert "23/09/2026" in plan.steps[1].sub_question
+
+
+def test_same_db_hay_comparison_stays_single_query():
+    """ẩu đả hay đám đông cùng anomaly_event — không ép orchestrator multi."""
+    from src.agent.orchestrator import is_cross_domain_comparison, is_multi_question, plan_orchestration
+
+    q = "Trong khoảng từ 04/09/2026 đến 16/09/2026, ẩu đả hay đám đông xảy ra nhiều hơn?"
+    assert is_cross_domain_comparison(q) is False
+    assert is_multi_question(q) is False
+    plan = plan_orchestration(q)
+    assert plan.is_multi is False
+    assert len(plan.steps) == 1
+
+
+def test_cross_db_hay_comparison_routes_through_respond_node():
+    """Multihop so sánh cross-DB phải qua node respond và trả lời đúng vế 'nhiều hơn'."""
+    import uuid
+    from unittest.mock import patch
+    from src.agent.graph import _get_graph, reset_graph
+
+    reset_graph()
+    q = "Trong khoảng từ 23/09/2026 đến 24/09/2026, phương tiện hay vùng cấm xảy ra nhiều hơn?"
+    with patch("src.llm.client.use_offline_tools", return_value=True):
+        state = _get_graph().invoke(
+            {"question": q, "events": []},
+            config={"configurable": {"thread_id": f"cross_db_respond_{uuid.uuid4().hex}"}},
+        )
+
+    node_ids = [ev.get("node_id") for ev in state.get("events", [])]
+    assert "orchestrator_respond" in node_ids
+    assert "respond" in node_ids
+
+    result = state.get("result")
+    assert result is not None
+    assert result.detail == "orchestrator:multi"
+    ans = (result.answer or "").lower()
+    assert "phương tiện" in ans
+    assert "vùng cấm" in ans
+    assert "nhiều hơn" in ans or "bằng nhau" in ans
+    assert "chưa xác minh" not in ans
+
+
+def test_hay_comparison_synthesis_picks_winner():
+    """Template so sánh phải kết luận đúng vế nhiều hơn từ số liệu 2 bước."""
+    from src.agent.graph import _try_format_hay_comparison_answer
+
+    q = "Trong khoảng từ 22/09/2026 đến 24/09/2026, phương tiện hay vùng cấm xảy ra nhiều hơn?"
+    steps = [
+        {
+            "agent": "query_data",
+            "sub_question": "Trong khoảng từ 22/09/2026 đến 24/09/2026, có bao nhiêu sự kiện phương tiện?",
+            "rows": [{"count": 2947}],
+            "columns": ["count"],
+        },
+        {
+            "agent": "query_data",
+            "sub_question": "Trong khoảng từ 22/09/2026 đến 24/09/2026, có bao nhiêu sự kiện vùng cấm?",
+            "rows": [{"count": 1673}],
+            "columns": ["count"],
+        },
+    ]
+    ans = _try_format_hay_comparison_answer(q, steps)
+    assert ans is not None
+    low = ans.lower()
+    assert "nhiều hơn" in low
+    assert "phương tiện" in low
+    assert "2.947" in ans or "2947" in ans
+    assert "1.673" in ans or "1673" in ans
+
+
+def test_hay_comparison_synthesis_less_direction():
+    """Câu 'ít hơn' phải kết luận loại có số lượng nhỏ hơn."""
+    from src.agent.graph import _try_format_hay_comparison_answer
+
+    q = "Trong tháng này, phương tiện hay vùng cấm xảy ra ít hơn?"
+    steps = [
+        {"agent": "query_data", "sub_question": "q1", "rows": [{"count": 100}], "columns": ["count"]},
+        {"agent": "query_data", "sub_question": "q2", "rows": [{"count": 500}], "columns": ["count"]},
+    ]
+    ans = _try_format_hay_comparison_answer(q, steps)
+    assert ans is not None
+    assert "ít hơn" in ans.lower()
+    assert "phương tiện" in ans.lower()
+
+
+def test_orchestrator_multi_answer_passes_guardrail():
+    """Số liệu gom đủ bước — check_output không gắn disclaimer oan."""
+    from src.guardrails import check_output
+    from src.agent.graph import _build_orchestrator_query_result
+
+    question = (
+        "Trong khoảng từ 22/09/2026 đến 24/09/2026, phương tiện hay vùng cấm xảy ra nhiều hơn?"
+    )
+    steps = [
+        {"agent": "query_data", "sub_question": "sự kiện phương tiện", "rows": [{"count": 2947}], "columns": ["count"]},
+        {"agent": "query_data", "sub_question": "sự kiện vùng cấm", "rows": [{"count": 1673}], "columns": ["count"]},
+    ]
+    answer = (
+        "Trong khoảng từ 22/09/2026 đến 24/09/2026, Phương tiện xảy ra nhiều hơn "
+        "(2.947 sự kiện phương tiện so với 1.673 sự kiện vùng cấm)."
+    )
+    query = _build_orchestrator_query_result(steps, answer)
+    evidence = [question, f"row_count={query.row_count}", query.reply_vi] + [
+        f"{c}={v}" for row in query.rows for c, v in zip(query.columns, row)
+    ]
+    result = check_output(answer, evidence)
+    assert "chưa xác minh" not in result.answer.lower()
+
+
+def test_same_thread_docs_then_stat_clears_respond_mode():
+    """Lượt hỏi sau không được kế thừa respond_mode=docs từ checkpointer."""
+    from unittest.mock import patch
+    from src.agent.graph import _get_graph, reset_graph
+
+    reset_graph()
+    thread = "docs_then_stat_same_thread"
+    with patch("src.llm.client.use_offline_tools", return_value=True):
+        g = _get_graph()
+        r1 = g.invoke(
+            {"question": "Làm sao mở Quản Lý Camera trên AIOC?", "events": []},
+            config={"configurable": {"thread_id": thread}},
+        )
+        r2 = g.invoke(
+            {"question": "Hôm nay có bao nhiêu lượt xe vào?", "events": []},
+            config={"configurable": {"thread_id": thread}},
+        )
+
+    assert r1.get("result").detail == "docs"
+    assert r2.get("result").detail == "query_data"
+    node_ids = [ev.get("node_id") for ev in r2.get("events", [])]
+    assert "retrieve_schema" in node_ids
+    assert node_ids[-1] == "respond"
+
+
+def test_all_branches_terminate_at_respond_node():
+    """Mọi nhánh graph kết thúc tại node respond (điểm thoát thống nhất)."""
+    import uuid
+    from unittest.mock import patch
+    from src.agent.graph import _get_graph, reset_graph
+
+    reset_graph()
+    cases = [
+        ("xin chào", {"respond_inline"}),
+        ("Làm sao mở Quản Lý Camera trên AIOC?", {"retrieve_docs", "answer_from_docs"}),
+        ("Thời tiết Hà Nội thế nào?", {"out_of_scope"}),
+        ("Hôm nay có bao nhiêu lượt xe vào?", {"retrieve_schema", "generate_sql"}),
+        (
+            "Trong khoảng từ 23/09/2026 đến 24/09/2026, phương tiện hay vùng cấm xảy ra nhiều hơn?",
+            {"orchestrator", "orchestrator_respond"},
+        ),
+    ]
+    def _rewrite_passthrough(_messages, _schema, **_kwargs):
+        user = next(m["content"] for m in _messages if m["role"] == "user")
+        raw = user.replace("Câu hỏi gốc: ", "").strip()
+        return RewrittenQuestion(text=raw, sub_questions=[raw])
+
+    with patch("src.llm.client.use_offline_tools", return_value=True), \
+         patch("src.agent.rewrite.invoke_structured", side_effect=_rewrite_passthrough):
+        for question, expected_subset in cases:
+            state = _get_graph().invoke(
+                {"question": question, "events": []},
+                config={"configurable": {"thread_id": f"exit_{uuid.uuid4().hex}"}},
+            )
+            node_ids = [ev.get("node_id") for ev in state.get("events", [])]
+            assert "respond" in node_ids, f"{question!r} missing respond"
+            assert node_ids[-1] == "respond", f"{question!r} last node={node_ids[-1]}"
+            for node in expected_subset:
+                assert node in node_ids, f"{question!r} missing {node}"
+
+
+def test_single_query_after_multi_on_same_thread_not_polluted():
+    """Checkpointer không để orchestrator_step_results cũ làm lệch câu đơn."""
+    import uuid
+    from unittest.mock import patch
+    from src.agent.graph import run_agent, Agent_Input, reset_graph
+
+    reset_graph()
+    thread = f"pollution_{uuid.uuid4().hex}"
+    multi_q = "Trong khoảng từ 23/09/2026 đến 24/09/2026, phương tiện hay vùng cấm xảy ra nhiều hơn?"
+    single_q = "Hôm nay có cảnh báo cháy hoặc khói không?"
+
+    with patch("src.llm.client.use_offline_tools", return_value=True):
+        multi_res = run_agent(Agent_Input(question=multi_q), session_id=thread)
+        single_res = run_agent(Agent_Input(question=single_q), session_id=thread)
+
+    assert multi_res.detail == "orchestrator:multi"
+    assert single_res.detail == "query_data"
+
+
+def test_chart_after_multihop_does_not_leak_zone_from_memory():
+    """Memory số liệu multihop không được đưa vào câu trả lời chart phương tiện."""
+    import uuid
+    from unittest.mock import patch
+    from src.agent.graph import run_agent, Agent_Input, reset_graph
+
+    reset_graph()
+    thread = f"chart_mem_{uuid.uuid4().hex}"
+    multi_q = (
+        "Trong khoảng từ 22/09/2026 đến 24/09/2026, "
+        "phương tiện hay vùng cấm xảy ra nhiều hơn?"
+    )
+    chart_q = "Đồ thị event phương tiện"
+    bad_llm = (
+        "Trong khoảng từ 22/09/2026 đến 24/09/2026, "
+        "có 3034 sự kiện phương tiện và 1689 sự kiện vùng cấm."
+    )
+    memories = [
+        "Trong khoảng 22-24/09 có 3034 sự kiện phương tiện và 1689 sự kiện vùng cấm"
+    ]
+
+    with patch("src.llm.client.use_offline_tools", return_value=False), \
+         patch("src.memory.longterm.recall_long_term", return_value=memories), \
+         patch("src.llm.client.invoke_text", return_value=bad_llm):
+        run_agent(Agent_Input(question=multi_q), session_id=thread)
+        chart_res = run_agent(Agent_Input(question=chart_q), session_id=thread)
+
+    assert chart_res.detail == "query_data"
+    assert "vùng cấm" not in chart_res.answer.lower()
+
+
+def test_respond_input_includes_rewritten_question():
+    """Node respond phải ghi cả câu hỏi gốc và câu sau rewrite."""
+    import uuid
+    from unittest.mock import patch
+    from src.agent.graph import _get_graph, reset_graph
+
+    reset_graph()
+    thread = f"respond_rw_{uuid.uuid4().hex}"
+    raw_q = "Đồ thị event phương tiện"
+
+    with patch("src.llm.client.use_offline_tools", return_value=True):
+        final = _get_graph().invoke(
+            {"question": raw_q, "events": []},
+            config={"configurable": {"thread_id": thread}},
+        )
+
+    respond_events = [ev for ev in final.get("events", []) if ev.get("node_id") == "respond"]
+    assert respond_events
+    inp = respond_events[-1].get("input") or {}
+    assert inp.get("question") == raw_q
+    assert inp.get("rewritten_question")
+
+
+@pytest.mark.parametrize("question", [
+    "Vẽ sơ đồ số lượng tất cả event ngày hôm nay",
+    "Vẽ sơ đồ tất cả các sự kiện trong ngày hôm nay",
+    "Vẽ sơ đồ tất cà các sự kiện trong ngày hôm nay",
+])
+def test_is_all_events_aggregate_detects_cross_db_chart_question(question):
+    from src.agent.orchestrator import is_all_events_aggregate, is_multi_question, plan_orchestration
+
+    q = question
+    assert is_all_events_aggregate(q) is True
+    assert is_multi_question(q) is True
+    plan = plan_orchestration(q)
+    assert plan.is_multi is True
+    assert plan.reason == "all_events_aggregate"
+    assert len(plan.steps) == 5
+    assert all(s.agent == "query_data" for s in plan.steps)
+    assert "hôm nay" in plan.steps[0].sub_question.lower() or "Hôm nay" in plan.steps[0].sub_question
+
+
+def test_aioc_diagram_howto_not_all_events():
+    from src.agent.orchestrator import is_all_events_aggregate
+
+    q = "Vẽ sơ đồ các bước đăng nhập AIOC devices"
+    assert is_all_events_aggregate(q) is False
+
+
+def test_data_chart_intent_override_not_howto():
+    from src.agent.intent import classify_intent_safe
+
+    q = "Vẽ sơ đồ số lượng tất cả event ngày hôm nay"
+    with patch("src.llm.client.use_offline_tools", return_value=True):
+        res = classify_intent_safe(q)
+    assert res.intent == "query_data"
+
+
+def test_all_events_synthesis_and_chart():
+    from src.agent.graph import _try_format_all_events_answer, _aggregate_all_events_rows
+    from src.agent.orchestrator import _plan_all_events_aggregate
+    from src.llm.schemas import OrchestratorPlan
+
+    q = "Vẽ sơ đồ số lượng tất cả event ngày hôm nay"
+    plan = _plan_all_events_aggregate(q)
+    steps = [
+        {"agent": "query_data", "sub_question": s.sub_question, "rows": [{"count": n}], "columns": ["count"]}
+        for s, n in zip(plan.steps, [100, 50, 10, 5, 3], strict=True)
+    ]
+    ans = _try_format_all_events_answer(q, steps, plan)
+    assert ans is not None
+    assert "168" in ans.replace(".", "").replace(",", "") or "168" in ans
+    assert "phương tiện" in ans.lower()
+    assert "vùng cấm" in ans.lower()
+
+    cols, agg = _aggregate_all_events_rows(steps)
+    assert cols == ["domain", "count"]
+    assert len(agg) == 5
+    assert agg[0]["domain"] == "phương tiện"
+    assert agg[0]["count"] == 100
+
+
+def test_all_events_multihop_routes_through_respond_with_template():
+    import uuid
+    from unittest.mock import patch
+    from src.agent.graph import _get_graph, reset_graph
+
+    reset_graph()
+    q = "Vẽ sơ đồ số lượng tất cả event ngày hôm nay"
+
+    with patch("src.llm.client.use_offline_tools", return_value=True):
+        state = _get_graph().invoke(
+            {"question": q, "events": []},
+            config={"configurable": {"thread_id": f"all_events_{uuid.uuid4().hex}"}},
+        )
+
+    node_ids = [ev.get("node_id") for ev in state.get("events", [])]
+    assert "orchestrator" in node_ids
+    assert "orchestrator_respond" in node_ids
+    assert "respond" in node_ids
+    assert "retrieve_schema" not in node_ids
+
+    result = state.get("result")
+    assert result is not None
+    assert result.detail == "orchestrator:multi"
+    ans = (result.answer or "").lower()
+    assert "phương tiện" in ans
+    assert "vùng cấm" in ans
+    assert "chưa xác minh" not in ans
+
+    respond_ev = [ev for ev in state.get("events", []) if ev.get("node_id") == "respond"][-1]
+    assert respond_ev.get("chart_png_base64")
+
+
+def test_select_relevant_tables_all_events_fallback():
+    from src.db.catalog import select_relevant_tables
+
+    tables = select_relevant_tables("Thống kê tất cả event hôm nay")
+    assert "plate_event" in tables
+    assert "zone_event" in tables
+    assert "anomaly_event" in tables
 
 

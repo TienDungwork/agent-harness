@@ -96,6 +96,22 @@ def test_in_scope_vms_domains(in_scope_text: str):
     assert in_scope(in_scope_text) is True
 
 
+@pytest.mark.parametrize(
+    "how_to_text",
+    [
+        "Làm sao để vào được trang Lịch Sử Giám Sát Vùng Cấm",
+        "Làm sao để vào được trang dasboard",
+        "Làm sao mở Quản Lý Camera trên AIOC?",
+        "AIOC là gì?",
+        "Tại sao camera mất kết nối?",
+    ],
+)
+def test_in_scope_vms_how_to_guide(how_to_text: str):
+    """Câu hỏi hướng dẫn VMS/AIOC không bị guardrail chặn oan trước classify."""
+    check_input(how_to_text)
+    assert in_scope(how_to_text) is True
+
+
 import pytest
 from src.guardrails import (
     EMPTY_TOOL_REPLY,

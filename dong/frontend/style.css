@@ -1233,3 +1233,282 @@ html, body {
     grid-template-columns: 1fr;
   }
 }
+
+/* ==========================================================================
+   Human Feedback & Action Bar (Phase 2)
+   ========================================================================== */
+.message-actions-bar {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-top: 0.5rem;
+  padding-top: 0.25rem;
+}
+
+.btn-feedback {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  background: transparent;
+  border: 1px solid var(--border-light);
+  border-radius: var(--radius-sm);
+  padding: 0.3rem 0.6rem;
+  font-size: 0.75rem;
+  font-weight: 500;
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: all 0.15s ease;
+  user-select: none;
+}
+
+.btn-feedback svg {
+  stroke-width: 2.2;
+}
+
+.btn-feedback:hover {
+  background: var(--bg-surface-hover);
+  color: var(--text-main);
+  border-color: var(--border-subtle);
+  transform: translateY(-1px);
+}
+
+.btn-feedback.active {
+  background: var(--bg-subtle);
+  border-color: var(--accent-amber);
+  color: var(--accent-warm);
+  font-weight: 600;
+}
+
+.btn-feedback-like.active {
+  background: #ecfdf5;
+  border-color: #10b981;
+  color: #047857;
+}
+
+.btn-feedback-dislike.active {
+  background: #fef2f2;
+  border-color: #ef4444;
+  color: #b91c1c;
+}
+
+/* Feedback Modal Styling */
+.feedback-modal-card {
+  max-width: 520px;
+}
+
+.feedback-modal-title {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+}
+
+.feedback-icon-badge {
+  font-size: 1.25rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  background: #fee2e2;
+  border-radius: var(--radius-sm);
+}
+
+.feedback-desc {
+  font-size: 0.875rem;
+  color: var(--text-secondary);
+  margin-bottom: 1rem;
+  line-height: 1.5;
+}
+
+.form-textarea {
+  width: 100%;
+  border: 1px solid var(--border-light);
+  border-radius: var(--radius-md);
+  padding: 0.65rem 0.85rem;
+  font-family: var(--font-sans);
+  font-size: 0.875rem;
+  color: var(--text-main);
+  background: var(--bg-surface);
+  resize: vertical;
+  min-height: 80px;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+  outline: none;
+}
+
+.form-textarea:focus {
+  border-color: var(--border-focus);
+  box-shadow: 0 0 0 2px rgba(194, 65, 12, 0.12);
+}
+
+.required {
+  color: #dc2626;
+  font-weight: 700;
+}
+
+/* Image Upload Zone */
+.image-upload-zone {
+  border: 1.5px dashed var(--border-light);
+  border-radius: var(--radius-md);
+  background: var(--bg-subtle);
+  padding: 1rem;
+  text-align: center;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  position: relative;
+}
+
+.image-upload-zone:hover, .image-upload-zone.dragover {
+  border-color: var(--accent-warm);
+  background: #fff8f5;
+}
+
+.upload-prompt {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.35rem;
+  color: var(--text-secondary);
+}
+
+.upload-prompt svg {
+  color: var(--text-muted);
+}
+
+.upload-prompt span {
+  font-size: 0.85rem;
+  font-weight: 500;
+}
+
+.upload-prompt small {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+}
+
+.upload-preview {
+  position: relative;
+  display: inline-block;
+  max-width: 100%;
+}
+
+.upload-preview img {
+  max-width: 100%;
+  max-height: 180px;
+  border-radius: var(--radius-sm);
+  display: block;
+  border: 1px solid var(--border-light);
+  object-fit: contain;
+}
+
+.btn-remove-img {
+  position: absolute;
+  top: -8px;
+  right: -8px;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  background: #dc2626;
+  color: #fff;
+  border: none;
+  font-size: 1rem;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  box-shadow: var(--shadow-sm);
+  transition: transform 0.15s ease;
+}
+
+.btn-remove-img:hover {
+  transform: scale(1.1);
+  background: #b91c1c;
+}
+
+/* ==========================================================================
+   Toast Notifications
+   ========================================================================== */
+.toast-container {
+  position: fixed;
+  top: 1.25rem;
+  right: 1.25rem;
+  z-index: 9999;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  pointer-events: none;
+}
+
+.toast {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.6rem;
+  padding: 0.65rem 1rem;
+  background: #1c1b18;
+  color: #ffffff;
+  border-radius: var(--radius-md);
+  font-size: 0.875rem;
+  font-weight: 500;
+  box-shadow: var(--shadow-lg);
+  pointer-events: auto;
+  animation: toastSlideIn 0.25s ease forwards;
+  transition: opacity 0.3s ease, transform 0.3s ease;
+}
+
+.toast-fade-out {
+  opacity: 0;
+  transform: translateY(-8px);
+}
+
+@keyframes toastSlideIn {
+  from { opacity: 0; transform: translateY(-12px) scale(0.96); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+.toast-icon {
+  font-weight: 700;
+  font-size: 1rem;
+}
+
+.toast-success {
+  background: #065f46;
+  border: 1px solid #059669;
+}
+
+.toast-error {
+  background: #991b1b;
+  border: 1px solid #dc2626;
+}
+
+.toast-info {
+  background: #1c1b18;
+  border: 1px solid #3f3e3a;
+}
+
+/* Retry Stream Action */
+.retry-action-wrapper {
+  margin-top: 8px;
+  display: flex;
+  align-items: center;
+}
+
+.btn-retry-stream {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 14px;
+  font-size: 0.8rem;
+  font-weight: 500;
+  color: var(--accent-color, #1f5c4f);
+  background: rgba(31, 92, 79, 0.08);
+  border: 1px solid rgba(31, 92, 79, 0.25);
+  border-radius: var(--radius-sm, 6px);
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.btn-retry-stream:hover {
+  background: rgba(31, 92, 79, 0.16);
+  border-color: rgba(31, 92, 79, 0.5);
+  transform: translateY(-1px);
+}
+

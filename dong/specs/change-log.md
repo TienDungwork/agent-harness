@@ -1,5 +1,400 @@
 # Change Log — agent dong
 
+## 2026-09-24 — Rewrite tách `sub_questions` (ý súc tích) → orchestrator
+
+### Thay đổi
+- **`RewrittenQuestion`**: thêm `sub_questions: list[str]` — mỗi ý một câu độc lập.
+- **`rewrite.py`**: decompose gom trong rewrite (tham khảo `decompose_query`):
+  - `AGENT_DECOMPOSE_MIN_CHARS` (48): câu ngắn/đơn → passthrough `[câu gốc]`, **không gọi LLM**.
+  - Câu phức tạp (dài hoặc heuristic multi) → LLM rewrite + tách 2–4 sub_questions.
+  - `AGENT_MAX_SUB_QUESTIONS` (4): cap danh sách sau LLM.
+- **`rewrite/v1.yaml` v1.4**: prompt decompose 2–4 câu; câu đơn giữ 1 phần tử.
+- **`orchestrator.py`**: `plan_from_rewrite_sub_questions()` ưu tiên khi ≥2 sub; `is_rewrite_multi()` / `is_multi_question(..., rewritten=)`.
+- **`graph.py`**: orchestrator + route_classify dùng `sub_questions` từ rewrite.
+
+### Tests
+- `test_rewrite_normalize_sub_questions`, `test_plan_from_rewrite_sub_questions`, `test_plan_orchestration_prefers_rewrite_sub_questions`, `test_is_rewrite_multi_routes_orchestrator`
+
+---
+
+## 2026-09-24 — Multihop “tất cả event” cross-DB + chart tổng hợp
+
+### Bug
+- *"Vẽ sơ đồ số lượng tất cả event ngày hôm nay"* → rewrite giữ nguyên text, classify `diagram`/howto, single-SQL 0 dòng, không nhận diện loại event.
+
+### Fix
+- **`src/agent/orchestrator.py`**: `is_all_events_aggregate()`, `_plan_all_events_aggregate()` — 5 bước `query_data` (phương tiện, vùng cấm, khuôn mặt, cháy/khói, bất thường), `reason=all_events_aggregate`.
+- **`src/agent/graph.py`**: `_try_format_all_events_answer()`, `_aggregate_all_events_rows()`; multihop respond tổng hợp template + vẽ chart PNG từ số liệu gom.
+- **`src/agent/intent.py`**: override biểu đồ/sơ đồ **dữ liệu VMS** → `query_data` (không howto AIOC).
+- **`src/db/catalog.py`**: fallback chọn đủ 5 bảng event khi câu có *tất cả event/sự kiện*.
+- **`resource/prompts/rewrite/v1.yaml` v1.2**: phân biệt biểu đồ dữ liệu vs sơ đồ howto; gợi ý 5 domain + `intent_hint=query_data`.
+
+### Tests (`tests/test_product_graph_orchestrator.py`)
+- `test_is_all_events_aggregate_detects_cross_db_chart_question`
+- `test_aioc_diagram_howto_not_all_events`
+- `test_data_chart_intent_override_not_howto`
+- `test_all_events_synthesis_and_chart`
+- `test_all_events_multihop_routes_through_respond_with_template`
+- `test_select_relevant_tables_all_events_fallback`
+
+### Follow-up — cách nói *tất cả các sự kiện* / typo *tất cà*
+- Mở rộng `_ALL_EVENTS_RE`: cho phép `các` giữa *tất cả* và *sự kiện*; chấp nhận typo `tất cà`.
+- Test parametrize 3 biến thể câu hỏi.
+
+### Review 2026-09-24 — đối chiếu `specs/product-spec.md` / `specs/test-plan.md`
+
+**Pass**
+- Kế thừa v7: multihop orchestrator, chart PNG, không đổi schema DB, read-only SQL từng domain.
+- AC-8 hồi quy: 79 test orchestrator xanh (gồm cross-DB hay-comparison, chart leak, respond input).
+- Luồng: `classify` → `orchestrator:multi` → `orchestrator_respond` → `respond` → END; không đi single-SQL khi *tất cả event*.
+- Intent: *vẽ sơ đồ + số lượng/event* → `query_data`; AIOC howto vẫn tách (`test_aioc_diagram_howto_not_all_events`).
+
+**Fail / thiếu (ngoài phạm vi fix lần này)**
+- `product-spec.md` v8 không liệt kê riêng case *tất cả event* — hành vi dựa trên pattern multihop cross-DB đã có.
+- `eval/datasets/agent_stat/v2.yaml` chưa có golden case *tất cả event* (chưa thêm dataset — user yêu cầu không thêm feature).
+- Rewrite online vẫn có thể giữ nguyên `text` gốc (rule BẢO TOÀN); orchestrator heuristic không phụ thuộc rewrite mở rộng domain.
+
+---
+
+## 2026-09-24 — Rewrite chỉ dùng LLM (bỏ offline heuristic)
+
+### Thay đổi (`src/agent/rewrite.py`)
+- Xóa `_offline_rewrite` và nhánh `use_offline_tools()`.
+- `rewrite_question` / `rewrite_question_safe` luôn gọi `invoke_structured` (trừ câu rỗng và chào hỏi passthrough).
+- `rewrite_node`: `llm_used=True` cho mọi câu không phải greeting.
+
+---
+
+## 2026-09-24 — Sửa rò rỉ số liệu vùng cấm khi hỏi chart phương tiện + `rewritten_question` trên respond
+
+### Bug
+- Hỏi *"Đồ thị event phương tiện"* sau câu multihop so sánh → câu trả lời text kèm **1689 sự kiện vùng cấm** dù chart chỉ phương tiện.
+- Nguyên nhân: memory dài hạn (số liệu lượt trước) được chèn vào prompt `respond_stat` → LLM lặp lại số liệu ngoài SQL hiện tại.
+
+### Fix (`src/agent/graph.py`)
+- `_filter_memories_for_stat()`: bỏ memory chứa snapshot số liệu hoặc domain ngoài câu hỏi hiện tại khỏi prompt stat.
+- Câu hỏi chart nhiều dòng: dùng template ngắn (`chart_template`), không gọi LLM respond.
+- `multi_hop_ready`: chỉ tổng hợp multihop khi vừa chạy `orchestrator_respond` trong cùng lượt.
+- `respond` input có `question` (gốc) + `rewritten_question` (sau rewrite); stat path dùng câu sau rewrite.
+
+### Tests
+- `test_chart_after_multihop_does_not_leak_zone_from_memory`
+- `test_respond_input_includes_rewritten_question`
+
+---
+
+## 2026-09-24 — Unified respond exit: mọi nhánh graph đi qua `respond`
+
+### Thay đổi kiến trúc (`src/agent/graph.py`)
+- **Một điểm thoát:** `respond` là node cuối duy nhất trước `END` cho mọi nhánh.
+- **Prep nodes** (không tạo `result` / không stream):
+  - `respond_inline` → chuẩn bị chat/clarify (`respond_mode=inline`)
+  - `answer_from_docs` → chuẩn bị docs (`respond_mode=docs`, `docs_answer`)
+  - `out_of_scope` → chuẩn bị từ chối (`respond_mode=out_of_scope`)
+- **`respond_node`** route theo `respond_mode`: `inline` | `docs` | `out_of_scope` | `multi` | `stat` (SQL mặc định).
+- Edges: `respond_inline` / `answer_from_docs` / `out_of_scope` / `orchestrator_respond` → **`respond`** → `END`.
+- `_fresh_invoke_state()` reset `respond_mode` + `docs_answer` mỗi lượt.
+
+### Tests
+- Cập nhật greeting fast-path (cho phép `respond` cuối pipeline).
+- `test_all_branches_terminate_at_respond_node`
+- `test_out_of_scope_still_runs_store_extract` — thứ tự `out_of_scope` → `respond` → `store_extract`.
+
+### Review 2026-09-24 — unified respond exit
+
+**Pass**
+- Mọi nhánh kết thúc tại `respond` → `END` (chat, docs, out_of_scope, SQL, multihop).
+- Prep nodes không stream / không tạo `result`; `respond_node` route `inline|docs|out_of_scope|multi|stat`.
+- **282 tests** liên quan pass (graph, memory, observability, RAG, API gateway).
+
+**Fail (đã sửa)**
+- **Checkpointer pollution:** cùng `thread_id`, lượt docs → lượt stat vẫn giữ `respond_mode=docs` → trả lời nhầm nhánh docs, bỏ qua SQL.
+- **Fix:** `recall_node` reset state pipeline mỗi lượt hỏi (`rewritten`, `intent`, `respond_mode`, `docs_answer`, orchestrator fields, SQL rows…) — tránh checkpointer kế thừa lượt trước.
+- **Test:** `test_same_thread_docs_then_stat_clears_respond_mode`.
+
+**Missing (ngoài scope)**
+- `product-spec.md` chưa mô tả unified respond (chỉ ghi change-log).
+- API guardrail out-of-scope (`main.py`) vẫn trả sớm trước graph — không qua node `respond` (by design entry guard).
+
+---
+
+## 2026-09-24 — Sửa multihop so sánh cross-database (phương tiện hay vùng cấm)
+
+### Bug
+- Câu *"Trong khoảng từ 23/09/2026 đến 24/09/2026, phương tiện hay vùng cấm xảy ra nhiều hơn?"* không khớp `SPLIT_PATTERNS` (`", và "`, `" rồi "`, …) nên `route_classify` đi thẳng `retrieve_schema` → LLM sinh SQL JOIN `plate_event` + `zone_event` → `validate_sql` chặn lỗi cross-database.
+
+### Fix (`src/agent/orchestrator.py`)
+- Thêm `is_cross_domain_comparison()` + `_plan_cross_domain_comparison()`: nhận diện mẫu **"A hay B … nhiều hơn"** khi A/B thuộc **database khác nhau** (vd. `plate_event` vs `zone_event`).
+- `is_multi_question()` trả `True` cho so sánh cross-DB → điều hướng `orchestrator:multi`.
+- `plan_orchestration()` ưu tiên phân rã thành 2 bước `query_data` độc lập, giữ nguyên prefix thời gian.
+- Cùng DB (vd. *ẩu đả hay đám đông* → cả hai `anomaly_event`) vẫn single-query như cũ.
+
+### Tests
+- `test_orchestrator_decomposes_cross_db_hay_comparison`
+- `test_same_db_hay_comparison_stays_single_query`
+
+### Follow-up — multihop thiếu node `respond`
+- **Bug:** `orchestrator_respond` nối thẳng `END`, chỉ ghép text từng bước → không trả lời vế so sánh *"A hay B nhiều hơn"*; `check_output` gắn disclaimer vì evidence chỉ có bước cuối.
+- **Fix (`src/agent/graph.py`):**
+  - `orchestrator_respond` chỉ thực thi sub-query, lưu `orchestrator_step_results`.
+  - Edge `orchestrator_respond` → `respond` (thay vì `END`).
+  - `respond_node` tổng hợp multi-hop: template so sánh *hay/nhiều hơn* hoặc `respond_stat` LLM với câu hỏi gốc + evidence đủ bước.
+  - `QueryResult` gom số liệu tất cả bước → guardrail không gắn disclaimer oan.
+- **Test:** `test_cross_db_hay_comparison_routes_through_respond_node`
+
+### Review 2026-09-24 — multihop cross-database
+
+**Pass**
+- Phân rã cross-DB (`orchestrator.py`) + route `orchestrator_respond` → `respond`.
+- Template kết luận *nhiều hơn* với số liệu 2 bước; Live Graph có node `respond`.
+- Cùng DB (*ẩu đả hay đám đông*) vẫn single-query.
+- Tests: decompose, respond route, synthesis winner.
+
+**Fail (đã sửa trong review)**
+- Checkpointer giữ `orchestrator_step_results` cũ → câu đơn sau multihop trên cùng `thread_id` có thể trả `orchestrator:multi` oan → `_fresh_invoke_state()` reset mỗi lượt; `respond_node` chỉ multi khi có `orchestrator_plan` hợp lệ.
+- Câu *ít hơn/thấp hơn* luôn trả *nhiều hơn* → `_comparison_direction()` + logic đảo chiều.
+- `check_output` disclaimer khi số format `2.947` — evidence gom `count=` từ `_build_orchestrator_query_result` (test `test_orchestrator_multi_answer_passes_guardrail`).
+
+**Missing (ngoài scope bugfix)**
+- Eval golden case riêng cho cross-DB *hay* (v2 case 022 cùng DB).
+- Prompt orchestrator online chưa có ví dụ *A hay B cross-DB* (heuristic offline/ưu tiên đủ cho path hiện tại).
+
+**Tests bổ sung:** `test_hay_comparison_synthesis_less_direction`, `test_orchestrator_multi_answer_passes_guardrail`, `test_single_query_after_multi_on_same_thread_not_polluted`.
+
+---
+
+## 2026-09-24 — Chuyển đổi hệ thống Human Feedback sang lưu trữ SQLite (data/feedback.db)
+
+### 1. Thay đổi kiến trúc & Thực thi (Implementation)
+- **Cập nhật Spec**:
+  - `specs/product-spec.md`: Bổ sung đặc tả cơ sở dữ liệu SQLite `data/feedback.db` (bảng `feedback`, ACID transaction, WAL mode, index `timestamp` và `rating`), cập nhật AC-5 (Tính toàn vẹn dữ liệu SQLite & JSON).
+  - `specs/implementation-plan.md`: Cập nhật Phase 3 với cơ chế lưu SQLite và tự động migrate từ JSON cũ.
+- **Module lưu trữ SQLite (`src/feedback.py`)**:
+  - Sử dụng module chuẩn `sqlite3` (Zero external dependency).
+  - Tự động tạo bảng `feedback` và các chỉ mục `idx_feedback_timestamp`, `idx_feedback_rating`.
+  - Cơ chế **Auto-migration**: Tự động đọc và nạp toàn bộ các bản ghi đang có từ `data/feedback.json` sang `data/feedback.db` mà không làm mất dữ liệu cũ (đã migrate thành công 8 bản ghi).
+  - Hàm `save_feedback_record`: Thực hiện `INSERT` vào bảng `feedback`, đồng thời đồng bộ xuất ra file `data/feedback.json` để duy trì khả năng tương thích ngược 100%.
+  - Hàm `get_all_feedback`: Đọc trực tiếp từ SQLite theo thứ tự thời gian, tự động parse trường `agent_trace` dạng JSON string về dict/object.
+- **Unit Tests (`tests/test_feedback_api.py`)**:
+  - Thêm test `test_feedback_sqlite_direct_query`: Xác nhận bản ghi được lưu chuẩn xác vào database file SQLite và truy vấn trực tiếp bằng câu lệnh SQL.
+  - Thêm test `test_feedback_sqlite_auto_migration`: Xác nhận cơ chế tự động chuyển đổi từ file JSON cũ sang SQLite hoạt động hoàn hảo.
+- **Tài liệu & Cấu hình**:
+  - Cập nhật `README.md`: Thêm lệnh truy vấn nhanh SQLite bằng CLI: `sqlite3 data/feedback.db "SELECT ..."` và cập nhật sơ đồ luồng.
+  - Cập nhật `.gitignore`: Bổ sung `*.db`, `*.db-wal`, `*.db-shm`.
+
+### 2. Đánh giá tính năng (Review vs Acceptance Criteria)
+- **What passes:**
+  - **AC-3 (Positive feedback / Like 👍)**: Bấm Like lưu thành công bản ghi vào bảng `feedback` trong SQLite database `data/feedback.db`.
+  - **AC-4 (Negative feedback / Dislike 👎 kèm lý do và ảnh)**: Lưu đầy đủ `feedback_reason`, `attachment_path` (file ảnh PNG giải mã base64) và `agent_trace` vào SQLite.
+  - **AC-5 (Tính toàn vẹn dữ liệu Feedback SQLite & JSON)**: Dữ liệu tiếng Việt có dấu được bảo toàn, hỗ trợ ghi đồng thời (concurrency) an toàn với SQLite WAL mode, tự động migrate 8 bản ghi cũ.
+  - **Unit Tests**: Toàn bộ **631/631 passed (100% xanh)**, trong đó 9/9 feedback tests pass hoàn hảo.
+- **What fails:** Không có lỗi nào xảy ra (0 failed).
+- **What was missing & Fixed (Sửa 2 vấn đề phát sinh trong quá trình chạy thử nghiệm):**
+  1. **Lỗi Docker `sqlite3.OperationalError: attempt to write a readonly database` khi gửi Feedback:**
+     - *Nguyên nhân:* File `data/feedback.db` ban đầu được tạo bởi user `atin` trên host với quyền `0644`. Container Docker chạy dưới `appuser` (uid 10001) nên chỉ có quyền đọc, dẫn tới lỗi 500 khi insert.
+     - *Khắc phục:* Chạy `chmod 666 data/feedback.db`. Bổ sung lệnh thiết lập quyền file `target_db.chmod(0o666)` và cơ chế **Graceful Fallback** trong `src/feedback.py`: nếu SQLite gặp lỗi quyền hạn (`OperationalError`), hệ thống tự động fallback ghi bản ghi trực tiếp vào `feedback.json`, đảm bảo request không bao giờ bị lỗi HTTP 500.
+  2. **Độ trễ sau khi câu trả lời hoàn tất (chờ node `store_extract`):**
+     - *Nguyên nhân:* Trước đây ô chat và nút gửi trong `frontend/app.js` chỉ được mở khóa khi kết nối SSE đóng hoàn toàn (trong `.finally()`). Tuy nhiên sau khi `__answer__` kết thúc, backend vẫn tiếp tục chạy `run_store_extract` (trích xuất long-term memory tốn 1.5s - 4s) khiến kết nối SSE duy trì mở, làm người dùng có cảm giác bị "đơ" hay delay sau khi câu trả lời đã gõ xong.
+     - *Khắc phục:* Cập nhật `frontend/app.js`, mở khóa ô nhập liệu ngay lập tức (`state.isGenerating = false`, `el.btnSend.disabled = false`, `el.questionInput.focus()`) ngay khi nhận được event `node_id: "__answer__"`. Người dùng có thể tiếp tục gõ câu hỏi mới ngay mà không cần chờ `store_extract` chạy ngầm.
+
+---
+
+## 2026-09-24 — Khởi tạo v8: Chuẩn hóa 10 Camera Master Registry, Human Feedback System & Response Chunk Streaming
+
+### Thiết kế & Đặc tả Spec (Spec-Driven Development)
+
+- **Product Spec (`specs/product-spec.md`)**:
+  - Xác định mục tiêu v8: Sửa lỗi đếm thiếu camera (trả về đúng 10 camera thay vì chỉ 6 camera trong `plate_event`).
+  - Đặc tả hệ thống Human Feedback: Bổ sung cụm nút Like 👍 / Dislike 👎, modal nhập lý do và đính kèm ảnh chụp màn hình khi dislike, lưu vết có cấu trúc vào `data/feedback.json` kèm đầy đủ `agent_trace` (I/O, SQL, thời gian thực thi).
+  - Đặc tả tính năng Token / Chunk Streaming cho câu trả lời cuối: Gửi delta SSE để hiển thị hiệu ứng gõ chữ mượt mà trên UI.
+- **Implementation Plan (`specs/implementation-plan.md`)**:
+  - Chia nhỏ lộ trình thực hiện thành 6 Phase tuần tự (Phase 1–6).
+  - Quy định thực hiện từng dòng `[ ]` một, không nhảy cóc hay gộp bước.
+- **Test Plan (`specs/test-plan.md`)**:
+  - Xây dựng kế hoạch unit test và kịch bản manual smoke test chi tiết trên trình duyệt.
+- **Tài liệu dự án (`README.md`, `AGENTS.md`)**:
+  - Cập nhật trạng thái dự án sang v8 (Spec Phase).
+
+### Trạng thái thực thi
+
+- Đã hoàn thành bộ tài liệu đặc tả: `specs/product-spec.md`, `specs/implementation-plan.md`, `specs/test-plan.md`, `specs/change-log.md`, `README.md`, `AGENTS.md`.
+- **Phase 1: Project setup (Done)**:
+  - Chạy toàn bộ test suite `pytest -q`: **613/613 tests passed** (100% xanh).
+  - Khởi tạo cấu trúc thư mục lưu trữ feedback: `data/feedback/attachments/` (kèm `.gitkeep`).
+  - Khởi tạo file `data/feedback.json` chứa mảng rỗng `[]`.
+  - Cập nhật `.gitignore` để bỏ qua các file ảnh người dùng tải lên trong `data/feedback/attachments/*`.
+  - Cập nhật `docker-compose.yml` để mount volume `- ./data:/app/data` vào container `kcn_hungphu_backend`, bảo toàn dữ liệu phản hồi khi restart.
+  - Restart container thành công và kiểm tra mount `/app/data` bên trong container hoạt động chuẩn xác.
+- **Phase 2: Core UI (Done)**:
+  - Thêm Message Action Bar (`.message-actions-bar`) bên dưới mỗi câu trả lời của trợ lý AI gồm 2 nút icon: Like 👍 ("Hài lòng") và Dislike 👎 ("Chưa đúng").
+  - Xây dựng Feedback Modal (`#feedback-modal`) trong `frontend/index.html` và style CSS hiện đại trong `frontend/style.css`:
+    - Ô nhập lý do chưa đúng/góp ý (`#feedback-reason-input`).
+    - Khu vực tải ảnh: hỗ trợ chọn file ảnh và dán trực tiếp ảnh chụp màn hình (Ctrl+V paste) từ clipboard.
+    - Xem trước ảnh thumbnail (`#feedback-preview-img`) có nút xóa ảnh.
+  - Tách bạch cấu trúc DOM tin nhắn (`.message-bubble .bubble-text`) sẵn sàng cho việc nhận SSE stream chunks.
+  - Bổ sung hệ thống Toast Notifications (`#toast-container`, hàm `showToast`) thông báo nổi ở góc màn hình.
+  - Toàn bộ 613 unit tests tiếp tục pass 100%.
+- **Phase 3: Core backend or data logic (Done)**:
+  - **Chuẩn hóa dữ liệu 10 Camera (Master Registry)**:
+    - Xây dựng module `src/agent/camera_registry.py`: Đồng bộ an toàn Master Data từ `resource/db/camera_registry.yaml` (có fallback tự động `FALLBACK_CAMERAS` khi file bị thiếu/lỗi).
+    - Cập nhật prompt Text-to-SQL `resource/prompts/sql_agent/v1.yaml`: Bổ sung lưu ý hệ thống có 10 camera (Master Registry), `plate_event` chỉ có 6 camera giao thông.
+    - Tích hợp fast-path vào `respond_node` (`src/agent/graph.py`):
+      - Khi hỏi số lượng/đếm camera (ví dụ *"Hiện có bao nhiêu camera đang hoạt động?"*): Trả lời chuẩn xác **10 camera đang hoạt động (ONLINE)**, phân loại 3 phân hệ (6 phương tiện, 2 vùng cấm, 2 cháy khói).
+      - Khi hỏi danh sách camera (ví dụ *"Kể tên các camera trong hệ thống"*): Liệt kê đủ 10 camera kèm các mã đặc thù (`CVN_CONG_BOH`, `CVNTT`, `CVN_KHO_TANG2_BOH`, `CVN_P_CAP_PHAT_DONG_PHUC`, `congchinh1`, `congchinh2`, `congvanle1-4`).
+      - Cung cấp `QueryResult` đầy đủ 10 dòng dữ liệu cho state.
+  - **Schema & API Human Feedback**:
+    - Định nghĩa Pydantic model `FeedbackRequest` trong `src/llm/schemas.py`.
+    - Xây dựng module `src/feedback.py`:
+      - `save_feedback_record`: Lưu bản ghi vào `data/feedback.json` có khóa an toàn (file lock) chống ghi đè đa luồng.
+      - Giải mã base64 và lưu file ảnh vào `data/feedback/attachments/{feedback_id}.png`.
+      - Lưu vết đầy đủ: `id`, `timestamp`, `session_id`, `user_id`, `rating`, `feedback_reason`, `attachment_path`, `question`, `answer`, `agent_trace`.
+    - Tạo endpoint API `POST /api/feedback` và `GET /api/feedback` trong `src/main.py`.
+  - **Cơ chế Token / Chunk Response Streaming**:
+    - Bổ sung `stream_tokens: bool` vào `Agent_Input`, `AgentState`, và `ChatRequest`.
+    - Xây dựng hàm `emit_answer_chunks` trong `src/agent/graph.py` phát sự kiện SSE `{"node_id": "__answer__", "status": "chunk", "delta": "..."}` từ các node phản hồi (`respond`, `respond_inline`, `answer_from_docs`).
+    - Cập nhật generator trong `src/main.py`: Chuyển tiếp các chunk events qua SSE trước khi phát event `{"node_id": "__answer__", "status": "done"}`.
+  - **Unit Tests & Rà soát Nghiệm thu (Review & Fixes)**:
+    - Bổ sung trường `image_filename: str | None = None` vào `FeedbackRequest` và hỗ trợ đặt tên file ảnh đính kèm theo định dạng `data/feedback/attachments/{feedback_id}_{filename}` khớp chuẩn spec.
+    - Bổ sung cơ chế fallback trực tiếp khi ghi file `data/feedback.json` phòng ngừa lỗi quyền hạn `PermissionError` trên môi trường Docker volume bind-mount.
+    - Cập nhật bằng chứng số liệu (`row_count`, `reply_vi`) trong `check_output` guardrails để tránh sinh disclaimer không cần thiết đối với phản hồi Master Data đã xác minh.
+    - Tạo `tests/test_camera_registry.py` (8 tests) kiểm tra AC-1, AC-2, phát hiện intent và fallback.
+    - Tạo `tests/test_feedback_api.py` (6 tests) kiểm tra AC-3, AC-4, AC-5, AC-6, custom image filename và validation.
+  - **Phase 4: Connect UI to data (Done)**:
+    - **Kết nối sự kiện Like (👍)**:
+      - Trong `frontend/app.js`: Lắng nghe click nút 👍 dưới mỗi câu trả lời của trợ lý AI.
+      - Gửi request `POST /api/feedback` với `rating: "positive"`, kèm đầy đủ ngữ cảnh (`question`, `answer`, `session_id`, `user_id`, `agent_trace`).
+      - Cập nhật UI: Đổi màu nút 👍 sang trạng thái active, hiển thị toast *"Cảm ơn bạn đã đánh giá câu trả lời!"*.
+    - **Kết nối sự kiện Dislike (👎) & Modal Góp ý**:
+      - Khi bấm nút 👎: Mở modal góp ý, gán `messageContext` của câu trả lời tương ứng vào state.
+      - Hỗ trợ chọn file ảnh hoặc dán ảnh chụp màn hình trực tiếp từ clipboard (`Ctrl+V`). Hiển thị ảnh thu nhỏ (preview thumbnail) và nút xóa ảnh.
+      - Khi người dùng bấm *"Xác nhận gửi phản hồi"*: Validate lý do không để trống, đọc ảnh sang base64 và gửi `POST /api/feedback` với `rating: "negative"`, `feedback_reason`, `image_base64`, `image_filename`, `question`, `answer`, `agent_trace`.
+      - Xử lý trạng thái nút gửi (disable nút, hiển thị text "Đang gửi..."). Khi thành công: Đóng modal, đổi màu nút 👎 sang active, hiển thị toast *"Đã ghi nhận góp ý của bạn!"*. Khi thất bại: Giữ nguyên form để không mất dữ liệu của người dùng, hiển thị toast lỗi chi tiết.
+    - **Kết nối Token / Chunk Streaming vào Bubble Chat**:
+      - Gửi tham số `stream_tokens: true` trong request `POST /api/agent/stream`.
+      - Khi nhận SSE event `node_id: "__answer__"` và `status: "chunk"`: Xóa thinking indicator, tạo bubble tin nhắn trợ lý và nối liên tục các delta ký tự theo thời gian thực (hiệu ứng gõ chữ mượt mà).
+      - Khi nhận SSE event `node_id: "__answer__"` và `status: "done"`: Hoàn tất câu trả lời, chèn Tool Execution Accordion (nếu có công cụ được gọi), vẽ biểu đồ Canvas Chart.js (nếu có), và gắn cụm nút Like/Dislike.
+  - **Phase 5: Validation and error states (Done)**:
+    - **Validate đầu vào Feedback API (`POST /api/feedback`)**:
+      - Bổ sung `@field_validator` trong `src/llm/schemas.py` cho `FeedbackRequest`:
+        - `session_id`, `question`, `answer`: Bắt buộc không được để trống hoặc chỉ chứa khoảng trắng (trả về HTTP 422).
+        - `rating`: Bắt buộc là `"positive"` hoặc `"negative"` (trả về HTTP 422).
+        - `image_base64`: Kiểm tra chuỗi Base64 hợp lệ và giới hạn kích thước sau giải mã tối đa 5MB (trả về HTTP 422 / 400).
+      - Bổ sung unit tests kiểm thử validation toàn diện trong `tests/test_feedback_api.py`.
+    - **Xử lý lỗi trên giao diện (Frontend Error Handling)**:
+      - Trong `frontend/app.js`: Khi người dùng bấm Dislike nhưng để trống lý do, hệ thống gán nhãn nhẹ nhàng `"Chưa đúng (không có lý do chi tiết)"` và vẫn gửi phản hồi thành công.
+      - Chống gửi trùng lặp: Nút gửi chuyển trạng thái `disabled` và hiển thị text `"Đang gửi..."`.
+      - Khi mất mạng hoặc server lỗi: Giữ nguyên form modal và lý do đã nhập, hiển thị toast thông báo lỗi để người dùng không mất dữ liệu.
+    - **Xử lý ngắt kết nối Stream SSE**:
+      - Khi stream bị gián đoạn hoặc gặp lỗi: Hiển thị icon cảnh báo và nút bấm **"🔄 Thử lại"** (`.btn-retry-stream`) dưới bubble chat, cho phép click để tự động gửi lại câu hỏi ngay lập tức.
+      - Bổ sung style hiện đại cho `.btn-retry-stream` và `.retry-action-wrapper` trong `frontend/style.css`.
+    - **Fallback khi thiếu/lỗi file Master Registry**:
+      - `load_camera_registry()` trong `src/agent/camera_registry.py` tự động bắt mọi ngoại lệ cú pháp YAML hoặc file thiếu và fallback an toàn về `FALLBACK_CAMERAS` (10 camera).
+      - Bổ sung unit test `test_load_camera_registry_corrupt_yaml_syntax` trong `tests/test_camera_registry.py`.
+    - **Rà soát & Đánh giá nghiệm thu (Review vs Acceptance Criteria & Test Plan)**:
+      - **What passes**:
+        - AC-1 (Đếm 10 camera): Trả lời đúng 10 camera ONLINE thuộc 3 phân hệ.
+        - AC-2 (Liệt kê camera): Liệt kê đủ 10 camera (bao gồm các mã đặc thù `CVN_CONG_BOH`, `CVNTT`, `CVN_KHO_TANG2_BOH`, `CVN_P_CAP_PHAT_DONG_PHUC`, `congchinh1`, `congchinh2`, `congvanle1-4`).
+        - AC-3 (Like 👍): Bấm Like gửi feedback thành công, nút chuyển active, lưu vào `data/feedback.json`.
+        - AC-4 (Dislike 👎): Mở modal, nhập lý do, upload/paste clipboard ảnh minh họa, gửi thành công và lưu ảnh vào `data/feedback/attachments/`.
+        - AC-5 (Toàn vẹn JSON): Dữ liệu ghi an toàn (file lock thread-safe + fallback), định dạng mảng JSON UTF-8 chuẩn.
+        - AC-6 (Stream): SSE truyền các delta chunks (`status: "chunk"`), UI gõ chữ mượt mà.
+        - AC-7 (Unit tests): 628/628 passed (100% xanh).
+        - AC-8 (Không lỗi hồi quy): Toàn bộ 10 Product Test suites pass, Chart.js, SQL read-only, Memory, Guardrails ổn định.
+      - **What fails**: Không có (0 fails).
+      - **What was missing & Fixed**: Đã xử lý toàn bộ các trạng thái lỗi đầu vào (ảnh > 5MB, base64 hỏng, dữ liệu rỗng), nút Retry khi đứt stream, và bảo toàn form modal khi lỗi mạng.
+- **Review v8 lần 2 (Cursor — 2026-09-24)**:
+  - **What passes** (đối chiếu `specs/product-spec.md` + `specs/test-plan.md`):
+    - AC-1 / AC-2: Fast-path Master Registry — 10 camera, 3 phân hệ; 9 tests trong `tests/test_camera_registry.py`.
+    - AC-3 / AC-4 / AC-5: `POST /api/feedback` Like/Dislike, JSON UTF-8, file lock; 7 tests trong `tests/test_feedback_api.py`.
+    - AC-6: SSE chunk streaming (`stream_tokens: true`) + UI bubble gõ chữ.
+    - AC-7: `pytest -q` → **629/629 passed**.
+    - AC-8: Toàn bộ product test suites v7 (SQL, Chart, Guardrails, Memory) không hồi quy.
+  - **What fails**: Không có sau khi sửa (0 fails).
+  - **What was missing & Fixed**:
+    - `agent_trace` bị mất sau reload phiên (feedback trên tin nhắn cũ không còn nodes/SQL): lưu `agent_trace` vào session store (`_persist_session_turn`, `SessionMessage`), truyền qua SSE `detail.agent_trace`, frontend dùng trace đã lưu khi render Like/Dislike; bổ sung trường `sql` rút từ node `generate_sql`/`validate_sql`/`execute_sql`.
+    - Lưu ảnh feedback thất bại trước đây trả 200 im lặng: `save_feedback_record` raise `ValueError` → HTTP 422; test `test_feedback_image_save_failure_returns_422`.
+- **Phase 6: Local run instructions (Done)**:
+  - Cập nhật toàn diện `README.md` theo chuẩn Spec Driven Development (Bước 9: Thêm hướng dẫn chạy local):
+    - **Prerequisites**: Yêu cầu hệ điều hành, Python 3.10+, git, curl, jq, Docker/Compose, trình duyệt hiện đại và dịch vụ LLM/Postgres.
+    - **Install commands**: Các bước thiết lập virtual environment (`python3 -m venv .venv`) và cài đặt `requirements.txt`.
+    - **Environment variables**: Bảng phân nhóm đầy đủ các biến môi trường cấu hình (LLM backend, Postgres read-only, ports, cache TTL, Langfuse monitoring).
+    - **Backend run command**: Lệnh khởi chạy uvicorn (`uvicorn src.main:app --host 0.0.0.0 --port 8000 --reload`) kèm cơ chế tích hợp static frontend.
+    - **Frontend run command**: Hai phương thức chạy giao diện (qua FastAPI origin hoặc qua HTTP server tĩnh riêng kèm cấu hình API Base URL).
+    - **Local URLs**: Bảng tổng hợp các đường dẫn (Web UI, Swagger `/docs`, ReDoc, Health check, LLM Ping, Feedback API, Langfuse).
+    - **Docker deploy & Demo with docker**: Bổ sung chuyên mục riêng **"Demo with docker"** sử dụng cổng thực tế đang chạy trong dự án (`FRONTEND_PORT=3001`, `BACKEND_PORT=8000`), giải thích cơ chế reverse proxy Nginx, các bước khởi động (`docker compose up -d`), 4 kịch bản trải nghiệm trực tiếp trên Web UI và lệnh giám sát dữ liệu feedback.
+    - **Troubleshooting notes**: 6 kịch bản sự cố thường gặp và cách khắc phục chi tiết (LLM 503, Postgres offline graceful degradation, CORS, xung đột cổng mạng, quyền ghi thư mục `data/`, xung đột `openai`/`httpx`).
+  - **Review Phase 6 vs acceptance (Cursor — 2026-09-24)**:
+    - **What passes**: Toàn bộ yêu cầu về hướng dẫn chạy local và chuyên mục "Demo with docker" (với cổng thực tế 3001 và 8000) đã được bổ sung đầy đủ và chi tiết vào `README.md`. Lệnh kiểm thử `pytest -k "camera or feedback"` chạy đạt 25/25 passed, toàn bộ suite 629/629 passed.
+    - **What fails**: Không có (Phase 6 là tài liệu — logic ứng dụng được bảo toàn nguyên vẹn 100%).
+    - **What was missing & Fixed**: Đã chuẩn hóa toàn bộ tài liệu hướng dẫn phát triển cục bộ và xử lý sự cố.
+- **Phase 7: Demo & Verification — Task 1 (Done)**:
+  - Chạy `PYTHONPATH=. pytest -q` → **629/629 passed** (100% xanh, AC-7).
+  - **Review Task 1 vs acceptance (Cursor — 2026-09-24)**:
+    - **What passes**: AC-7 (Unit tests) — toàn bộ suite xanh, không regression.
+    - **What fails**: Không có.
+    - **What missing**: Demo 1–5 và cập nhật nghiệm thu cuối cùng — các task `[ ]` còn lại trong Phase 7.
+- **Phase 7 — Demo 1: Kiểm tra số lượng camera (Done)**:
+  - Câu hỏi: *"Hiện có bao nhiêu camera đang hoạt động?"*
+  - Kết quả agent: **10 camera đang hoạt động (ONLINE)**, phân loại 3 phân hệ (6 phương tiện, 2 vùng cấm, 2 cháy khói); `row_count=10`.
+  - Tests: `test_format_camera_count_answer_ac1`, `test_run_agent_camera_count_integration` — **2/2 passed**.
+  - **Review Demo 1 vs AC-1 (Cursor — 2026-09-24)**:
+    - **What passes**: AC-1 — không trả lời 6 camera; có đủ 3 phân hệ.
+    - **What fails**: Không có.
+    - **What missing**: Không có (Demo 2–5 còn `[ ]`).
+- **Phase 7 — Demo 2: Kiểm tra danh sách camera (Done)**:
+  - Câu hỏi: *"Kể tên các camera trong hệ thống"*
+  - Kết quả agent: liệt kê đủ **10 camera** gồm `CVN_CONG_BOH`, `CVNTT`, `CVN_KHO_TANG2_BOH`, `CVN_P_CAP_PHAT_DONG_PHUC`, `congchinh1`, `congchinh2`, `congvanle1`–`congvanle4`; `row_count=10`.
+  - Tests: `test_format_camera_list_answer_ac2`, `test_run_agent_camera_list_integration` — **2/2 passed**.
+  - **Review Demo 2 vs AC-2 (Cursor — 2026-09-24)**:
+    - **What passes**: AC-2 — đủ 10 camera, có mã đặc thù ngoài ITS.
+    - **What fails**: Không có.
+    - **What missing**: Không có (Demo 3–5 còn `[ ]`).
+- **Phase 7 — Demo 3: Kiểm tra Stream phản hồi (Done)**:
+  - Backend SSE với `stream_tokens: true`: **6 chunk events** + 1 event `done` (ví dụ câu "Chào bạn"); delta nối lại khớp `output`.
+  - Frontend gửi `stream_tokens: true` trong `POST /api/agent/stream`; nhận `status: "chunk"` và append vào bubble.
+  - Test: `test_stream_chunks_with_stream_tokens_ac6` — **1/1 passed**.
+  - **Review Demo 3 vs AC-6 (Cursor — 2026-09-24)**:
+    - **What passes**: AC-6 — SSE phát delta chunks, không chờ cả khối; test-plan manual step 3 (cần xác nhận trên browser).
+    - **What fails**: Không có (automated).
+    - **What missing**: Xác nhận visual typewriter trên Docker UI — manual only (Demo 4–5 còn `[ ]`).
+- **Phase 7 — Demo 4: Đánh giá Tốt Like 👍 (Done)**:
+  - API `POST /api/feedback` với `rating: "positive"` → HTTP 200, lưu `question`, `answer`, `agent_trace` vào JSON.
+  - UI: nút 👍 (`handleLikeClick`), toast *"Cảm ơn bạn đã đánh giá câu trả lời!"*, class `active` trên nút Like.
+  - Test: `test_submit_positive_feedback_ac3` — **1/1 passed**.
+  - **Review Demo 4 vs AC-3 (Cursor — 2026-09-24)**:
+    - **What passes**: AC-3 — Like gửi feedback thành công, JSON có `rating: "positive"` + `agent_trace`.
+    - **What fails**: Không có (automated).
+    - **What missing**: Toast/nút active trên browser — manual only (Demo 5 + nghiệm thu cuối còn `[ ]`).
+- **Phase 7 — Demo 5: Đánh giá Xấu Dislike 👎 (Done)**:
+  - API `POST /api/feedback` với `rating: "negative"`, `feedback_reason`, `image_base64`, `image_filename` → HTTP 200.
+  - Ảnh lưu tại `data/feedback/attachments/{feedback_id}_{filename}.png`; JSON có `attachment_path`, `agent_trace` (nodes + sql).
+  - UI: modal `#feedback-modal`, paste/upload ảnh, nút *"Xác nhận gửi phản hồi"*, toast thành công.
+  - Tests: `test_submit_negative_feedback_with_image_ac4`, `test_submit_negative_feedback_with_custom_image_filename` — **2/2 passed**.
+  - **Review Demo 5 vs AC-4 (Cursor — 2026-09-24)**:
+    - **What passes**: AC-4 — Dislike + lý do + ảnh + `agent_trace`; AC-5 — JSON hợp lệ; test-plan manual step 5–6 (API automated).
+    - **What fails**: Không có.
+    - **What missing**: Modal/upload trên browser — manual only; task nghiệm thu cuối cùng còn `[ ]`.
+- **Phase 7 — Nghiệm thu cuối cùng v8 (Done — 2026-09-24)**:
+
+  | AC | Tiêu chí | Kết quả | Bằng chứng |
+  |:--:|----------|---------|------------|
+  | AC-1 | Đếm 10 camera, 3 phân hệ | **PASS** | Demo 1; `test_run_agent_camera_count_integration` |
+  | AC-2 | Liệt kê đủ 10 camera | **PASS** | Demo 2; `test_run_agent_camera_list_integration` |
+  | AC-3 | Like 👍 + feedback JSON | **PASS** | Demo 4; `test_submit_positive_feedback_ac3` |
+  | AC-4 | Dislike 👎 + lý do + ảnh + trace | **PASS** | Demo 5; `test_submit_negative_feedback_with_image_ac4` |
+  | AC-5 | JSON array UTF-8, ghi an toàn | **PASS** | `test_feedback_data_integrity_ac5` |
+  | AC-6 | SSE chunk streaming | **PASS** | Demo 3; `test_stream_chunks_with_stream_tokens_ac6` |
+  | AC-7 | Unit tests 100% xanh | **PASS** | `pytest -q` → **629/629 passed** |
+  | AC-8 | Không hồi quy v7 | **PASS** | Full suite; SQL/Chart/Guardrails/Memory suites xanh |
+
+  - **Tổng kết Phase 1–7**: Tất cả task `[x]` trong `specs/implementation-plan.md`.
+  - **What passes**: Toàn bộ AC-1..AC-8 (automated + agent integration).
+  - **What fails**: **0 fails**.
+  - **What missing (manual QA trên Docker UI)**: Xác nhận tay trên browser cho typewriter (Demo 3), toast/nút active (Demo 4), modal upload/paste (Demo 5) — xem `specs/test-plan.md` §3. Không chặn nghiệm thu automated.
+  - **Trạng thái v8**: **Spec Approved → Implemented & Verified (automated)**.
+
+---
+
 ## 2026-09-23 — Phân loại Langfuse Observation Types & Hiển thị Biểu tượng Riêng biệt (Agent vs Tool vs Retriever vs Span)
 
 ### Thêm & Cập nhật
