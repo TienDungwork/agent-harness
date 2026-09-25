@@ -1,0 +1,80 @@
+schema_version: "1.0.0"
+id: "operations.use-help"
+type: "how_to"
+status: "published"
+locale: "vi"
+version: 1
+title: "Sử dụng Trung tâm Trợ giúp"
+intent: "use_help"
+aliases:
+  - "mở trang trợ giúp"
+  - "xem hướng dẫn hỗ trợ"
+  - "liên hệ hỗ trợ trong VMS"
+  - "xem câu hỏi thường gặp"
+module: "operations"
+tags:
+  - "trợ giúp"
+  - "hỗ trợ"
+  - "FAQ"
+roles:
+  - "Người dùng đã đăng nhập"
+features:
+  - "authentication"
+route: "/help"
+menu_path:
+  - "Trợ giúp"
+preconditions:
+  - "Đã đăng nhập."
+summary: "Mở Trợ giúp để xem kênh hỗ trợ đang được cấu hình trên giao diện, checklist chuẩn bị thông tin và các câu hỏi thường gặp."
+steps:
+  - order: 1
+    say: "Mở Trợ giúp ở cuối thanh điều hướng."
+    ui:
+      label: "Trợ giúp"
+      i18n_key: "sidebar.help"
+      element_id: null
+  - order: 2
+    say: "Trong Trung tâm Trợ giúp & Hướng dẫn Vận hành, xem các thẻ Hotline Kỹ thuật, Email Hỗ trợ và Kênh Vận hành Dự án rồi dùng thông tin đang hiển thị của kênh phù hợp."
+    ui:
+      label: "Trung tâm Trợ giúp & Hướng dẫn Vận hành"
+      i18n_key: "helpPage.title"
+      element_id: null
+    note: "Thông tin liên hệ phụ thuộc cấu hình dự án; luôn dùng giá trị đang hiển thị trên giao diện."
+  - order: 3
+    say: "Đọc Checklist gửi yêu cầu hỗ trợ và chuẩn bị thông tin phù hợp với sự cố trước khi liên hệ."
+    ui:
+      label: "Checklist gửi yêu cầu hỗ trợ"
+      i18n_key: "helpPage.checklistTitle"
+      element_id: null
+  - order: 4
+    say: "Trong Giải đáp Thắc mắc Thường gặp (FAQ), chọn câu hỏi phù hợp để mở hoặc đóng nội dung trả lời."
+    ui:
+      label: "Giải đáp Thắc mắc Thường gặp (FAQ)"
+      i18n_key: "helpPage.faqTitle"
+      element_id: null
+verify: "Trang Trợ giúp hiển thị các kênh hỗ trợ, checklist và FAQ; câu hỏi được chọn mở phần trả lời tương ứng."
+errors:
+  - if: "Chưa đăng nhập hoặc phiên đăng nhập đã hết hạn."
+    then: "Đăng nhập lại rồi mở Trợ giúp."
+  - if: "Thông tin liên hệ không phù hợp hoặc cần xác nhận."
+    then: "Dùng kênh và thông tin đang hiển thị trên trang Trợ giúp hoặc hỏi quản trị viên của tổ chức."
+sources:
+  - path: "frontend/src/App.jsx"
+    kind: "route"
+    note: "Route /help chỉ được bọc bởi RequireAuth, không có RequireFeature."
+  - path: "frontend/src/components/layout/Sidebar.jsx"
+    kind: "component"
+    note: "Trợ giúp luôn được thêm vào menu cuối cho người dùng đã đăng nhập."
+  - path: "frontend/src/pages/Help/Help.jsx"
+    kind: "component"
+    note: "Xác minh các thẻ kênh hỗ trợ, checklist và hành vi mở hoặc đóng FAQ."
+  - path: "frontend/src/i18n/locales/vi/common.json"
+    kind: "i18n"
+    note: "Nguồn nhãn Trợ giúp, tiêu đề, kênh hỗ trợ, checklist và FAQ."
+  - path: "frontend/src/auth/__tests__/RequireAuth.test.jsx"
+    kind: "test"
+    note: "Kiểm tra RequireAuth hiển thị nội dung khi đã xác thực và chuyển về đăng nhập khi chưa xác thực."
+  - path: "frontend/cypress/e2e/10-system-storage-and-reports.cy.js"
+    kind: "test"
+    note: "Kiểm tra route /help render nội dung và hoạt động trên các kích thước màn hình."
+last_verified: "2026-09-16"

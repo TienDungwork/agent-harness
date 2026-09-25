@@ -1,0 +1,67 @@
+schema_version: "1.0.0"
+id: aioc.manage_camera
+type: how_to
+status: published
+locale: vi
+version: 1
+title: "Quản Lý Camera trên AIOC"
+intent: manage_camera
+aliases:
+  - "quản lý camera"
+  - "quản lý camera aioc"
+  - "menu quản lý camera"
+  - "vào quản lý camera aioc"
+  - "quản lý thiết bị aioc"
+  - "trang devices aioc"
+  - "mở quản lý camera"
+  - "vào đâu để quản lý camera"
+  - "vào đâu để quản lý camera thiết bị"
+module: devices
+tags:
+  - quản lý camera
+  - devices
+  - aioc.atin.vn
+  - thiết bị
+  - camera
+  - cấu hình & thiết bị
+roles:
+  - authenticated_user
+features:
+  - devices
+route: "/devices"
+menu_path:
+  - "Cấu hình & Thiết bị"
+  - "Quản Lý Camera"
+preconditions:
+  - "Người dùng đã đăng nhập hệ thống AIOC thành công."
+summary: "Hướng dẫn truy cập menu Cấu hình & Thiết bị > Quản Lý Camera trên hệ thống AIOC tại địa chỉ URL https://aioc.atin.vn/devices."
+steps:
+  - order: 1
+    say: "Tại giao diện chính của hệ thống AIOC (https://aioc.atin.vn), nhìn vào thanh điều hướng menu bên trái màn hình."
+    ui:
+      label: "Thanh điều hướng"
+      i18n_key: "aioc.navigation"
+      element_id: "sidebar-menu"
+  - order: 2
+    say: "Bấm vào nhóm menu 'Cấu hình & Thiết bị' để mở danh sách các mục quản trị hệ thống."
+    ui:
+      label: "Cấu hình & Thiết bị"
+      i18n_key: "aioc.menuConfigDevices"
+      element_id: null
+  - order: 3
+    say: "Bấm chọn mục 'Quản Lý Camera' để mở màn hình quản lý thiết bị camera tại địa chỉ https://aioc.atin.vn/devices."
+    ui:
+      label: "Quản Lý Camera"
+      i18n_key: "aioc.menuCameraManagement"
+      element_id: "menu-devices"
+  - order: 4
+    say: "Tại trang Quản Lý Camera (/devices), người dùng có thể xem danh sách toàn bộ camera, trạng thái kết nối, tìm kiếm, lọc theo khu vực, thêm camera mới hoặc cập nhật cấu hình thiết bị."
+    ui:
+      label: "Danh sách Camera"
+      i18n_key: "aioc.cameraList"
+      element_id: "devices-table"
+sources:
+  - path: "https://aioc.atin.vn/devices"
+    kind: route
+    note: "Màn hình Quản Lý Camera AIOC devices"
+last_verified: "2026-09-22"

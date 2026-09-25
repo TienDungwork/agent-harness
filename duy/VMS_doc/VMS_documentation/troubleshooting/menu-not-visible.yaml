@@ -1,0 +1,72 @@
+schema_version: "1.0.0"
+id: troubleshooting.menu_not_visible
+type: troubleshooting
+status: published
+locale: vi
+version: 1
+title: "Không thấy menu hoặc chức năng trong VMS"
+intent: troubleshoot_menu_not_visible
+aliases:
+  - "không thấy menu"
+  - "chức năng bị mất"
+  - "tại sao không có module"
+  - "không vào được trang"
+module: navigation
+tags:
+  - menu
+  - permission
+  - feature
+  - role
+roles:
+  - authenticated_user
+features:
+  - unknown
+route: null
+preconditions:
+  - "Người dùng đã đăng nhập."
+summary: "Menu VMS được hiển thị theo loại tổ chức, feature đã cấp và quyền của tài khoản; không phải mọi người dùng đều thấy cùng một danh sách chức năng."
+symptoms:
+  - "Không thấy một mục trong thanh điều hướng."
+  - "Truy cập route nhưng bị chuyển sang trang khác."
+  - "Không thấy module AI mà người dùng khác đang có."
+checks:
+  - order: 1
+    if: "Bạn đang tìm Quản lý sự kiện."
+    then: "Ngoài quyền và feature events, nhờ quản trị viên kiểm tra cờ hiển thị sự kiện của frontend; mục này có thể bị ẩn khỏi sidebar."
+    stop_when: "Menu xuất hiện hoặc quản trị viên xác nhận chủ đích đang ẩn."
+  - order: 2
+    if: "Bạn đang tìm một module AI."
+    then: "Kiểm tra module đó có xuất hiện trong nhóm Dịch Vụ của chính tài khoản này không; danh sách module được tải động theo tổ chức."
+    stop_when: "Module xuất hiện và mở được."
+  - order: 3
+    if: "Bạn đang tìm Dashboard, Giám Sát Trực Tiếp, Phát Lại, Bản Đồ Quốc Gia hoặc Quản Lý Camera."
+    then: "Nhờ quản trị viên kiểm tra feature tương ứng đã được bật cho tổ chức."
+    stop_when: "Menu xuất hiện sau khi feature và phiên người dùng được cập nhật."
+  - order: 4
+    if: "Bạn đang tìm Quản Trị Hệ Thống hoặc các màn hình tổ chức."
+    then: "Nhờ quản trị viên kiểm tra vai trò và capability của tài khoản; các màn hình này có guard riêng."
+    stop_when: "Tài khoản đã được cấp đúng quyền và mở được màn hình."
+  - order: 5
+    if: "Quyền, feature và cấu hình hiển thị được xác nhận là đúng nhưng menu vẫn không xuất hiện."
+    then: "Đăng xuất rồi đăng nhập lại để làm mới phiên; nếu vẫn lỗi, gửi tên tài khoản, tên menu và ảnh màn hình cho quản trị viên."
+related:
+  - concept.permissions-and-features
+  - concept.navigation_overview
+  - how-to.ai.open-module
+sources:
+  - path: "frontend/src/components/layout/Sidebar.jsx"
+    kind: component
+    note: "Lọc menu theo role capability, business type, feature và module AI tải động."
+  - path: "frontend/src/App.jsx"
+    kind: route
+    note: "Route dùng RequireFeature, SystemRoute và các redirect theo quyền."
+  - path: "frontend/src/auth/RequireFeature.jsx"
+    kind: component
+    note: "Không hiển thị nội dung feature chưa được bật."
+  - path: "frontend/src/i18n/locales/vi/common.json"
+    kind: i18n
+    note: "Nêu rõ kiểm tra RBAC và phân vùng khi không xem được tính năng/camera."
+  - path: "frontend/src/config/features.js"
+    kind: component
+    note: "Cờ giao diện riêng có thể ẩn mục Quản lý sự kiện."
+last_verified: "2026-09-16"

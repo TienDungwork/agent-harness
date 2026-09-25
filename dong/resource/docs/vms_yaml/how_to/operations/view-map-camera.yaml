@@ -1,0 +1,78 @@
+schema_version: "1.0.0"
+id: operations.view_map_camera
+type: how_to
+status: published
+locale: vi
+version: 1
+title: "Xem camera trên Bản Đồ Quốc Gia"
+intent: view_map_camera
+aliases:
+  - "xem camera trên bản đồ"
+  - "mở camera theo vị trí"
+  - "xem trực tiếp từ bản đồ"
+  - "tìm camera trên bản đồ quốc gia"
+module: map
+tags:
+  - ban-do
+  - camera
+  - vi-tri
+  - xem-truc-tiep
+roles:
+  - authenticated_user
+features:
+  - map
+route: "/map"
+menu_path:
+  - "Bản Đồ Quốc Gia"
+preconditions:
+  - "Người dùng đã đăng nhập."
+  - "Feature map đã được bật cho tổ chức."
+  - "Camera thuộc phạm vi truy cập và có tọa độ hợp lệ."
+summary: "Mở Bản Đồ Quốc Gia, thu phóng tới camera có tọa độ rồi mở cửa sổ camera để xem trực tiếp hoặc xem sự kiện gần đây."
+steps:
+  - order: 1
+    say: "Trong thanh điều hướng, chọn Bản Đồ Quốc Gia."
+    ui:
+      label: "Bản Đồ Quốc Gia"
+      i18n_key: "sidebar.nationalMap"
+      element_id: null
+  - order: 2
+    say: "Chọn một tỉnh hoặc thành phố trong danh sách để đưa bản đồ tới khu vực cần xem."
+    ui:
+      label: "Tỉnh/Thành phố"
+      i18n_key: "nationalMap.provinces"
+      element_id: null
+  - order: 3
+    say: "Chọn cụm camera trên bản đồ để phóng to dần cho tới khi thấy từng điểm camera."
+  - order: 4
+    say: "Chọn điểm camera cần xem. Nếu lần chọn đầu chỉ phóng to bản đồ, hãy chọn lại điểm camera để mở cửa sổ thông tin."
+  - order: 5
+    say: "Trong cửa sổ camera, chọn Xem trực tiếp để xem luồng camera; bạn cũng có thể chọn Sự kiện để xem các sự kiện gần đây."
+    ui:
+      label: "Xem trực tiếp"
+      i18n_key: "nationalMap.liveView"
+      element_id: null
+verify: "Cửa sổ camera hiển thị tên, trạng thái và tab Xem trực tiếp; khi có luồng khả dụng, trình phát video được hiển thị."
+sources:
+  - path: "frontend/src/App.jsx"
+    kind: route
+    note: "Route /map yêu cầu đăng nhập và feature map."
+  - path: "frontend/src/components/layout/Sidebar.jsx"
+    kind: component
+    note: "Menu Bản Đồ Quốc Gia dùng route /map và khóa sidebar.nationalMap."
+  - path: "frontend/src/pages/NationalMap/NationalMap.jsx"
+    kind: component
+    note: "Xác minh danh sách tỉnh, cụm camera, điểm camera, hành vi phóng to, popup Xem trực tiếp và Sự kiện."
+  - path: "frontend/src/i18n/locales/vi/common.json"
+    kind: i18n
+    note: "Xác minh nhãn Bản Đồ Quốc Gia."
+  - path: "frontend/src/i18n/locales/vi/dashboard.json"
+    kind: i18n
+    note: "Xác minh các nhãn Tỉnh/Thành phố, Xem trực tiếp, Sự kiện và trạng thái camera."
+  - path: "frontend/tests/pages.spec.js"
+    kind: test
+    note: "Kiểm tra người dùng đã xác thực mở được route /map."
+  - path: "frontend/tests/kcn-full.spec.js"
+    kind: test
+    note: "Kiểm tra route /map hiển thị trong workspace KCN."
+last_verified: "2026-09-16"

@@ -1,0 +1,455 @@
+[
+  {
+    "id": "fb_20260925_100328_6d640f",
+    "timestamp": "2026-09-25T10:03:28.586494+00:00",
+    "session_id": "2ee92545-857a-41df-84bb-639edd897846",
+    "user_id": "ca217147-8235-4276-a5ad-95d7c12af920",
+    "rating": "positive",
+    "feedback_reason": null,
+    "attachment_path": null,
+    "question": "hôm nay ngày bao nhiêu",
+    "answer": "Hôm nay là ngày 25 tháng 09 năm 2026. Chuyên môn của tôi là hỗ trợ thống kê dữ liệu giám sát camera VMS KCN Hưng Phú. Bạn có thể hỏi về lượng xe hôm nay, kiểm tra cảnh báo an ninh hoặc hướng dẫn sử dụng AIOC được không?",
+    "agent_trace": {
+      "nodes": [
+        {
+          "node_id": "guardrail_input",
+          "status": "running",
+          "input": null,
+          "output": null,
+          "meta": null,
+          "duration_ms": null
+        },
+        {
+          "node_id": "guardrail_input",
+          "status": "done",
+          "input": {
+            "question": "hôm nay ngày bao nhiêu"
+          },
+          "output": {
+            "question": "hôm nay ngày bao nhiêu",
+            "pii_redacted": false,
+            "ok": true
+          },
+          "meta": {
+            "user_id": "ca217147-8235-4276-a5ad-95d7c12af920",
+            "session_id": "2ee92545-857a-41df-84bb-639edd897846",
+            "duration_ms": 0.6
+          },
+          "duration_ms": 0.6
+        },
+        {
+          "node_id": "recall",
+          "status": "running",
+          "input": null,
+          "output": null,
+          "meta": null,
+          "duration_ms": null
+        },
+        {
+          "node_id": "recall",
+          "status": "done",
+          "input": {
+            "user_id": "ca217147-8235-4276-a5ad-95d7c12af920",
+            "question": "hôm nay ngày bao nhiêu"
+          },
+          "output": {
+            "recalled_memories": [],
+            "disabled": true
+          },
+          "meta": {
+            "user_id": "ca217147-8235-4276-a5ad-95d7c12af920",
+            "session_id": "2ee92545-857a-41df-84bb-639edd897846",
+            "recalled_count": 0,
+            "disabled": true,
+            "duration_ms": 1.1
+          },
+          "duration_ms": 1.1
+        },
+        {
+          "node_id": "rewrite",
+          "status": "running",
+          "input": null,
+          "output": null,
+          "meta": null,
+          "duration_ms": null
+        },
+        {
+          "node_id": "rewrite",
+          "status": "done",
+          "input": {
+            "question": "hôm nay ngày bao nhiêu"
+          },
+          "output": {
+            "rewritten": {
+              "text": "hôm nay ngày bao nhiêu",
+              "sub_questions": [
+                "hôm nay ngày bao nhiêu"
+              ],
+              "filters": [],
+              "time_range": null,
+              "intent_hint": null
+            }
+          },
+          "meta": {
+            "llm_used": false,
+            "user_id": "ca217147-8235-4276-a5ad-95d7c12af920",
+            "session_id": "2ee92545-857a-41df-84bb-639edd897846",
+            "sub_question_count": 1,
+            "skipped": true,
+            "duration_ms": 0.6
+          },
+          "duration_ms": 0.6
+        },
+        {
+          "node_id": "classify",
+          "status": "running",
+          "input": null,
+          "output": null,
+          "meta": null,
+          "duration_ms": null
+        },
+        {
+          "node_id": "classify",
+          "status": "done",
+          "input": {
+            "rewritten_text": "hôm nay ngày bao nhiêu",
+            "rewritten": {
+              "text": "hôm nay ngày bao nhiêu",
+              "sub_questions": [
+                "hôm nay ngày bao nhiêu"
+              ],
+              "filters": [],
+              "time_range": null,
+              "intent_hint": null
+            }
+          },
+          "output": {
+            "intent": "out_of_scope",
+            "reason": "Hỏi thời tiết, không liên quan đến VMS/KCN",
+            "answer": "",
+            "chart_requested": false,
+            "chart_type": null
+          },
+          "meta": {
+            "llm_used": true,
+            "user_id": "ca217147-8235-4276-a5ad-95d7c12af920",
+            "session_id": "2ee92545-857a-41df-84bb-639edd897846",
+            "chart_requested": false,
+            "chart_type": null,
+            "duration_ms": 820.2
+          },
+          "duration_ms": 820.2
+        },
+        {
+          "node_id": "respond_inline",
+          "status": "running",
+          "input": null,
+          "output": null,
+          "meta": null,
+          "duration_ms": null
+        },
+        {
+          "node_id": "respond_inline",
+          "status": "done",
+          "input": {
+            "question": "hôm nay ngày bao nhiêu",
+            "intent": "out_of_scope"
+          },
+          "output": {
+            "answer": "Hôm nay là ngày 25 tháng 09 năm 2026. Chuyên môn của tôi là hỗ trợ thống kê dữ liệu giám sát camera VMS KCN Hưng Phú. Bạn có thể hỏi về lượng xe hôm nay, kiểm tra cảnh báo an ninh hoặc hướng dẫn sử dụng AIOC được không?",
+            "respond_mode": "out_of_scope"
+          },
+          "meta": {
+            "user_id": "ca217147-8235-4276-a5ad-95d7c12af920",
+            "session_id": "2ee92545-857a-41df-84bb-639edd897846",
+            "duration_ms": 1121.5
+          },
+          "duration_ms": 1121.5
+        },
+        {
+          "node_id": "respond",
+          "status": "running",
+          "input": null,
+          "output": null,
+          "meta": null,
+          "duration_ms": null
+        },
+        {
+          "node_id": "respond",
+          "status": "done",
+          "input": {
+            "question": "hôm nay ngày bao nhiêu",
+            "rewritten_question": "hôm nay ngày bao nhiêu",
+            "respond_mode": "out_of_scope"
+          },
+          "output": {
+            "answer_vi": "Hôm nay là ngày 25 tháng 09 năm 2026. Chuyên môn của tôi là hỗ trợ thống kê dữ liệu giám sát camera VMS KCN Hưng Phú. Bạn có thể hỏi về lượng xe hôm nay, kiểm tra cảnh báo an ninh hoặc hướng dẫn sử dụng AIOC được không?",
+            "answer_source": "out_of_scope"
+          },
+          "meta": {
+            "llm_used": false,
+            "user_id": "ca217147-8235-4276-a5ad-95d7c12af920",
+            "session_id": "2ee92545-857a-41df-84bb-639edd897846",
+            "duration_ms": 1
+          },
+          "duration_ms": 1
+        },
+        {
+          "node_id": "guardrail_output",
+          "status": "running",
+          "input": null,
+          "output": null,
+          "meta": null,
+          "duration_ms": null
+        },
+        {
+          "node_id": "guardrail_output",
+          "status": "done",
+          "input": {
+            "question": "hôm nay ngày bao nhiêu",
+            "answer_len": 219
+          },
+          "output": {
+            "valid": true,
+            "issues": [],
+            "answer": "Hôm nay là ngày 25 tháng 09 năm 2026. Chuyên môn của tôi là hỗ trợ thống kê dữ liệu giám sát camera VMS KCN Hưng Phú. Bạn có thể hỏi về lượng xe hôm nay, kiểm tra cảnh báo an ninh hoặc hướng dẫn sử dụng AIOC được không?"
+          },
+          "meta": {
+            "user_id": "ca217147-8235-4276-a5ad-95d7c12af920",
+            "session_id": "2ee92545-857a-41df-84bb-639edd897846",
+            "duration_ms": 10.9
+          },
+          "duration_ms": 10.9
+        }
+      ],
+      "detail": "out_of_scope"
+    }
+  },
+  {
+    "id": "fb_20260925_100344_4eacd3",
+    "timestamp": "2026-09-25T10:03:44.128664+00:00",
+    "session_id": "2ee92545-857a-41df-84bb-639edd897846",
+    "user_id": "ca217147-8235-4276-a5ad-95d7c12af920",
+    "rating": "positive",
+    "feedback_reason": null,
+    "attachment_path": null,
+    "question": "chào bạn",
+    "answer": "Chào bạn! Bạn cần hỗ trợ gì về VMS KCN Hưng Phú ạ?",
+    "agent_trace": {
+      "nodes": [
+        {
+          "node_id": "guardrail_input",
+          "status": "running",
+          "input": null,
+          "output": null,
+          "meta": null,
+          "duration_ms": null
+        },
+        {
+          "node_id": "guardrail_input",
+          "status": "done",
+          "input": {
+            "question": "chào bạn"
+          },
+          "output": {
+            "question": "chào bạn",
+            "pii_redacted": false,
+            "ok": true
+          },
+          "meta": {
+            "user_id": "ca217147-8235-4276-a5ad-95d7c12af920",
+            "session_id": "2ee92545-857a-41df-84bb-639edd897846",
+            "duration_ms": 0.4
+          },
+          "duration_ms": 0.4
+        },
+        {
+          "node_id": "recall",
+          "status": "running",
+          "input": null,
+          "output": null,
+          "meta": null,
+          "duration_ms": null
+        },
+        {
+          "node_id": "recall",
+          "status": "done",
+          "input": {
+            "user_id": "ca217147-8235-4276-a5ad-95d7c12af920",
+            "question": "chào bạn"
+          },
+          "output": {
+            "recalled_memories": [],
+            "disabled": true
+          },
+          "meta": {
+            "user_id": "ca217147-8235-4276-a5ad-95d7c12af920",
+            "session_id": "2ee92545-857a-41df-84bb-639edd897846",
+            "recalled_count": 0,
+            "disabled": true,
+            "duration_ms": 0.3
+          },
+          "duration_ms": 0.3
+        },
+        {
+          "node_id": "rewrite",
+          "status": "running",
+          "input": null,
+          "output": null,
+          "meta": null,
+          "duration_ms": null
+        },
+        {
+          "node_id": "rewrite",
+          "status": "done",
+          "input": {
+            "question": "chào bạn"
+          },
+          "output": {
+            "rewritten": {
+              "text": "chào bạn",
+              "sub_questions": [
+                "chào bạn"
+              ],
+              "filters": [],
+              "time_range": null,
+              "intent_hint": "chat"
+            }
+          },
+          "meta": {
+            "llm_used": false,
+            "user_id": "ca217147-8235-4276-a5ad-95d7c12af920",
+            "session_id": "2ee92545-857a-41df-84bb-639edd897846",
+            "sub_question_count": 1,
+            "skipped": true,
+            "duration_ms": 0.3
+          },
+          "duration_ms": 0.3
+        },
+        {
+          "node_id": "classify",
+          "status": "running",
+          "input": null,
+          "output": null,
+          "meta": null,
+          "duration_ms": null
+        },
+        {
+          "node_id": "classify",
+          "status": "done",
+          "input": {
+            "rewritten_text": "chào bạn",
+            "rewritten": {
+              "text": "chào bạn",
+              "sub_questions": [
+                "chào bạn"
+              ],
+              "filters": [],
+              "time_range": null,
+              "intent_hint": "chat"
+            }
+          },
+          "output": {
+            "intent": "chat",
+            "reason": "Chào hỏi",
+            "answer": "Chào bạn! Bạn cần hỗ trợ gì về VMS KCN Hưng Phú ạ?",
+            "chart_requested": false,
+            "chart_type": null
+          },
+          "meta": {
+            "llm_used": true,
+            "user_id": "ca217147-8235-4276-a5ad-95d7c12af920",
+            "session_id": "2ee92545-857a-41df-84bb-639edd897846",
+            "chart_requested": false,
+            "chart_type": null,
+            "duration_ms": 1608.6
+          },
+          "duration_ms": 1608.6
+        },
+        {
+          "node_id": "respond_inline",
+          "status": "running",
+          "input": null,
+          "output": null,
+          "meta": null,
+          "duration_ms": null
+        },
+        {
+          "node_id": "respond_inline",
+          "status": "done",
+          "input": {
+            "question": "chào bạn",
+            "intent": "chat"
+          },
+          "output": {
+            "answer": "Chào bạn! Bạn cần hỗ trợ gì về VMS KCN Hưng Phú ạ?",
+            "respond_mode": "inline"
+          },
+          "meta": {
+            "user_id": "ca217147-8235-4276-a5ad-95d7c12af920",
+            "session_id": "2ee92545-857a-41df-84bb-639edd897846",
+            "duration_ms": 2.8
+          },
+          "duration_ms": 2.8
+        },
+        {
+          "node_id": "respond",
+          "status": "running",
+          "input": null,
+          "output": null,
+          "meta": null,
+          "duration_ms": null
+        },
+        {
+          "node_id": "respond",
+          "status": "done",
+          "input": {
+            "question": "chào bạn",
+            "rewritten_question": "chào bạn",
+            "respond_mode": "inline",
+            "intent": "chat"
+          },
+          "output": {
+            "answer_vi": "Chào bạn! Bạn cần hỗ trợ gì về VMS KCN Hưng Phú ạ?",
+            "answer_source": "inline"
+          },
+          "meta": {
+            "llm_used": false,
+            "user_id": "ca217147-8235-4276-a5ad-95d7c12af920",
+            "session_id": "2ee92545-857a-41df-84bb-639edd897846",
+            "duration_ms": 0.3
+          },
+          "duration_ms": 0.3
+        },
+        {
+          "node_id": "guardrail_output",
+          "status": "running",
+          "input": null,
+          "output": null,
+          "meta": null,
+          "duration_ms": null
+        },
+        {
+          "node_id": "guardrail_output",
+          "status": "done",
+          "input": {
+            "question": "chào bạn",
+            "answer_len": 50
+          },
+          "output": {
+            "valid": true,
+            "issues": [],
+            "answer": "Chào bạn! Bạn cần hỗ trợ gì về VMS KCN Hưng Phú ạ?"
+          },
+          "meta": {
+            "user_id": "ca217147-8235-4276-a5ad-95d7c12af920",
+            "session_id": "2ee92545-857a-41df-84bb-639edd897846",
+            "duration_ms": 0.6
+          },
+          "duration_ms": 0.6
+        }
+      ],
+      "detail": "chat"
+    }
+  }
+]

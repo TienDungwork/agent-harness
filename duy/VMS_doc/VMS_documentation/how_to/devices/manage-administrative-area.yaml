@@ -1,0 +1,79 @@
+schema_version: "1.0.0"
+id: devices.manage_administrative_area
+type: how_to
+status: published
+locale: vi
+version: 1
+title: "Xem và tra cứu khu vực hành chính"
+intent: view_administrative_area
+aliases:
+  - "quản lý khu vực hành chính"
+  - "xem cây khu vực"
+  - "tra cứu địa giới hành chính"
+  - "xem camera theo khu vực"
+module: areas
+tags:
+  - khu-vuc
+  - hanh-chinh
+  - dia-gioi
+  - camera
+roles:
+  - authenticated_user
+features:
+  - areas
+route: "/areas"
+menu_path:
+  - "Cấu hình & Thiết bị"
+  - "Khu Vực"
+preconditions:
+  - "Người dùng đã đăng nhập."
+  - "Feature areas đã được bật cho tổ chức."
+summary: "Mở màn hình Khu Vực, tìm và chọn một khu vực trong cây phân cấp để xem thông tin địa giới, vị trí và số liệu thuộc đơn vị đang đăng nhập."
+steps:
+  - order: 1
+    say: "Trong nhóm Cấu hình & Thiết bị, chọn Khu Vực."
+    ui:
+      label: "Khu Vực"
+      i18n_key: "sidebar.areas"
+      element_id: null
+  - order: 2
+    say: "Nhập tên khu vực vào ô Tìm kiếm khu vực nếu cần thu hẹp cây phân cấp."
+    ui:
+      label: "Tìm kiếm khu vực..."
+      i18n_key: "areas.searchPlaceholder"
+      element_id: null
+  - order: 3
+    say: "Chọn khu vực cần tra cứu trong cây bên trái."
+  - order: 4
+    say: "Xem Thông tin chi tiết, vị trí trên bản đồ, số camera, sự kiện hôm nay và khu vực con của mục đã chọn."
+    ui:
+      label: "Thông tin chi tiết"
+      i18n_key: "areas.detailSection"
+      element_id: null
+  - order: 5
+    say: "Khi cần chuyển sang dữ liệu liên quan, dùng các mục đang hiển thị trong Thao Tác Nhanh; số camera và sự kiện chỉ phản ánh đơn vị đang đăng nhập."
+    ui:
+      label: "Thao Tác Nhanh"
+      i18n_key: "areas.quickActions"
+      element_id: null
+verify: "Khu vực đã chọn hiển thị thông tin chi tiết và vị trí; số camera, sự kiện hôm nay và khu vực con được trình bày theo dữ liệu hiện có và phạm vi đơn vị."
+sources:
+  - path: "frontend/src/App.jsx"
+    kind: route
+    note: "Khai báo route /areas với RequireAuth và RequireFeature featureKey areas."
+  - path: "frontend/src/components/layout/Sidebar.jsx"
+    kind: component
+    note: "Xác minh mục Khu Vực dùng route /areas trong nhóm cấu hình."
+  - path: "frontend/src/pages/Areas/Areas.jsx"
+    kind: component
+    note: "Xác minh cây khu vực, tìm kiếm, vùng chi tiết, bản đồ, số liệu theo đơn vị và các thao tác nhanh."
+  - path: "frontend/src/i18n/locales/vi/common.json"
+    kind: i18n
+    note: "Xác minh nhãn sidebar Khu Vực và tiêu đề trang Quản lý Khu vực hành chính."
+  - path: "frontend/src/i18n/locales/vi/playback.json"
+    kind: i18n
+    note: "Xác minh nhãn tìm kiếm, thông tin chi tiết, thao tác nhanh và mô tả phạm vi đơn vị."
+  - path: "frontend/tests/pages.spec.js"
+    kind: test
+    note: "Kiểm tra người dùng đã xác thực mở được route /areas và trang không rơi vào lỗi hệ thống."
+last_verified: "2026-09-16"

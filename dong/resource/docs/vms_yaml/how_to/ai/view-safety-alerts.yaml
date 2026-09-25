@@ -1,0 +1,82 @@
+schema_version: "1.0.0"
+id: "how-to.ai.view-safety-alerts"
+type: how_to
+status: published
+locale: vi
+version: 1
+title: "Xem lịch sử cảnh báo Cháy hoặc PPE"
+intent: "view_safety_alerts"
+aliases:
+  - "xem cảnh báo cháy"
+  - "xem lịch sử PPE"
+  - "tra cứu cảnh báo an toàn"
+module: "fire-ppe"
+tags:
+  - "FIRE"
+  - "PPE"
+  - "lịch sử cảnh báo"
+roles:
+  - "authenticated_user"
+features:
+  - "ai_module_enabled_for_organization"
+route: null
+menu_path:
+  - "Dịch Vụ"
+  - "Phát hiện Cháy hoặc Giám sát PPE"
+preconditions:
+  - "Người dùng đã đăng nhập vào VMS."
+  - "Tổ chức và người dùng đã được cấp module FIRE hoặc PPE cần tra cứu."
+summary: "Mở đúng module an toàn đã được cấp, chọn tab lịch sử tương ứng, lọc dữ liệu và xem chi tiết cảnh báo."
+steps:
+  - order: 1
+    say: "Trong nhóm Dịch Vụ, chọn Phát hiện Cháy để xem cảnh báo cháy/khói hoặc chọn Giám sát PPE để xem sự kiện đồ bảo hộ; chỉ chọn module đã được cấp."
+    ui:
+      label: "Dịch Vụ"
+      i18n_key: "sidebar.groups.aiServices"
+      element_id: null
+  - order: 2
+    say: "Nếu đã chọn Phát hiện Cháy, mở tab Lịch sử cảnh báo."
+    ui:
+      label: "Lịch sử cảnh báo"
+      i18n_key: "modules.tabs.alerts"
+      element_id: null
+  - order: 3
+    say: "Nếu đã chọn Giám sát PPE, mở tab Lịch sử nhận diện."
+    ui:
+      label: "Lịch sử nhận diện"
+      i18n_key: "modules.tabs.ppe_history"
+      element_id: null
+  - order: 4
+    say: "Dùng các bộ lọc đang hiển thị để thu hẹp dữ liệu, rồi chọn Tìm kiếm."
+    ui:
+      label: "Tìm kiếm"
+      i18n_key: "common.search"
+      element_id: null
+  - order: 5
+    say: "Tại bản ghi cần kiểm tra, chọn biểu tượng xem chi tiết."
+verify: "Màn chi tiết của cảnh báo cháy/khói hoặc sự kiện PPE đã chọn được hiển thị."
+errors:
+  - if: "Không thấy Phát hiện Cháy hoặc Giám sát PPE trong nhóm Dịch Vụ."
+    then: "Kiểm tra với quản trị viên xem tổ chức và người dùng đã được cấp đúng module FIRE hoặc PPE chưa."
+  - if: "Không có bản ghi phù hợp."
+    then: "Kiểm tra lại bộ lọc và khoảng thời gian, sau đó chọn Làm mới."
+sources:
+  - path: "frontend/src/utils/aiModuleTabs.js"
+    kind: component
+    note: "Xác minh FIRE dùng tab alerts và PPE dùng tab ppe_history."
+  - path: "frontend/src/core/registry/aiModuleRegistry.jsx"
+    kind: component
+    note: "Xác minh hai tab lịch sử tải FireSmokeHistory và PPEHistory tương ứng."
+  - path: "frontend/src/pages/AIModuleDetail/components/firesmoke/FireSmokeHistory.jsx"
+    kind: component
+    note: "Xác minh bộ lọc, Tìm kiếm, Làm mới, danh sách và thao tác xem chi tiết cảnh báo cháy/khói."
+  - path: "frontend/src/pages/AIModuleDetail/components/ppe/PPEHistory.jsx"
+    kind: component
+    note: "Xác minh bộ lọc, Tìm kiếm, Làm mới, danh sách và thao tác xem chi tiết sự kiện PPE."
+  - path: "frontend/src/i18n/locales/vi/modules.json"
+    kind: i18n
+    note: "Xác minh nhãn module FIRE, PPE và các tab lịch sử."
+  - path: "frontend/src/utils/aiModuleTabs.test.js"
+    kind: test
+    note: "Xác minh FIRE chỉ có các tab alerts và statistics, không có zones."
+last_verified: "2026-09-16"

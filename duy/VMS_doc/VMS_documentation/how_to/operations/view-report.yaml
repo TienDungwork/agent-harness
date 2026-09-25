@@ -1,0 +1,89 @@
+schema_version: "1.0.0"
+id: "operations.view-report"
+type: "how_to"
+status: "published"
+locale: "vi"
+version: 1
+title: "Xem báo cáo"
+intent: "view_report"
+aliases:
+  - "mở trang báo cáo"
+  - "xem báo cáo thống kê"
+  - "xem báo cáo của tổ chức"
+  - "lọc báo cáo sự cố"
+module: "operations"
+tags:
+  - "báo cáo"
+  - "thống kê"
+  - "bộ lọc"
+roles:
+  - "Người dùng đã đăng nhập được cấp tính năng báo cáo"
+features:
+  - "retail-report"
+route: "/report"
+menu_path:
+  - "Báo cáo"
+preconditions:
+  - "Đã đăng nhập."
+  - "Tính năng retail-report được bật cho tổ chức."
+summary: "Mở mục báo cáo của tổ chức tại route /report, sau đó dùng các tab và bộ lọc đang hiển thị; nội dung báo cáo thay đổi theo business type."
+steps:
+  - order: 1
+    say: "Mở mục Báo cáo đang hiển thị trên thanh điều hướng của tổ chức."
+    ui:
+      label: "Báo cáo"
+      i18n_key: "enterprisePages.kcnReport"
+      element_id: null
+    note: "Tên mục và nội dung báo cáo có thể khác theo business type của tổ chức."
+  - order: 2
+    say: "Kiểm tra tiêu đề, tab và bộ lọc trên trang rồi chọn phạm vi báo cáo phù hợp với nhu cầu."
+    note: "Không dùng bộ lọc hoặc tab của một business type để suy ra giao diện của business type khác."
+  - order: 3
+    say: "Nếu trang hiển thị Báo cáo & Thống kê Tổng hợp, có thể nhập từ khóa vào Tìm kiếm và chọn Mức độ cùng Trạng thái xử lý để lọc sự cố."
+    ui:
+      label: "Tìm kiếm"
+      i18n_key: "common.search"
+      element_id: null
+  - order: 4
+    say: "Trên Báo cáo & Thống kê Tổng hợp, chọn Tháng này hoặc Tuần này để đổi khung thời gian đang xem."
+    ui:
+      label: "Tháng này"
+      i18n_key: "kcn.reports.thisMonth"
+      element_id: null
+  - order: 5
+    say: "Xem danh sách hoặc số liệu báo cáo sau khi áp dụng các lựa chọn đang có trên trang."
+verify: "Trang báo cáo dành cho business type hiện tại được hiển thị; nếu là Báo cáo & Thống kê Tổng hợp, danh sách và tổng số sự cố phản ánh bộ lọc đã chọn."
+errors:
+  - if: "Không thấy mục Báo cáo hoặc bị chuyển sang màn hình khác."
+    then: "Đề nghị quản trị viên kiểm tra tính năng retail-report và cấu hình menu của tổ chức."
+  - if: "Không có kết quả sau khi lọc."
+    then: "Kiểm tra lại từ khóa, khung thời gian và các bộ lọc đang chọn trên chính trang báo cáo hiện tại."
+sources:
+  - path: "frontend/src/App.jsx"
+    kind: "route"
+    note: "Route /report và /reports dùng RequireAuth, ReportRoute và feature retail-report."
+  - path: "frontend/src/core/registry/reportRegistry.js"
+    kind: "component"
+    note: "Phân giải component báo cáo theo business type, gồm báo cáo platform, traffic, general và fallback."
+  - path: "frontend/src/features/platform/reports/PlatformReportPage.jsx"
+    kind: "component"
+    note: "Xác minh tiêu đề báo cáo tổng hợp, tìm kiếm, lọc mức độ, lọc trạng thái, khung thời gian và danh sách kết quả."
+  - path: "frontend/src/contexts/OrganizationBusinessContext.jsx"
+    kind: "component"
+    note: "Xác minh mục, nhãn và các tab báo cáo có thể được cấu hình khác nhau theo business type."
+  - path: "frontend/src/core/registry/enterpriseModuleRegistry.jsx"
+    kind: "component"
+    note: "Khai báo mục Báo cáo tại route /report cho registry nền tảng."
+  - path: "frontend/src/i18n/locales/vi/common.json"
+    kind: "i18n"
+    note: "Nguồn nhãn báo cáo theo doanh nghiệp và nhãn Tìm kiếm."
+  - path: "frontend/src/i18n/locales/vi/kcn.json"
+    kind: "i18n"
+    note: "Nguồn tiêu đề, khung thời gian và nhãn xuất của Báo cáo & Thống kê Tổng hợp."
+  - path: "frontend/src/i18n/locales/vi/generated.json"
+    kind: "i18n"
+    note: "Nguồn nhãn Trạng thái xử lý và thông báo không có báo cáo phù hợp."
+  - path: "frontend/cypress/e2e/10-system-storage-and-reports.cy.js"
+    kind: "test"
+    note: "Kiểm tra /report và /reports render, thao tác bộ lọc, khoảng thời gian và route chuyển tiếp."
+last_verified: "2026-09-16"

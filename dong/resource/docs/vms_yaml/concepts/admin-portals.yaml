@@ -1,0 +1,81 @@
+schema_version: "1.0.0"
+id: concept.admin_portals
+type: concept
+status: published
+locale: vi
+version: 1
+title: "Phân biệt Quản trị Hệ thống và Admin Portal"
+intent: distinguish_admin_portals
+aliases:
+  - "phân biệt system và admin"
+  - "trang quản trị hệ thống ở đâu"
+  - "admin portal dành cho ai"
+  - "khác nhau giữa /system và /admin"
+module: access-control
+tags:
+  - quan-tri
+  - system
+  - admin
+  - quyen
+  - portal
+roles:
+  - authenticated_user
+features:
+  - none
+route: null
+preconditions:
+  - "Người dùng đã đăng nhập."
+summary: "VMS có khu vực Quản trị Hệ thống trong Portal Người dùng và một Admin Portal riêng; quyền mở, điều hướng và phạm vi chức năng của hai khu vực không giống nhau."
+answer: >-
+  /system là màn hình Quản Trị Hệ Thống bên trong Portal Người dùng. Route này
+  dành cho tài khoản được phép xem hệ thống, gồm Quản trị viên hệ thống,
+  Super Admin và Quản trị viên tổ chức hoặc công ty; tài khoản Site Admin,
+  Area Admin, Zone Admin hoặc người dùng thường không có thêm vai trò quản trị
+  phù hợp sẽ được chuyển về Dashboard. Các tab trong /system có thể gồm Tài
+  khoản hiện tại, Quản lý tổ chức, Quản trị phòng ban, Quản trị người dùng,
+  Phân quyền hệ thống, License và Cấu hình thông báo; danh sách thực tế tiếp tục
+  thay đổi theo quyền và loại hình nghiệp vụ. /admin là Admin Portal có layout
+  và menu riêng cho quản trị tổ chức, phân quyền, bản quyền, tài khoản và giám
+  sát. Guard của /admin chấp nhận tài khoản có quyền quản trị hệ thống, quản trị
+  tổ chức hoặc công ty, cờ admin phù hợp hoặc vai trò SUPER_ADMIN; tài khoản
+  không đạt điều kiện được chuyển về trang đăng nhập. Trên Portal Người dùng,
+  nút Quản trị dẫn tới /admin/overview chỉ hiển thị cho Super Admin hoặc quản
+  trị viên hệ thống theo điều kiện của Header. Việc vào được một portal không
+  đồng nghĩa mọi chức năng bên trong đều được phép: chỉ sử dụng các mục đang
+  hiển thị và đúng phạm vi tài khoản. Từ Admin Portal có thể chọn Về Portal
+  Người dùng để quay lại /dashboard.
+sources:
+  - path: "frontend/src/App.jsx"
+    kind: route
+    note: "Xác minh cấu trúc route /system trong MainLayout, route /admin với AdminGuard và AdminLayout, cùng điều kiện chuyển hướng."
+  - path: "frontend/src/routes/AdminGuard.jsx"
+    kind: component
+    note: "Xác minh các nhóm quyền được vào Admin Portal và hành vi chuyển về trang đăng nhập khi không được phép."
+  - path: "frontend/src/pages/System/System.jsx"
+    kind: component
+    note: "Xác minh các tab Quản trị Hệ thống và việc lọc tab theo quyền, loại hình nghiệp vụ."
+  - path: "frontend/src/layouts/AdminLayout.jsx"
+    kind: component
+    note: "Xác minh menu riêng của Admin Portal và mục Về Portal Người dùng."
+  - path: "frontend/src/components/layout/Header.jsx"
+    kind: component
+    note: "Xác minh nút Quản trị dẫn tới /admin/overview chỉ hiển thị cho Super Admin hoặc quản trị viên hệ thống theo điều kiện Header."
+  - path: "frontend/src/contexts/UserContext.jsx"
+    kind: component
+    note: "Xác minh quyền xem /system cho quản trị viên hệ thống, tổ chức và công ty."
+  - path: "frontend/src/i18n/locales/vi/common.json"
+    kind: i18n
+    note: "Xác minh nhãn Quản Trị Hệ Thống, các tab /system và nút Quản trị."
+  - path: "frontend/src/i18n/locales/vi/kcn.json"
+    kind: i18n
+    note: "Xác minh nhãn menu Admin Portal và Về Portal Người dùng."
+  - path: "frontend/src/contexts/UserContext.test.jsx"
+    kind: test
+    note: "Kiểm tra /system cho phép Super Admin, Org Admin, Company Admin và từ chối các vai trò phạm vi thấp hơn khi không có thêm vai trò phù hợp."
+  - path: "frontend/src/pages/System/__tests__/SystemLicenseAccess.test.jsx"
+    kind: test
+    note: "Kiểm tra tab quản trị thay đổi theo Super Admin, Org Admin và người dùng thường."
+  - path: "frontend/tests/pages.spec.js"
+    kind: test
+    note: "Kiểm tra route /system xử lý đúng trạng thái hệ thống, chuyển Dashboard hoặc trang đăng nhập theo phiên và quyền."
+last_verified: "2026-09-16"

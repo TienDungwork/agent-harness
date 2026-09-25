@@ -1,0 +1,67 @@
+schema_version: "1.0.0"
+id: "how-to.ai.open-module"
+type: how_to
+status: published
+locale: vi
+version: 1
+title: "Mở một module AI đang khả dụng"
+intent: "open_ai_module"
+aliases:
+  - "mở module AI"
+  - "vào chức năng AI"
+  - "chọn dịch vụ AI"
+module: "ai"
+tags:
+  - "module AI"
+  - "Dịch Vụ"
+  - "mở module"
+  - "thanh bên"
+roles:
+  - "authenticated_user"
+features:
+  - "ai_module_enabled_for_organization"
+route: null
+menu_path:
+  - "Dịch Vụ"
+  - "Module AI đang hiển thị"
+preconditions:
+  - "Người dùng đã đăng nhập vào VMS."
+  - "Module cần mở đang xuất hiện trong nhóm Dịch Vụ."
+summary: "Mở module AI từ nhóm Dịch Vụ trong thanh bên để dùng đúng route và tab đang khả dụng cho tổ chức."
+steps:
+  - order: 1
+    say: "Trong thanh bên, tìm nhóm Dịch Vụ."
+    ui:
+      label: "Dịch Vụ"
+      i18n_key: "sidebar.groups.aiServices"
+      element_id: null
+  - order: 2
+    say: "Chọn tên module AI đang hiển thị trong nhóm Dịch Vụ; không tự suy đoán module chưa có trong menu."
+  - order: 3
+    say: "Chờ trang module tải và sử dụng tab được mở mặc định; chỉ chọn các tab đang hiển thị cho module đó."
+verify: "Nội dung của module và một tab khả dụng được hiển thị; khi cần, trang tự bổ sung hoặc điều chỉnh tab trên route hiện tại."
+errors:
+  - if: "Không thấy nhóm Dịch Vụ hoặc module cần mở."
+    then: "Kiểm tra lại quyền, feature, loại tổ chức và module được bật với quản trị viên tổ chức."
+  - if: "Trang báo không tìm thấy module."
+    then: "Quay lại thanh bên và chỉ mở module đang được hiển thị; nếu vẫn lỗi, liên hệ quản trị viên tổ chức."
+sources:
+  - path: "frontend/src/components/layout/Sidebar.jsx"
+    kind: component
+    note: "Xác minh nhóm Dịch Vụ, module AI động, route chuyên biệt và thao tác điều hướng."
+  - path: "frontend/src/App.jsx"
+    kind: route
+    note: "Xác minh route chi tiết module AI yêu cầu đăng nhập."
+  - path: "frontend/src/pages/AIModuleDetail/AIModuleDetail.jsx"
+    kind: component
+    note: "Xác minh tải module, tab mặc định, tab khả dụng và trạng thái không tìm thấy module."
+  - path: "frontend/src/utils/aiModuleTabs.js"
+    kind: component
+    note: "Xác minh tab mặc định theo module và tổ chức."
+  - path: "frontend/src/i18n/locales/vi/common.json"
+    kind: i18n
+    note: "Xác minh nhãn Dịch Vụ."
+  - path: "frontend/src/i18n/locales/vi/modules.json"
+    kind: i18n
+    note: "Xác minh nhãn module và tab tiếng Việt."
+last_verified: "2026-09-16"

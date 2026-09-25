@@ -1,0 +1,75 @@
+# Demo / production dong (frontend + backend). Langfuse riêng: langfuse/docker-compose.yml
+
+name: kcn-hungphu-agent
+
+services:
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: kcn_hungphu_frontend
+    restart: unless-stopped
+    ports:
+      - "${FRONTEND_PORT:-8080}:80"
+    volumes:
+      - ./frontend/nginx.conf:/etc/nginx/conf.d/default.conf:ro
+      - ./frontend/index.html:/usr/share/nginx/html/index.html:ro
+      - ./frontend/style.css:/usr/share/nginx/html/style.css:ro
+      - ./frontend/app.js:/usr/share/nginx/html/app.js:ro
+    depends_on:
+      ai_backend:
+        condition: service_healthy
+    networks:
+      - kcn_network
+
+  ai_backend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: kcn_hungphu_backend
+    restart: unless-stopped
+    ports:
+      - "${BACKEND_PORT:-8000}:8000"
+    volumes:
+      - ./src:/app/src
+      - ./resource:/app/resource
+      - ./data:/app/data
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      PORT: "8000"
+      LLM_BACKEND: ${LLM_BACKEND:-self_hosted}
+      MODEL_BASE_URL: ${MODEL_BASE_URL:-http://192.168.1.196:18083/v1}
+      MODEL_NAME: ${MODEL_NAME:-qwen3-4b}
+      MODEL_API_KEY: ${MODEL_API_KEY:-}
+      MODEL_ENDPOINT: ${MODEL_ENDPOINT:-http://192.168.1.196:18083/v1/chat/completions}
+      MONITORING_ENABLED: ${MONITORING_ENABLED:-false}
+      MEMORY_ENABLED: ${MEMORY_ENABLED:-true}
+      MEMORY_SHORT_TERM_ENABLED: ${MEMORY_SHORT_TERM_ENABLED:-true}
+      MEMORY_LONG_TERM_ENABLED: ${MEMORY_LONG_TERM_ENABLED:-true}
+      CACHE_ENABLED: ${CACHE_ENABLED:-true}
+      CACHE_TTL_S: ${CACHE_TTL_S:-60}
+      MEMORY_TTL_SECONDS: ${MEMORY_TTL_SECONDS:-300}
+      AGENT_DECOMPOSE_MIN_CHARS: ${AGENT_DECOMPOSE_MIN_CHARS:-48}
+      AGENT_MAX_SUB_QUESTIONS: ${AGENT_MAX_SUB_QUESTIONS:-4}
+      LANGFUSE_PUBLIC_KEY: ${LANGFUSE_PUBLIC_KEY:-}
+      LANGFUSE_SECRET_KEY: ${LANGFUSE_SECRET_KEY:-}
+      # Langfuse stack riêng (langfuse/) — không dùng LANGFUSE_HOST từ .env (localhost)
+      LANGFUSE_HOST: http://host.docker.internal:3000
+      DB_TIMEZONE: ${DB_TIMEZONE:-Asia/Ho_Chi_Minh}
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/api/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+    networks:
+      - kcn_network
+
+networks:
+  kcn_network:
+    name: kcn_hungphu_network
+    driver: bridge

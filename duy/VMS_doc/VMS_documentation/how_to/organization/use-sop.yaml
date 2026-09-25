@@ -1,0 +1,88 @@
+schema_version: "1.0.0"
+id: "organization.use-sop"
+type: "how_to"
+status: "published"
+locale: "vi"
+version: 1
+title: "Xem một quy trình SOP"
+intent: "view_sop_workflow"
+aliases:
+  - "xem sơ đồ quy trình sop"
+  - "mở chi tiết workflow xử lý sự cố"
+  - "tra cứu luồng sop"
+module: "organization"
+tags:
+  - "sop"
+  - "workflow"
+  - "chỉ xem"
+roles:
+  - "Người dùng đã đăng nhập có quyền xem SOP"
+features:
+  - "org-sop"
+route: "/org/sop"
+menu_path:
+  - "Quy trình SOP"
+preconditions:
+  - "Đã đăng nhập."
+  - "Feature org-sop được bật và tài khoản có quyền xem SOP."
+  - "Quy trình cần xem xuất hiện trong Danh mục quy trình (SOP)."
+summary: "Mở Quy trình SOP, tìm quy trình cần tra cứu và chọn Xem để mở sơ đồ ở chế độ Chỉ xem; card này không hướng dẫn tạo, sửa hoặc cấu hình khối API."
+steps:
+  - order: 1
+    say: "Mở Quy trình SOP."
+    ui:
+      label: "Quy trình SOP"
+      i18n_key: null
+      element_id: null
+  - order: 2
+    say: "Trong Danh mục quy trình (SOP), nhập mã, tên hoặc ghi chú vào ô tìm kiếm nếu cần thu hẹp danh sách."
+    ui:
+      label: "Tìm theo mã SOP, tên quy trình, ghi chú..."
+      i18n_key: "sop.workflows.filter.searchPlaceholder"
+      element_id: null
+    note: "Có thể bỏ qua bước tìm kiếm khi quy trình đã hiện trong danh sách."
+  - order: 3
+    say: "Tại dòng quy trình cần tra cứu, chọn Xem."
+    ui:
+      label: "Xem"
+      i18n_key: "sop.workflows.actions.view"
+      element_id: null
+    note: "Người có quyền chỉnh sửa thấy hành động xem dưới biểu tượng con mắt với tiêu đề Xem chi tiết sơ đồ."
+  - order: 4
+    say: "Quan sát sơ đồ, các khối, nhánh và thông tin SLA trong chế độ Chỉ xem."
+    ui:
+      label: "Chỉ xem"
+      i18n_key: "sop.designer.readOnly"
+      element_id: null
+verify: "Trang thiết kế mở đúng quy trình với trạng thái Chỉ xem và không cho thêm, sửa hoặc xóa khối."
+errors:
+  - if: "Không thấy menu Quy trình SOP."
+    then: "Kiểm tra feature org-sop và quyền xem SOP với quản trị viên."
+  - if: "Không tìm thấy quy trình trong danh sách."
+    then: "Xóa hoặc đổi từ khóa tìm kiếm và kiểm tra bộ lọc nhóm sự cố, trạng thái hoặc phạm vi tổ chức."
+sources:
+  - path: "frontend/src/App.jsx"
+    kind: "route"
+    note: "Xác minh /org/sop và /org/sop/designer yêu cầu đăng nhập cùng feature org-sop."
+  - path: "frontend/src/components/layout/Sidebar.jsx"
+    kind: "component"
+    note: "Xác minh nhãn Quy trình SOP, route và điều kiện feature/quyền xem."
+  - path: "frontend/src/features/platform/sop/SopListPage.jsx"
+    kind: "component"
+    note: "Xác minh danh mục, tìm kiếm, hành động Xem và điều hướng designer với mode=view."
+  - path: "frontend/src/features/platform/sop/SopDesignerPage.jsx"
+    kind: "component"
+    note: "Xác minh mode=view khóa chỉnh sửa và hiển thị trạng thái Chỉ xem."
+  - path: "frontend/src/utils/rolePermissions.js"
+    kind: "component"
+    note: "Xác minh capability canViewSop tách khỏi capability quản lý SOP."
+  - path: "frontend/src/i18n/locales/vi/sop.json"
+    kind: "i18n"
+    note: "Nguồn nhãn danh mục, tìm kiếm, Xem và Chỉ xem."
+  - path: "frontend/src/features/platform/sop/__tests__/SopWorkflowList.test.jsx"
+    kind: "test"
+    note: "Kiểm tra tải danh sách và tìm quy trình theo mã."
+  - path: "frontend/src/features/platform/sop/__tests__/SopDesignerI18n.test.jsx"
+    kind: "test"
+    note: "Kiểm tra thông báo Chế độ Chỉ Xem khi designer không có quyền chỉnh sửa."
+last_verified: "2026-09-16"

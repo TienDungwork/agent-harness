@@ -1,0 +1,79 @@
+schema_version: "1.0.0"
+id: operations.export_playback_clip
+type: how_to
+status: published
+locale: vi
+version: 1
+title: "Xuất một đoạn video từ Phát Lại"
+intent: export_playback_clip
+aliases:
+  - "tải đoạn camera"
+  - "xuất clip playback"
+  - "cắt video bản ghi"
+  - "download video camera"
+module: playback
+tags:
+  - playback
+  - export
+  - clip
+  - download
+roles:
+  - authenticated_user
+features:
+  - playback
+route: "/playback"
+menu_path:
+  - "Vận hành"
+  - "Phát Lại"
+preconditions:
+  - "Đã chọn camera và ngày có bản ghi."
+  - "Timeline đã hiển thị các khoảng có video."
+summary: "Chọn một vùng thời gian có bản ghi trên timeline rồi chọn Xuất vùng chọn để tạo và tải clip."
+steps:
+  - order: 1
+    say: "Trong Phát Lại, chọn đúng camera và ngày chứa đoạn cần xuất."
+  - order: 2
+    say: "Kéo trên timeline để chọn thời điểm bắt đầu và kết thúc của clip; ưu tiên vùng được bản ghi bao phủ."
+    note: "Thời điểm kết thúc phải sau thời điểm bắt đầu và độ dài clip không được vượt giới hạn giao diện."
+  - order: 3
+    say: "Kiểm tra vùng đã chọn trên timeline; nếu chọn sai, chọn Hủy chọn rồi chọn lại."
+    ui:
+      label: "Hủy chọn"
+      i18n_key: "generated.Playback.huyChon"
+      element_id: null
+  - order: 4
+    say: "Chọn Xuất vùng chọn."
+    ui:
+      label: "Xuất vùng chọn"
+      i18n_key: "generated.Playback.xuatVungChon"
+      element_id: null
+  - order: 5
+    say: "Chờ hệ thống xuất và chuẩn bị tải xuống; không đóng trang khi tiến trình đang chạy."
+    ui:
+      label: "Đang xuất và chuẩn bị tải xuống"
+      i18n_key: "generated.Playback.dangXuatVaChuanBiTaiXuong"
+      element_id: null
+verify: "Hệ thống thông báo xuất clip thành công và trình duyệt tải file video về thiết bị."
+errors:
+  - if: "Hệ thống yêu cầu chọn vùng clip trên timeline."
+    then: "Kéo chọn đủ mốc bắt đầu và kết thúc trước khi xuất."
+  - if: "Thời điểm kết thúc không sau thời điểm bắt đầu."
+    then: "Hủy vùng chọn và chọn lại theo đúng thứ tự thời gian."
+  - if: "Khoảng chọn không có video hoặc vượt thời lượng cho phép."
+    then: "Chọn vùng ngắn hơn và nằm trong khoảng có bản ghi."
+  - if: "Xuất clip thất bại."
+    then: "Ghi lại camera, ngày, giờ bắt đầu/kết thúc và thông báo lỗi để gửi quản trị viên."
+related:
+  - operations.view_playback
+  - troubleshooting.playback_no_recording
+sources:
+  - path: "frontend/src/pages/Playback/Playback.jsx"
+    kind: component
+    note: "Triển khai chọn vùng timeline, kiểm tra thời lượng/coverage, xuất clip, tải file và hủy tiến trình."
+  - path: "frontend/src/i18n/locales/vi/generated.json"
+    kind: i18n
+    note: "Nhãn Hủy chọn, Xuất vùng chọn và tiến trình tải."
+  - path: "frontend/src/i18n/locales/vi/playback.json"
+    kind: i18n
+    note: "Thông báo validation và kết quả xuất clip."
+last_verified: "2026-09-16"

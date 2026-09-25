@@ -1,0 +1,99 @@
+schema_version: "1.0.0"
+id: "organization.configure-floorplan"
+type: "how_to"
+status: "published"
+locale: "vi"
+version: 1
+title: "Vẽ ranh giới GPS trên sơ đồ mặt bằng"
+intent: "draw_floorplan_boundary"
+aliases:
+  - "vẽ boundary trên floorplan"
+  - "tạo ranh giới gps cho site area zone"
+  - "cấu hình polygon sơ đồ mặt bằng"
+module: "organization"
+tags:
+  - "sơ đồ mặt bằng"
+  - "ranh giới gps"
+  - "polygon"
+roles:
+  - "Quản trị viên có quyền quản lý sơ đồ mặt bằng"
+features:
+  - "floorplan"
+route: "/org/floorplan"
+menu_path:
+  - "Sơ đồ mặt bằng"
+preconditions:
+  - "Đã đăng nhập và có quyền canManageFloorplan, Org Admin hoặc Super Admin."
+  - "Site, Area hoặc Zone cần vẽ đã tồn tại trong cây tổ chức."
+  - "Khi vẽ Area, Site cha phải có ranh giới; khi vẽ Zone, Area cha phải có polygon từ ít nhất 3 điểm."
+summary: "Card này chỉ hướng dẫn vẽ ranh giới GPS cho Site, Area hoặc Zone. Ghim camera là luồng riêng trong tab Cam và chỉ hợp lệ khi camera nằm trong polygon được gán."
+steps:
+  - order: 1
+    say: "Mở Sơ đồ mặt bằng."
+    ui:
+      label: "Sơ đồ mặt bằng"
+      i18n_key: "kcn.floorplan.navLabel"
+      element_id: null
+  - order: 2
+    say: "Trong tab Ranh giới, chọn Cơ sở, Khu vực và Phân khu cần cấu hình."
+    ui:
+      label: "Ranh giới"
+      i18n_key: "kcn.zones.gpsHierarchyTab"
+      element_id: null
+    note: "Tab Cam dùng để ghim vị trí camera, không phải để vẽ boundary."
+  - order: 3
+    say: "Tại đối tượng cần cấu hình, chọn Vẽ ranh giới; nếu đã có polygon, nút hiển thị Sửa ranh giới."
+    ui:
+      label: "Vẽ ranh giới"
+      i18n_key: "kcn.zones.drawBoundary"
+      element_id: null
+    note: "Nên vẽ theo thứ tự Site, Area, rồi Zone để có đủ ranh giới cha."
+  - order: 4
+    say: "Nhấp trên bản đồ để tạo tối thiểu 3 điểm GPS cho polygon."
+    ui:
+      label: "Nhấp trên bản đồ để thêm điểm. Nhấp lại điểm số 1 hoặc bấm nút xanh để hoàn tất."
+      i18n_key: "kcn.floorplan.drawingHint"
+      element_id: null
+    note: "Site không được chồng lấn Site khác; Area phải nằm hoàn toàn trong Site cha và không chồng lấn Area cùng Site; Zone phải nằm hoàn toàn trong Area cha và không chồng lấn Zone cùng Area."
+  - order: 5
+    say: "Chọn Hoàn tất & Lưu GPS."
+    ui:
+      label: "Hoàn tất & Lưu GPS"
+      i18n_key: "kcn.gisDrawer.finishSaveGps"
+      element_id: null
+verify: "Ranh giới đã lưu hiển thị lại trên bản đồ và đối tượng có trạng thái số điểm GPS thay cho Chưa vẽ."
+errors:
+  - if: "Nút Hoàn tất & Lưu GPS chưa bật."
+    then: "Tiếp tục chấm cho đủ tối thiểu 3 điểm GPS."
+  - if: "Không thể bắt đầu hoặc lưu ranh giới Area."
+    then: "Kiểm tra Site cha đã có polygon; toàn bộ Area phải nằm trong Site cha và không chồng lấn Area cùng Site."
+  - if: "Không thể bắt đầu hoặc lưu ranh giới Zone."
+    then: "Kiểm tra Area cha có polygon từ ít nhất 3 điểm; toàn bộ Zone phải nằm trong Area cha và không chồng lấn Zone cùng Area."
+  - if: "Mục tiêu thực tế là ghim camera."
+    then: "Chuyển sang tab Cam, chọn camera rồi chấm vị trí; camera đã gán Zone phải nằm trong polygon Zone, hoặc nằm trong polygon Area nếu chưa gán Zone."
+sources:
+  - path: "frontend/src/App.jsx"
+    kind: "route"
+    note: "Xác minh route /org/floorplan yêu cầu đăng nhập và mở FloorplanDrawingPage."
+  - path: "frontend/src/components/layout/Sidebar.jsx"
+    kind: "component"
+    note: "Xác minh nhãn Sơ đồ mặt bằng và điều kiện hiển thị theo quyền quản lý floorplan."
+  - path: "frontend/src/features/platform/floorplan/FloorplanDrawingPage.jsx"
+    kind: "component"
+    note: "Xác minh workspace GIS và các hàm lưu polygon Site, Area, Zone cùng vị trí camera."
+  - path: "frontend/src/features/platform/floorplan/GisMapPolygonDrawer.jsx"
+    kind: "component"
+    note: "Xác minh tab Ranh giới tách khỏi tab Cam, tối thiểu 3 điểm, điều kiện containment/overlap và ràng buộc vị trí camera."
+  - path: "frontend/src/utils/rolePermissions.js"
+    kind: "component"
+    note: "Xác minh capability canManageFloorplan cho các vai trò và quyền chi tiết phù hợp."
+  - path: "frontend/src/i18n/locales/vi/kcn.json"
+    kind: "i18n"
+    note: "Nguồn nhãn tiếng Việt và thông báo validation của thao tác vẽ polygon, lưu GPS và ghim camera."
+  - path: "frontend/src/features/platform/floorplan/GisMapPolygonDrawer.test.jsx"
+    kind: "test"
+    note: "Kiểm tra luồng vẽ, nút hoàn tất, tab camera và thuật toán điểm nằm trong polygon."
+  - path: "frontend/src/features/platform/floorplan/FloorplanDrawingPage.test.jsx"
+    kind: "test"
+    note: "Kiểm tra workspace GIS, parsing polygon và containment."
+last_verified: "2026-09-16"

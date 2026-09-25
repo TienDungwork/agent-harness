@@ -1,0 +1,284 @@
+schema_version: "1.0.0"
+locale: vi
+last_verified: "2026-09-16"
+
+entries:
+  - key: nav.dashboard
+    label: "Dashboard"
+    i18n_key: "sidebar.dashboard"
+    route: "/dashboard"
+    aliases: ["bảng điều khiển", "tổng quan", "trang chủ"]
+    source: "frontend/src/i18n/locales/vi/common.json"
+
+  - key: nav.live_monitoring
+    label: "Giám Sát Trực Tiếp"
+    i18n_key: "sidebar.liveMonitoring"
+    route: "/monitoring"
+    aliases: ["xem trực tiếp", "live view", "xem camera"]
+    source: "frontend/src/i18n/locales/vi/common.json"
+
+  - key: nav.playback
+    label: "Phát Lại"
+    i18n_key: "sidebar.playback"
+    route: "/playback"
+    aliases: ["xem lại", "bản ghi", "playback"]
+    source: "frontend/src/i18n/locales/vi/common.json"
+
+  - key: nav.map
+    label: "Bản Đồ Quốc Gia"
+    i18n_key: "sidebar.nationalMap"
+    route: "/map"
+    aliases: ["bản đồ", "map", "vị trí camera"]
+    source: "frontend/src/i18n/locales/vi/common.json"
+
+  - key: nav.events
+    label: "Quản lý sự kiện"
+    i18n_key: "sidebar.eventsAlerts"
+    route: "/events"
+    aliases: ["sự kiện", "cảnh báo", "event"]
+    source: "frontend/src/i18n/locales/vi/common.json"
+
+  - key: nav.devices
+    label: "Quản Lý Camera"
+    i18n_key: "sidebar.deviceManagement"
+    route: "/devices"
+    aliases: ["camera", "thiết bị camera", "quản lý cam"]
+    source: "frontend/src/i18n/locales/vi/common.json"
+
+  - key: nav.edge_nodes
+    label: "Quản Lý thiết bị biên"
+    i18n_key: "sidebar.edgeNodes"
+    route: "/edge-nodes"
+    aliases: ["edge node", "thiết bị biên", "edge box"]
+    source: "frontend/src/i18n/locales/vi/common.json"
+
+  - key: nav.iot_devices
+    label: "Quản lý thiết bị IoT"
+    i18n_key: "sidebar.iotDevices"
+    route: "/iot-devices"
+    aliases: ["iot", "cảm biến", "thiết bị iot"]
+    source: "frontend/src/i18n/locales/vi/common.json"
+
+  - key: nav.iot_history
+    label: "Lịch sử thiết bị IoT"
+    i18n_key: "sidebar.iotHistory"
+    route: "/iot-history"
+    aliases: ["lịch sử iot", "dữ liệu cảm biến", "iot history"]
+    source: "frontend/src/i18n/locales/vi/common.json"
+
+  - key: nav.storage
+    label: "Quản Lý Lưu Trữ"
+    i18n_key: "sidebar.storageManagement"
+    route: "/storage"
+    aliases: ["lưu trữ", "storage", "dung lượng"]
+    source: "frontend/src/i18n/locales/vi/common.json"
+
+  - key: nav.system
+    label: "Quản Trị Hệ Thống"
+    i18n_key: "sidebar.systemManagement"
+    route: "/system"
+    aliases: ["quản trị", "hệ thống", "system"]
+    source: "frontend/src/i18n/locales/vi/common.json"
+
+  - key: nav.help
+    label: "Trợ giúp"
+    i18n_key: "sidebar.help"
+    route: "/help"
+    aliases: ["hỗ trợ", "help", "trung tâm trợ giúp"]
+    source: "frontend/src/i18n/locales/vi/common.json"
+
+  - key: group.operations
+    label: "Vận hành"
+    i18n_key: "sidebar.groups.operations"
+    route: null
+    aliases: ["menu vận hành", "nghiệp vụ vận hành", "operations"]
+    source: "frontend/src/i18n/locales/vi/common.json"
+
+  - key: group.ai_services
+    label: "Dịch Vụ"
+    i18n_key: "sidebar.groups.aiServices"
+    route: null
+    aliases: ["dịch vụ ai", "module ai", "hệ thống ai"]
+    source: "frontend/src/i18n/locales/vi/common.json"
+
+  - key: group.configuration
+    label: "Cấu hình & Thiết bị"
+    i18n_key: "sidebar.groups.configuration"
+    route: null
+    aliases: ["cấu hình", "thiết bị", "configuration"]
+    source: "frontend/src/i18n/locales/vi/common.json"
+
+  - key: system.current_account
+    label: "Tài khoản hiện tại"
+    i18n_key: "system.currentAccount"
+    route: "/system?tab=me"
+    aliases: ["tài khoản của tôi", "hồ sơ", "thông tin cá nhân"]
+    source: "frontend/src/i18n/locales/vi/common.json"
+
+  - key: system.organization
+    label: "Quản lý tổ chức"
+    i18n_key: "system.organizationManagement"
+    route: "/system?tab=organization"
+    aliases: ["tổ chức", "đơn vị", "organization"]
+    source: "frontend/src/i18n/locales/vi/common.json"
+
+  - key: system.departments
+    label: "Quản trị phòng ban"
+    i18n_key: "system.departmentManagement"
+    route: "/system?tab=departments"
+    aliases: ["phòng ban", "department", "quản lý phòng"]
+    source: "frontend/src/i18n/locales/vi/common.json"
+
+  - key: system.users
+    label: "Quản trị người dùng"
+    i18n_key: "system.userManagement"
+    route: "/system?tab=users"
+    aliases: ["người dùng", "tài khoản", "users"]
+    source: "frontend/src/i18n/locales/vi/common.json"
+
+  - key: system.roles
+    label: "Phân quyền hệ thống"
+    i18n_key: "system.rolesPermissions"
+    route: "/system?tab=roles"
+    aliases: ["vai trò", "phân quyền", "roles"]
+    source: "frontend/src/i18n/locales/vi/common.json"
+
+  - key: system.alerts
+    label: "Cấu hình thông báo"
+    i18n_key: "system.alerts"
+    route: "/system?tab=alerts"
+    aliases: ["cấu hình cảnh báo", "kênh thông báo", "alerts"]
+    source: "frontend/src/i18n/locales/vi/common.json"
+
+  - key: org.hierarchy
+    label: "Cây tổ chức"
+    i18n_key: "kcn.adminMenu.kcnHierarchy"
+    route: "/org/hierarchy"
+    aliases: ["cây phân cấp", "hierarchy", "cấu trúc tổ chức"]
+    source: "frontend/src/i18n/locales/vi/kcn.json"
+
+  - key: org.sites
+    label: "Quản lý Cơ sở & Khu vực"
+    i18n_key: "kcn.adminMenu.kcnSites"
+    route: "/org/sites"
+    aliases: ["cơ sở", "site", "khu vực"]
+    source: "frontend/src/i18n/locales/vi/kcn.json"
+
+  - key: org.zones
+    label: "Quản lý Phân vùng & Camera"
+    i18n_key: "kcn.adminMenu.kcnZones"
+    route: "/org/zones"
+    aliases: ["phân vùng", "zone", "camera theo vùng"]
+    source: "frontend/src/i18n/locales/vi/kcn.json"
+
+  - key: org.floorplan
+    label: "Sơ đồ mặt bằng"
+    i18n_key: "kcn.floorplan.navLabel"
+    route: "/org/floorplan"
+    aliases: ["floorplan", "mặt bằng", "sơ đồ"]
+    source: "frontend/src/i18n/locales/vi/kcn.json"
+
+  - key: org.devices
+    label: "Gán thiết bị & AI"
+    i18n_key: "kcn.adminMenu.kcnDevices"
+    route: "/org/devices"
+    aliases: ["gán camera", "gán ai", "thiết bị theo vùng"]
+    source: "frontend/src/i18n/locales/vi/kcn.json"
+
+  - key: org.sop
+    label: "Quy trình SOP"
+    i18n_key: null
+    route: "/org/sop"
+    aliases: ["sop", "quy trình xử lý", "workflow"]
+    source: "frontend/src/components/layout/Sidebar.jsx"
+
+  - key: ai.face
+    label: "Nhận diện Khuôn mặt"
+    i18n_key: "modules.FACE.label"
+    route: "/ai-modules/face"
+    aliases: ["face", "khuôn mặt", "smart face"]
+    source: "frontend/src/i18n/locales/vi/modules.json"
+
+  - key: ai.plate
+    label: "Hệ thống giám sát phương tiện"
+    i18n_key: "modules.PLATE.label"
+    route: "/ai-modules/plate"
+    aliases: ["biển số", "anpr", "phương tiện"]
+    source: "frontend/src/i18n/locales/vi/modules.json"
+
+  - key: ai.fire
+    label: "Phát hiện Cháy"
+    i18n_key: "modules.FIRE.label"
+    route: "/ai-modules/fire"
+    aliases: ["cháy khói", "fire", "cảnh báo cháy"]
+    source: "frontend/src/i18n/locales/vi/modules.json"
+
+  - key: ai.ppe
+    label: "Giám sát PPE"
+    i18n_key: "modules.PPE.label"
+    route: "/ai-modules/ppe"
+    aliases: ["bảo hộ", "ppe", "an toàn lao động"]
+    source: "frontend/src/i18n/locales/vi/modules.json"
+
+  - key: ai.intrusion
+    label: "Phát hiện Xâm nhập"
+    i18n_key: "modules.INTRUSION.label"
+    route: "/ai-modules/intrusion"
+    aliases: ["xâm nhập", "vùng cấm", "intrusion"]
+    source: "frontend/src/i18n/locales/vi/modules.json"
+
+  - key: ai.zone
+    label: "Giám sát vùng cấm"
+    i18n_key: "modules.ZONE.label"
+    route: "/ai-modules/zone"
+    aliases: ["zone", "vùng giám sát", "hàng rào ảo"]
+    source: "frontend/src/i18n/locales/vi/modules.json"
+
+  - key: ai.counting
+    label: "Đếm người / ra vào"
+    i18n_key: "modules.COUNTING.label"
+    route: "/service/counting"
+    aliases: ["đếm người", "ra vào", "counting"]
+    source: "frontend/src/i18n/locales/vi/modules.json"
+
+  - key: ai.speech_to_text
+    label: "Chuyển Đổi Giọng Nói (Speech-to-Text)"
+    i18n_key: "modules.SPEECH_TO_TEXT.label"
+    route: "/ai-modules/speech_to_text"
+    aliases: ["speech to text", "âm thanh", "phân tích hội thoại"]
+    source: "frontend/src/i18n/locales/vi/modules.json"
+
+  - key: action.save
+    label: "Lưu"
+    i18n_key: "common.save"
+    route: null
+    aliases: ["lưu lại", "xác nhận lưu", "save"]
+    source: "frontend/src/i18n/locales/vi/common.json"
+
+  - key: action.delete
+    label: "Xóa"
+    i18n_key: "common.delete"
+    route: null
+    aliases: ["xóa bỏ", "loại bỏ", "delete"]
+    source: "frontend/src/i18n/locales/vi/common.json"
+
+  - key: action.search
+    label: "Tìm kiếm"
+    i18n_key: "common.search"
+    route: null
+    aliases: ["tra cứu", "lọc tìm", "search"]
+    source: "frontend/src/i18n/locales/vi/common.json"
+
+  - key: action.refresh
+    label: "Làm mới"
+    i18n_key: "common.refresh"
+    route: null
+    aliases: ["tải lại dữ liệu", "refresh", "cập nhật"]
+    source: "frontend/src/i18n/locales/vi/common.json"
+
+  - key: action.false_alarm
+    label: "Báo động giả"
+    i18n_key: "common.falseAlarm"
+    route: null
+    aliases: ["cảnh báo giả", "false alarm", "đánh dấu giả"]
+    source: "frontend/src/i18n/locales/vi/common.json"

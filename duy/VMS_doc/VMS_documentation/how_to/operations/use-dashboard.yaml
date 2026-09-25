@@ -1,0 +1,79 @@
+schema_version: "1.0.0"
+id: operations.use_dashboard
+type: how_to
+status: published
+locale: vi
+version: 1
+title: "Sử dụng Dashboard theo phạm vi tổ chức"
+intent: use_dashboard
+aliases:
+  - "mở dashboard"
+  - "xem bảng điều khiển"
+  - "xem tổng quan vận hành"
+  - "cách dùng dashboard"
+module: dashboard
+tags:
+  - dashboard
+  - tong-quan
+  - pham-vi
+  - to-chuc
+roles:
+  - authenticated_user
+features:
+  - dashboard
+route: "/dashboard"
+menu_path:
+  - "Dashboard"
+preconditions:
+  - "Người dùng đã đăng nhập."
+  - "Feature dashboard đã được bật cho tổ chức."
+summary: "Mở Dashboard và chỉ sử dụng các bộ lọc, tab, chỉ số đang hiển thị cho tổ chức và phạm vi tài khoản; nội dung Dashboard có thể khác theo loại hình nghiệp vụ, feature và quyền."
+steps:
+  - order: 1
+    say: "Trong thanh điều hướng, chọn Dashboard."
+    ui:
+      label: "Dashboard"
+      i18n_key: "sidebar.dashboard"
+      element_id: null
+  - order: 2
+    say: "Đợi Dashboard tải dữ liệu thuộc phạm vi tài khoản của bạn."
+  - order: 3
+    say: "Nếu Dashboard có bộ chọn cơ sở, hãy chọn cơ sở cần theo dõi; dữ liệu camera, thiết bị và cảnh báo sẽ đổi theo phạm vi đã chọn."
+    ui:
+      label: "Chọn cơ sở / Site"
+      i18n_key: null
+      element_id: null
+  - order: 4
+    say: "Chọn tab nghiệp vụ hoặc chế độ xem đang hiển thị phù hợp với thông tin cần theo dõi. Không suy ra tab của tổ chức khác nếu tab đó không có trên màn hình."
+  - order: 5
+    say: "Đọc các chỉ số, bản đồ, cảnh báo hoặc camera trong phạm vi đã chọn; chọn một đối tượng khi cần mở thông tin chi tiết."
+verify: "Dashboard hiển thị dữ liệu theo phạm vi đã chọn; danh sách tab, chỉ số và khối nội dung có thể thay đổi theo loại tổ chức, feature và quyền tài khoản."
+sources:
+  - path: "frontend/src/App.jsx"
+    kind: route
+    note: "Route /dashboard yêu cầu đăng nhập, feature dashboard và chọn component qua DashboardRoute."
+  - path: "frontend/src/core/registry/dashboardRegistry.js"
+    kind: component
+    note: "Dashboard được phân giải theo business type thay vì giả định một cấu hình cố định cho mọi tổ chức."
+  - path: "frontend/src/features/platform/dashboard/PlatformDashboard.jsx"
+    kind: component
+    note: "Dashboard lọc dữ liệu theo Site, Area, Zone, scope tài khoản và cung cấp các vùng KPI, bản đồ, cảnh báo, camera."
+  - path: "frontend/src/components/layout/Sidebar.jsx"
+    kind: component
+    note: "Menu Dashboard dùng route /dashboard và chỉ xuất hiện khi feature tương ứng được bật."
+  - path: "frontend/src/i18n/locales/vi/common.json"
+    kind: i18n
+    note: "Xác minh nhãn sidebar.dashboard là Dashboard."
+  - path: "frontend/src/i18n/locales/vi/kcn.json"
+    kind: i18n
+    note: "Xác minh nhãn tiếng Việt của các tab Dashboard chuyên đề."
+  - path: "frontend/src/features/platform/dashboard/PlatformDashboard.test.jsx"
+    kind: test
+    note: "Kiểm tra dữ liệu camera, IoT và truy vấn được giới hạn theo quyền và phạm vi Site/Area/Zone."
+  - path: "frontend/src/components/layout/HeaderTabs.test.jsx"
+    kind: test
+    note: "Kiểm tra tab Dashboard động và bộ chọn cơ sở."
+  - path: "frontend/tests/pages.spec.js"
+    kind: test
+    note: "Kiểm tra người dùng đã xác thực mở được route /dashboard."
+last_verified: "2026-09-16"

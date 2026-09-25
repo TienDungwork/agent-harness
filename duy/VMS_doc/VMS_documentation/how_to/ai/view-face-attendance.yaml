@@ -1,0 +1,102 @@
+schema_version: "1.0.0"
+id: ai.view_face_attendance
+type: how_to
+status: published
+locale: vi
+version: 1
+title: "Xem lịch sử chấm công khuôn mặt"
+intent: view_face_attendance
+aliases:
+  - "xem chấm công khuôn mặt"
+  - "tra cứu lịch sử chấm công"
+  - "xem giờ vào giờ ra nhân viên"
+  - "xem nhân viên đi muộn về sớm"
+module: face
+tags:
+  - face
+  - chấm công
+  - điểm danh
+roles:
+  - authenticated_user
+features:
+  - ai_module_enabled_for_organization
+  - attendance
+route: "/ai-modules/face?tab=attendance"
+menu_path:
+  - "Dịch Vụ"
+  - "Nhận diện Khuôn mặt"
+  - "Chấm công"
+preconditions:
+  - "Người dùng đã đăng nhập, module Nhận diện Khuôn mặt đang hiển thị và tab Chấm công không bị tắt."
+  - "Dữ liệu chấm công phụ thuộc nhân viên và sự kiện nhận diện đã được hệ thống ghi nhận."
+summary: "Mở tab Chấm công, chọn chu kỳ và ngày tham chiếu để xem giờ vào, giờ ra, tổng giờ cùng trạng thái chấm công của nhân viên."
+steps:
+  - order: 1
+    say: "Trong module Nhận diện Khuôn mặt, chọn tab Chấm công."
+    ui:
+      label: "Chấm công"
+      i18n_key: "modules.tabs.attendance"
+      element_id: null
+  - order: 2
+    say: "Trong Khung thời gian, chọn Ngày, Tuần, Tháng hoặc Tùy chọn theo phạm vi cần xem."
+    ui:
+      label: "Khung thời gian"
+      i18n_key: "report.timeRange"
+      element_id: null
+    fields:
+      - label: "Khung thời gian"
+        i18n_key: "report.timeRange"
+        required: true
+        constraints:
+          - "Chọn một trong Ngày, Tuần, Tháng hoặc Tùy chọn."
+  - order: 3
+    say: "Chọn ngày tham chiếu tại trường Ngày. Danh sách và số liệu tổng hợp được tải lại theo lựa chọn; màn hình này không có nút Tìm kiếm."
+    ui:
+      label: "Ngày"
+      i18n_key: "report.dayLabel"
+      element_id: "attendance-date"
+    fields:
+      - label: "Ngày"
+        i18n_key: "report.dayLabel"
+        required: true
+        example: "2026-09-16"
+        constraints:
+          - "Nhập hoặc chọn ngày theo định dạng ngày của bộ chọn trên giao diện."
+  - order: 4
+    say: "Khi cần nạp lại dữ liệu với lựa chọn hiện tại, bấm Tải lại."
+    ui:
+      label: "Tải lại"
+      i18n_key: "common.reload"
+      element_id: null
+verify: "Màn hình hiển thị các tổng số Đúng giờ, Đi muộn, Về sớm, Ngoài giờ, Vắng mặt và bảng có Giờ vào, Giờ ra, Tổng giờ, Trạng thái; nếu không có bản ghi, giao diện báo Chưa có dữ liệu chấm công."
+errors:
+  - if: "Giao diện báo Chưa có dữ liệu chấm công cho ngày đã chọn."
+    then: "Chọn lại chu kỳ hoặc ngày tham chiếu có dữ liệu nhận diện; nếu vẫn trống, kiểm tra điều kiện nhân viên và sự kiện đã được ghi nhận."
+  - if: "Không thấy tab Chấm công."
+    then: "Kiểm tra module FACE và feature attendance của tổ chức với quản trị viên."
+sources:
+  - path: "frontend/src/components/layout/Sidebar.jsx"
+    kind: component
+    note: "Xác minh route module FACE được tạo từ module đang khả dụng."
+  - path: "frontend/src/utils/aiModuleTabs.js"
+    kind: component
+    note: "Xác minh FACE có tab attendance với nhãn modules.tabs.attendance."
+  - path: "frontend/src/utils/aiModuleTabs.test.js"
+    kind: test
+    note: "Kiểm tra tập tab FACE hiện hành khớp FACE_MENU_ITEMS."
+  - path: "frontend/src/core/registry/aiModuleRegistry.jsx"
+    kind: component
+    note: "Xác minh tab attendance của FACE render FaceAttendance."
+  - path: "frontend/src/pages/AIModuleDetail/components/smart_face/FaceAttendance.jsx"
+    kind: component
+    note: "Xác minh chu kỳ, trường ngày có id attendance-date, nút Tải lại, số liệu tổng hợp và các cột bảng."
+  - path: "frontend/src/i18n/locales/vi/modules.json"
+    kind: i18n
+    note: "Xác minh nhãn tab, tiêu đề, trạng thái, cột và empty state tiếng Việt."
+  - path: "frontend/src/i18n/locales/vi/retail.json"
+    kind: i18n
+    note: "Xác minh các nhãn report.timeRange, report.dayLabel, report.byDay, report.byWeek và report.byMonth."
+  - path: "frontend/src/i18n/locales/vi/common.json"
+    kind: i18n
+    note: "Xác minh nhãn Tải lại và các nhãn bộ chọn ngày."
+last_verified: "2026-09-16"

@@ -1,0 +1,51 @@
+schema_version: "1.0.0"
+id: "concept.permissions-and-features"
+type: concept
+status: published
+locale: vi
+version: 1
+title: "Quyền, feature và lý do menu có thể khác nhau"
+intent: "understand_permissions_and_features"
+aliases:
+  - "vì sao tôi không thấy menu"
+  - "quyền và feature khác nhau thế nào"
+  - "tại sao tài khoản khác có chức năng này"
+module: "access-control"
+tags:
+  - "quyền"
+  - "feature"
+  - "menu động"
+  - "vai trò"
+roles:
+  - "authenticated_user"
+features:
+  - "none"
+route: null
+preconditions:
+  - "Người dùng đã đăng nhập vào VMS."
+summary: "Menu VMS được tạo theo tổ chức, feature, quyền của tài khoản và các module AI khả dụng, nên hai người dùng có thể thấy các mục khác nhau."
+answer: >-
+  Thanh bên của VMS không phải danh sách cố định. Các mục chung chỉ xuất hiện khi
+  feature tương ứng của tổ chức đang bật; một số mục quản trị và tổ chức còn được
+  lọc theo vai trò hoặc capability của tài khoản. Module AI là danh sách động từ
+  dữ liệu hệ thống và chỉ hiển thị module đang hoạt động, được bật cho tổ chức và
+  không phải nhóm phân loại. Vì vậy không thể coi mọi module là được bật cho mọi
+  người dùng. Với những route có RequireFeature, feature bị tắt sẽ không render
+  nội dung và hệ thống chuyển sang route phù hợp khác hoặc trang từ chối truy cập.
+  Không phải mọi route đều dùng guard này, nên việc không thấy menu trước hết cần
+  đối chiếu feature, quyền, loại tổ chức và module được cấp thay vì kết luận hệ
+  thống lỗi. Nếu cần thêm quyền hoặc module, hãy liên hệ quản trị viên tổ chức.
+sources:
+  - path: "frontend/src/components/layout/Sidebar.jsx"
+    kind: component
+    note: "Xác minh menu được lọc theo feature, capability, loại tổ chức và danh sách module AI động."
+  - path: "frontend/src/contexts/OrganizationFeaturesContext.jsx"
+    kind: component
+    note: "Xác minh feature bị tắt theo tổ chức và hàm kiểm tra feature."
+  - path: "frontend/src/auth/RequireFeature.jsx"
+    kind: component
+    note: "Xác minh hành vi chặn nội dung, chuyển route dự phòng hoặc hiển thị trang từ chối."
+  - path: "frontend/src/App.jsx"
+    kind: route
+    note: "Xác minh các route áp dụng RequireFeature và route chi tiết module AI chỉ yêu cầu đăng nhập."
+last_verified: "2026-09-16"

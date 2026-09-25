@@ -1,0 +1,152 @@
+schema_version: "1.0.0"
+id: devices.edit_camera
+type: how_to
+status: published
+locale: vi
+version: 1
+title: "Chỉnh sửa camera"
+intent: edit_camera
+aliases:
+  - "sửa camera"
+  - "chỉnh sửa camera"
+  - "cập nhật camera"
+  - "đổi cấu hình camera"
+module: devices
+tags:
+  - camera
+  - thiết bị
+  - chỉnh sửa
+roles:
+  - authenticated_user
+features:
+  - devices
+route: "/devices"
+menu_path:
+  - "Cấu hình & Thiết bị"
+  - "Quản Lý Camera"
+preconditions:
+  - "Người dùng đã đăng nhập và feature devices được bật."
+  - "Camera cần sửa xuất hiện trong phạm vi tổ chức hoặc hierarchy của tài khoản."
+  - "Zone được chọn đã có vùng GPS hợp lệ."
+summary: "Chọn đúng camera trong danh sách, mở hộp thoại Chỉnh Sửa Camera, thay đổi thông tin và lưu; đổi Mã Camera cần xác nhận bổ sung."
+steps:
+  - order: 1
+    say: "Đối chiếu Tên Camera và Mã của đúng dòng camera, sau đó bấm Chỉnh Sửa ở cột Hành động."
+    ui:
+      label: "Chỉnh Sửa"
+      i18n_key: "devices.edit"
+      element_id: null
+  - order: 2
+    say: "Trong hộp thoại Chỉnh Sửa Camera, cập nhật các trường cần thay đổi. Các trường phân cấp có thể bị khóa hoặc giới hạn theo phạm vi tài khoản."
+    ui:
+      label: "Chỉnh Sửa Camera"
+      i18n_key: "devices.editCamera"
+      element_id: null
+    fields:
+      - label: "Mã Camera"
+        i18n_key: "devices.cameraCode"
+        required: true
+        constraints:
+          - "Không được để trống."
+          - "Không được trùng mã camera đang hoạt động trong Zone đã chọn."
+          - "Thay đổi Mã Camera cần xác nhận bổ sung."
+      - label: "Tên Camera"
+        i18n_key: "devices.cameraName"
+        required: true
+        constraints:
+          - "Không được để trống."
+      - label: "Tổ chức"
+        i18n_key: "devices.organization"
+        required: false
+        constraints:
+          - "Có thể bị khóa theo phạm vi tài khoản."
+      - label: "Cơ sở / Site"
+        i18n_key: "devices.site"
+        required: false
+        constraints:
+          - "Danh sách phụ thuộc Tổ chức và có thể bị khóa theo phạm vi tài khoản."
+      - label: "Khu vực"
+        i18n_key: "devices.area"
+        required: false
+        constraints:
+          - "Danh sách phụ thuộc Cơ sở / Site và có thể bị khóa theo phạm vi tài khoản."
+      - label: "Zone quản lý"
+        i18n_key: "devices.zone"
+        required: true
+        constraints:
+          - "Không được để trống."
+          - "Danh sách phụ thuộc Khu vực và phạm vi tài khoản."
+      - label: "Trạng Thái"
+        i18n_key: "devices.status"
+        required: false
+        constraints:
+          - "Chọn một trong Trực Tuyến, Ngoại Tuyến hoặc Bảo Trì."
+      - label: "Luồng chính"
+        i18n_key: "devices.mainStreamLabel"
+        required: true
+        constraints:
+          - "Không được để trống."
+      - label: "Luồng phụ"
+        i18n_key: "devices.subStreamLabel"
+        required: false
+      - label: "Camera quay quét PTZ"
+        i18n_key: "devices.isPtz"
+        required: false
+      - label: "Mô tả"
+        i18n_key: "devices.description"
+        required: false
+  - order: 3
+    say: "Nếu cần sửa Mã Camera, bấm vào trường Mã Camera, chọn ô Tôi hiểu việc chỉnh sửa mã camera có thể ảnh hưởng tới cấu hình liên quan., rồi bấm Đã hiểu trước khi nhập mã mới."
+    ui:
+      label: "Đã hiểu"
+      i18n_key: "devices.cameraCodeChangeAcknowledgeButton"
+      element_id: null
+    note: "Bỏ qua bước này nếu không thay đổi Mã Camera."
+  - order: 4
+    say: "Bấm Cập Nhật Camera để lưu các thay đổi."
+    ui:
+      label: "Cập Nhật Camera"
+      i18n_key: "devices.updateCamera"
+      element_id: null
+  - order: 5
+    say: "Nếu Mã Camera đã thay đổi, trong hộp thoại Xác nhận đổi mã camera, kiểm tra mã hiện tại và mã mới, chọn ô xác nhận đổi mã rồi bấm Xác nhận đổi mã."
+    ui:
+      label: "Xác nhận đổi mã"
+      i18n_key: "devices.cameraCodeChangeConfirmButton"
+      element_id: null
+    note: "Bỏ qua bước này nếu không thay đổi Mã Camera."
+verify: "Khi cập nhật thành công, hộp thoại đóng, thông báo Chỉnh sửa camera thành công! xuất hiện và dòng camera được cập nhật rồi đồng bộ lại từ hệ thống."
+errors:
+  - if: "Mã camera mới bị trùng."
+    then: "Nhập mã khác tại trường Mã Camera, thực hiện lại xác nhận đổi mã và lưu."
+  - if: "Form báo thiếu thông tin."
+    then: "Kiểm tra Mã Camera, Tên Camera, Zone quản lý và Luồng chính."
+sources:
+  - path: "frontend/src/App.jsx"
+    kind: route
+    note: "Khai báo route /devices với RequireAuth và RequireFeature featureKey devices."
+  - path: "frontend/src/pages/Devices/Devices.jsx"
+    kind: component
+    note: "Hiển thị nút Chỉnh Sửa, truyền camera vào CameraModal và cập nhật danh sách sau khi lưu."
+  - path: "frontend/src/pages/Devices/CameraModal.jsx"
+    kind: component
+    note: "Xác minh trường, validation, khóa theo role scope, xác nhận đổi mã, PUT /cameras/{id} và kết quả thành công."
+  - path: "frontend/src/services/apiClient.js"
+    kind: route
+    note: "Xác minh phương thức PUT gửi dữ liệu và xóa cache API sau khi thành công."
+  - path: "frontend/src/services/hierarchyService.js"
+    kind: route
+    note: "Xác minh dịch vụ tải cây Tổ chức, Cơ sở / Site, Phân khu / Area và Zone cho form."
+  - path: "frontend/src/i18n/locales/vi/playback.json"
+    kind: i18n
+    note: "Cung cấp các nhãn tiếng Việt của nút, hộp thoại, trường và xác nhận đổi mã."
+  - path: "frontend/src/i18n/locales/vi/common.json"
+    kind: i18n
+    note: "Cung cấp nhãn phân cấp, validation và thông báo chỉnh sửa thành công."
+  - path: "frontend/src/pages/Devices/CameraModal.test.jsx"
+    kind: test
+    note: "Kiểm tra luồng cập nhật gọi PUT /cameras/{id}, gọi onSave và hiển thị thông báo thành công."
+  - path: "backend/routers/cameras.py"
+    kind: route
+    note: "Xác minh endpoint cập nhật, phạm vi camera, kiểm tra Zone và quy tắc mã không trùng."
+last_verified: "2026-09-16"

@@ -1,0 +1,118 @@
+schema_version: "1.0.0"
+id: devices.add_edge_node
+type: how_to
+status: needs_review
+locale: vi
+version: 1
+title: "Thêm thiết bị biên"
+intent: add_edge_node
+aliases:
+  - "thêm edge node"
+  - "tạo thiết bị biên"
+  - "khai báo node mới"
+  - "thêm AI box"
+module: devices
+tags:
+  - edge-node
+  - thiết bị biên
+  - thêm mới
+roles:
+  - authenticated_user
+features:
+  - edge-nodes
+route: "/edge-nodes"
+menu_path:
+  - "Cấu hình & Thiết bị"
+  - "Quản Lý thiết bị biên"
+preconditions:
+  - "Người dùng đã đăng nhập và feature edge-nodes được bật."
+  - "Endpoint tạo edge node của môi trường đang dùng cần được quản trị viên xác nhận hoạt động."
+summary: "Mở màn hình Quản Lý thiết bị biên, nhập thông tin cơ bản trong hộp thoại Thêm Edge Node Mới rồi tạo node."
+steps:
+  - order: 1
+    say: "Tại màn hình Quản Lý thiết bị biên, bấm Thêm Node."
+    ui:
+      label: "Thêm Node"
+      i18n_key: "edgeNodes.addNode"
+      element_id: null
+  - order: 2
+    say: "Trong hộp thoại Thêm Edge Node Mới, ở tab Details, nhập thông tin node."
+    ui:
+      label: "Thêm Edge Node Mới"
+      i18n_key: "edgeNodes.addNewNode"
+      element_id: null
+    fields:
+      - label: "Tên Node"
+        i18n_key: "edgeNodes.nodeName"
+        required: true
+        constraints:
+          - "Không được để trống."
+      - label: "Mã Node"
+        i18n_key: "edgeNodes.nodeCode"
+        required: true
+        constraints:
+          - "Không được để trống."
+      - label: "Loại Node"
+        i18n_key: "edgeNodes.nodeType"
+        required: false
+        constraints:
+          - "Chọn BOX hoặc SERVER."
+      - label: "Trạng Thái"
+        i18n_key: "edgeNodes.status"
+        required: false
+      - label: "Địa chỉ IP"
+        i18n_key: "edgeNodes.ipAddress"
+        required: false
+        constraints:
+          - "Nếu nhập, giá trị phải vượt qua kiểm tra định dạng của biểu mẫu."
+      - label: "Agent Port"
+        i18n_key: "edgeNodes.agentPort"
+        required: false
+        constraints:
+          - "Nếu nhập, giá trị phải từ 1 đến 65535."
+      - label: "Protocol"
+        i18n_key: "edgeNodes.protocol"
+        required: false
+        constraints:
+          - "Chọn SSH, RDP, HTTP hoặc HTTPS."
+      - label: "Tối đa Camera"
+        i18n_key: "edgeNodes.maxCameras"
+        required: false
+      - label: "Độ ưu tiên"
+        i18n_key: "edgeNodes.priority"
+        required: false
+  - order: 3
+    say: "Bấm Tạo Node. Nếu biểu mẫu báo lỗi, sửa trường được đánh dấu rồi gửi lại."
+    ui:
+      label: "Tạo Node"
+      i18n_key: "edgeNodes.createNode"
+      element_id: null
+verify: "Khi API chấp nhận yêu cầu, hộp thoại đóng, thông báo Lưu thành công xuất hiện và node được đưa vào danh sách."
+errors:
+  - if: "Biểu mẫu báo thiếu thông tin."
+    then: "Kiểm tra Tên Node và Mã Node."
+  - if: "Biểu mẫu báo Mã Node đã tồn tại."
+    then: "Nhập một Mã Node khác rồi bấm Tạo Node lại."
+sources:
+  - path: "frontend/src/App.jsx"
+    kind: route
+    note: "Khai báo route /edge-nodes với RequireAuth và RequireFeature featureKey edge-nodes."
+  - path: "frontend/src/components/layout/Sidebar.jsx"
+    kind: component
+    note: "Khai báo mục sidebar /edge-nodes trong nhóm Cấu hình & Thiết bị."
+  - path: "frontend/src/pages/EdgeNodes/EdgeNodes.jsx"
+    kind: component
+    note: "Hiển thị nút Thêm Node, mở EdgeNodeModal và cập nhật danh sách sau khi lưu."
+  - path: "frontend/src/pages/EdgeNodes/EdgeNodeModal.jsx"
+    kind: component
+    note: "Xác minh hộp thoại, trường bắt buộc, validation và thao tác tạo."
+  - path: "frontend/src/services/edgeNodeService.js"
+    kind: route
+    note: "Frontend gửi yêu cầu tạo tới /edge-nodes; chưa tìm thấy router backend tương ứng trong repo để xác nhận runtime."
+  - path: "frontend/src/i18n/locales/vi/playback.json"
+    kind: i18n
+    note: "Cung cấp nhãn tiếng Việt cho nút, hộp thoại và các trường edge node."
+  - path: "frontend/cypress/e2e/09-iot-devices-and-edge.cy.js"
+    kind: test
+    note: "Kiểm tra route và màn hình danh sách edge node; chưa kiểm tra luồng tạo."
+last_verified: "2026-09-16"

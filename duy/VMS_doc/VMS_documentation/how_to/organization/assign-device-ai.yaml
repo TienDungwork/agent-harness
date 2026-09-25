@@ -1,0 +1,120 @@
+schema_version: "1.0.0"
+id: "organization.assign-device-ai"
+type: "how_to"
+status: "published"
+locale: "vi"
+version: 1
+title: "Gắn camera vào cây phân cấp và kích hoạt Module AI"
+intent: "assign_device_ai"
+aliases:
+  - "gắn camera vào phân vùng và bật ai"
+  - "phân bổ camera và kích hoạt module ai"
+  - "gán thiết bị camera vào zone có ai"
+module: "organization"
+tags:
+  - "camera"
+  - "cây phân cấp"
+  - "module ai"
+roles:
+  - "Quản trị viên Phân khu (Site Admin) trở lên"
+features:
+  - "device_assignment"
+  - "ai_configuration"
+route: "/org/devices"
+menu_path:
+  - "Gán thiết bị & AI"
+preconditions:
+  - "Đã đăng nhập bằng tài khoản Site Admin, Org Admin hoặc Super Admin."
+  - "Camera, tổ chức và vị trí Site, Area hoặc Zone cần gắn đã tồn tại."
+  - "Module AI cần kích hoạt xuất hiện trong danh mục dịch vụ AI của camera."
+summary: "Mở Gán thiết bị & AI, chọn camera và vị trí trong cây phân cấp, bật Module AI cần dùng rồi lưu bằng nút Gắn thiết bị."
+steps:
+  - order: 1
+    say: "Mở Gán thiết bị & AI."
+    ui:
+      label: "Gán thiết bị & AI"
+      i18n_key: "kcn.adminMenu.kcnDevices"
+      element_id: null
+  - order: 2
+    say: "Chọn Gắn thiết bị để mở biểu mẫu."
+    ui:
+      label: "Gắn thiết bị"
+      i18n_key: "kcn.devices.addDevice"
+      element_id: null
+  - order: 3
+    say: "Trong Thông tin cơ bản, chọn Camera (Camera IP / Camera AI), camera cần gắn và tổ chức."
+    ui:
+      label: "Thông tin cơ bản"
+      i18n_key: "devices.basicInfo"
+      element_id: null
+    fields:
+      - label: "1. Chọn Loại Thiết Bị"
+        i18n_key: "kcn.devices.selectCategoryGroupLabel"
+        required: true
+      - label: "2. Chọn Thiết Bị"
+        i18n_key: "kcn.devices.selectDeviceLabel"
+        required: true
+      - label: "3. Chọn Tổ chức"
+        i18n_key: "kcn.devices.selectCompanyLabel"
+        required: true
+  - order: 4
+    say: "Mở tab Vị trí, rồi chọn Site, Khu vực (Area) và Phân vùng (Zone) phù hợp trong cây phân cấp."
+    ui:
+      label: "Vị trí"
+      i18n_key: "devices.locationTab"
+      element_id: null
+    fields:
+      - label: "Site"
+        i18n_key: "kcn.sites.site"
+        required: true
+      - label: "Khu vực (Area)"
+        i18n_key: "kcn.sites.area"
+        required: false
+      - label: "Phân vùng (Zone)"
+        i18n_key: "kcn.zones.zone"
+        required: false
+    note: "Biểu mẫu bắt buộc có một vị trí trong cây; lựa chọn sâu hơn phụ thuộc cấu trúc Site, Area và Zone hiện có."
+  - order: 5
+    say: "Mở tab Dịch vụ AI và đánh dấu từng Module AI cần kích hoạt cho camera."
+    ui:
+      label: "Dịch vụ AI"
+      i18n_key: "devices.aiServicesTab"
+      element_id: null
+    note: "Tab này chỉ hiển thị cho camera khi tài khoản có quyền gắn Module AI."
+  - order: 6
+    say: "Chọn Gắn thiết bị để lưu vị trí phân cấp và danh sách Module AI đã chọn."
+    ui:
+      label: "Gắn thiết bị"
+      i18n_key: "kcn.devices.addDevice"
+      element_id: null
+verify: "Hộp thoại đóng, hệ thống báo đã lưu cấu hình thiết bị và kích hoạt Module AI thành công, và camera xuất hiện tại vị trí phân cấp đã chọn."
+errors:
+  - if: "Nút Gắn thiết bị bị khóa hoặc không thể lưu."
+    then: "Xác nhận tài khoản có quyền Site Admin trở lên; Area Admin và Zone Admin không có quyền gắn thiết bị hoặc cấu hình Module AI."
+  - if: "Biểu mẫu báo thiếu vị trí trong cây phân cấp."
+    then: "Mở tab Vị trí và chọn ít nhất một Site, Area hoặc Zone hợp lệ."
+  - if: "Không thấy Module AI cần dùng."
+    then: "Chỉ chọn trong danh mục Module AI hiện có; đề nghị quản trị viên kiểm tra cấu hình nếu danh mục không có module cần thiết."
+sources:
+  - path: "frontend/src/App.jsx"
+    kind: "route"
+    note: "Xác minh route /org/devices yêu cầu đăng nhập và mở TreeDevicesPage."
+  - path: "frontend/src/features/platform/devices/TreeDevicesPage.jsx"
+    kind: "component"
+    note: "Xác minh quyền Site Admin trở lên, các tab, trường bắt buộc, chọn vị trí phân cấp, bật Module AI và thao tác lưu."
+  - path: "frontend/src/utils/rolePermissions.js"
+    kind: "component"
+    note: "Xác minh Site Admin, Org Admin và Super Admin có quyền gắn thiết bị và bind/configure Module AI."
+  - path: "frontend/src/i18n/locales/vi/kcn.json"
+    kind: "i18n"
+    note: "Nguồn nhãn menu, biểu mẫu, vị trí phân cấp, Module AI và thông báo lưu."
+  - path: "frontend/src/i18n/locales/vi/common.json"
+    kind: "i18n"
+    note: "Nguồn nhãn các tab Thông tin cơ bản, Vị trí và Dịch vụ AI."
+  - path: "frontend/src/features/platform/devices/TreeDevicesPage.test.jsx"
+    kind: "test"
+    note: "Kiểm tra mở biểu mẫu, các trường cơ bản, tab vị trí, tab AI và đồng bộ dịch vụ AI khi lưu."
+  - path: "frontend/src/utils/rolePermissions.test.js"
+    kind: "test"
+    note: "Kiểm tra Area/Zone Admin bị từ chối và Site/Org/Super Admin được phép gắn thiết bị, bind và cấu hình AI."
+last_verified: "2026-09-16"

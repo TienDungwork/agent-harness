@@ -1,0 +1,53 @@
+schema_version: "1.0.0"
+id: troubleshooting.event_image_unavailable
+type: troubleshooting
+status: published
+locale: vi
+version: 1
+title: "Ảnh sự kiện không hiển thị"
+intent: troubleshoot_event_image_unavailable
+aliases:
+  - "ảnh cảnh báo bị lỗi"
+  - "snapshot sự kiện không hiện"
+  - "không xem được ảnh sự kiện"
+  - "ảnh nhận diện bị trống"
+module: events
+tags:
+  - event
+  - snapshot
+  - image
+  - alert
+roles:
+  - authenticated_user
+features:
+  - events
+route: "/events"
+preconditions:
+  - "Người dùng mở được Quản lý sự kiện."
+summary: "Hãy làm mới danh sách và mở lại chi tiết sự kiện; nếu ảnh vẫn không tải, gửi thông tin sự kiện cho quản trị viên vì người dùng cuối không cần thao tác dịch vụ lưu trữ."
+symptoms:
+  - "Khung ảnh hiển thị Không có hình ảnh hoặc không thể tải."
+  - "Chi tiết sự kiện có dữ liệu nhưng ảnh snapshot trống."
+  - "Một hoặc nhiều ảnh cảnh báo hiển thị lỗi."
+checks:
+  - order: 1
+    if: "Danh sách sự kiện vừa được mở từ lâu hoặc mạng vừa kết nối lại."
+    then: "Bấm Làm mới và mở lại Chi tiết của sự kiện."
+    stop_when: "Ảnh hiển thị bình thường."
+  - order: 2
+    if: "Chỉ một sự kiện không có ảnh."
+    then: "Kiểm tra các thông tin thời gian, camera và loại sự kiện vẫn có; ghi lại ID hoặc thời điểm sự kiện."
+  - order: 3
+    if: "Nhiều sự kiện cùng không hiển thị ảnh hoặc lỗi lặp lại."
+    then: "Gửi thời điểm, tên camera, loại sự kiện và ảnh chụp màn hình cho quản trị viên kiểm tra nguồn ảnh/lưu trữ."
+related:
+  - operations.view_event_detail
+  - operations.filter_events
+sources:
+  - path: "frontend/src/pages/Events/Events.jsx"
+    kind: component
+    note: "Có thao tác Làm mới, Chi tiết sự kiện và nội dung ảnh theo từng loại event."
+  - path: "frontend/src/i18n/locales/vi/common.json"
+    kind: i18n
+    note: "Định nghĩa thông báo Không có hình ảnh hoặc không thể tải."
+last_verified: "2026-09-16"

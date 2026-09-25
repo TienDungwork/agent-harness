@@ -1,0 +1,65 @@
+schema_version: "1.0.0"
+id: troubleshooting.live_stream_unavailable
+type: troubleshooting
+status: published
+locale: vi
+version: 1
+title: "Camera trực tiếp không phát video"
+intent: troubleshoot_live_stream_unavailable
+aliases:
+  - "camera bị đen"
+  - "không xem được live"
+  - "stream không khả dụng"
+  - "camera mất tín hiệu"
+module: monitoring
+tags:
+  - live
+  - camera
+  - stream
+  - offline
+roles:
+  - authenticated_user
+features:
+  - monitoring
+route: "/monitoring"
+preconditions:
+  - "Người dùng có quyền xem camera."
+  - "Feature Giám Sát Trực Tiếp được bật."
+summary: "Hãy kiểm tra trạng thái camera, quyền xem và thử làm mới dữ liệu trước; nếu nhiều camera cùng lỗi, gửi thông tin cho quản trị viên thay vì tự thao tác hạ tầng."
+symptoms:
+  - "Ô camera hiển thị Stream không khả dụng."
+  - "Camera có trong danh sách nhưng ô xem trực tiếp không có hình."
+  - "Camera hiển thị trạng thái Ngoại tuyến."
+checks:
+  - order: 1
+    if: "Camera hiển thị trạng thái Ngoại tuyến trong danh sách."
+    then: "Kiểm tra nguồn, kết nối mạng và thiết bị biên của camera; người dùng cuối không tự restart dịch vụ."
+    stop_when: "Camera trở lại trạng thái Trực tuyến."
+  - order: 2
+    if: "Camera không xuất hiện trong danh sách hoặc không chọn được."
+    then: "Nhờ quản trị viên kiểm tra quyền xem camera và phân vùng được gán cho tài khoản."
+    stop_when: "Camera xuất hiện và chọn được."
+  - order: 3
+    if: "Camera đang Trực tuyến nhưng ô video chưa phát."
+    then: "Bấm Làm mới trên màn hình Giám Sát Trực Tiếp, sau đó chọn lại camera."
+    stop_when: "Video phát bình thường."
+  - order: 4
+    if: "Một camera vẫn lỗi sau khi làm mới."
+    then: "Gửi mã/tên camera, thời điểm lỗi và ảnh chụp ô video cho quản trị viên."
+  - order: 5
+    if: "Nhiều camera đồng thời hiển thị Stream không khả dụng."
+    then: "Báo quản trị viên kiểm tra hệ thống streaming/thiết bị biên; không tự chạy lệnh vận hành."
+related:
+  - operations.view-live-camera
+  - troubleshooting.menu_not_visible
+sources:
+  - path: "frontend/src/features/common/live-monitoring/Live/Live.jsx"
+    kind: component
+    note: "Hiển thị trạng thái stream không khả dụng, nút làm mới và lỗi snapshot/video."
+  - path: "frontend/src/features/common/live-monitoring/Live/CameraSelector.jsx"
+    kind: component
+    note: "Hiển thị trạng thái ONLINE/OFFLINE và danh sách camera theo quyền."
+  - path: "frontend/src/i18n/locales/vi/common.json"
+    kind: i18n
+    note: "Help checklist yêu cầu kiểm tra nguồn, mạng, Edge Node và quyền/phân vùng."
+last_verified: "2026-09-16"

@@ -1,0 +1,43 @@
+[project]
+name = "local-ai-agent"
+version = "0.1.0"
+description = "Local LangGraph Data Agent — NL to read-only PostgreSQL"
+requires-python = ">=3.11"
+dependencies = [
+    "langgraph>=0.6.0",
+    "langchain-core>=0.3.0",
+    "langchain-openai>=0.3.0",
+    "pydantic>=2.0",
+    "pydantic-settings>=2.0",
+    "psycopg[binary,pool]>=3.2",
+    "pyyaml>=6.0",
+    "fastapi>=0.141.1",
+    "uvicorn[standard]>=0.53.0",
+    "matplotlib>=3.11.2",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0",
+]
+
+[project.scripts]
+agent = "agent.main:main"
+agent-serve = "agent.serve:main"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/agent"]
+
+[tool.hatch.build.targets.sdist]
+include = ["src/agent", "prompts", "docs"]
+
+[tool.pytest.ini_options]
+pythonpath = ["src"]
+testpaths = ["tests"]
+markers = [
+    "integration: needs live Postgres or Ollama",
+]

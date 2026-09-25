@@ -1,0 +1,114 @@
+schema_version: "1.0.0"
+id: organization.create_zone
+type: how_to
+status: published
+locale: vi
+version: 1
+title: "Tạo Phân vùng trong Khu vực"
+intent: create_zone
+aliases:
+  - "tạo phân vùng"
+  - "thêm zone mới"
+  - "tạo zone trong area"
+  - "thêm phân vùng vào khu vực"
+module: organization
+tags:
+  - "phân vùng"
+  - "zone"
+  - "khu vực"
+  - "area"
+roles:
+  - SUPER_ADMIN
+  - ORG_ADMIN
+  - SITE_ADMIN
+  - AREA_ADMIN
+features:
+  - none
+route: "/org/zones"
+menu_path:
+  - "Vận hành"
+  - "Quản lý Phân vùng & Camera"
+preconditions:
+  - "Người dùng đã đăng nhập."
+  - "Tài khoản là SUPER_ADMIN, ORG_ADMIN, SITE_ADMIN hoặc AREA_ADMIN có quyền quản lý Khu vực cha."
+  - "Đã có Cơ sở và Khu vực trực thuộc để chọn làm cấp cha."
+summary: "Mở Quản lý Phân vùng & Camera, chọn Thêm Phân vùng Mới, xác định Cơ sở và Khu vực cha rồi nhập Mã Phân vùng, Tên Phân vùng và lưu."
+steps:
+  - order: 1
+    say: "Trong menu Vận hành, chọn Quản lý Phân vùng & Camera."
+    ui:
+      label: "Quản lý Phân vùng & Camera"
+      i18n_key: "kcn.adminMenu.kcnZones"
+      element_id: null
+  - order: 2
+    say: "Chọn Thêm Phân vùng Mới."
+    ui:
+      label: "Thêm Phân vùng Mới"
+      i18n_key: "kcn.zones.addZone"
+      element_id: null
+  - order: 3
+    say: "Chọn Cơ sở, sau đó chọn Khu vực cha trong trường Thuộc Khu vực."
+    fields:
+      - label: "Danh sách Cơ sở"
+        i18n_key: "kcn.sites.sitesTab"
+        required: true
+      - label: "Thuộc Khu vực"
+        i18n_key: "kcn.zones.belongsToArea"
+        required: true
+  - order: 4
+    say: "Nhập Mã Phân vùng và Tên Phân vùng."
+    fields:
+      - label: "Mã Phân vùng"
+        i18n_key: "kcn.zones.zoneCode"
+        required: true
+        example: "zone-z01"
+        constraints:
+          - "Chỉ gồm chữ thường, số, dấu gạch nối hoặc gạch dưới."
+          - "Không chứa dấu tiếng Việt hoặc khoảng trắng."
+          - "Không trùng mã Phân vùng đang có."
+      - label: "Tên Phân vùng"
+        i18n_key: "kcn.zones.zoneName"
+        required: true
+        constraints:
+          - "Không trùng tên Phân vùng trong Khu vực đã chọn."
+  - order: 5
+    say: "Chọn Lưu để tạo Phân vùng trực thuộc Khu vực đã chọn."
+    ui:
+      label: "Lưu"
+      i18n_key: "common.save"
+      element_id: null
+verify: "Biểu mẫu đóng và Phân vùng mới xuất hiện trong danh sách sau khi dữ liệu được tải lại."
+errors:
+  - if: "Không thấy nút Thêm Phân vùng Mới."
+    then: "Tài khoản không có canCreateZone; cần quyền quản trị từ AREA_ADMIN trở lên."
+  - if: "Không thể lưu do quyền."
+    then: "Chọn Khu vực thuộc phạm vi tài khoản được phép quản lý hoặc liên hệ quản trị viên."
+sources:
+  - path: "frontend/src/App.jsx"
+    kind: route
+    note: "Khai báo route /org/zones với RequireAuth và không có RequireFeature."
+  - path: "frontend/src/components/layout/Sidebar.jsx"
+    kind: component
+    note: "Xác minh menu Quản lý Phân vùng & Camera, route /org/zones và canViewZoneTab."
+  - path: "frontend/src/features/platform/zones/ZonesCamerasPage.jsx"
+    kind: component
+    note: "Xác minh nút tạo, trường Cơ sở/Khu vực/Mã/Tên, kiểm tra quyền Khu vực và thao tác createZone."
+  - path: "frontend/src/contexts/UserContext.jsx"
+    kind: component
+    note: "canCreateZone cho SUPER_ADMIN, ORG_ADMIN, SITE_ADMIN hoặc AREA_ADMIN; checkCanManageArea giới hạn phạm vi Khu vực cha."
+  - path: "frontend/src/utils/rolePermissions.js"
+    kind: component
+    note: "Xác minh phân loại vai trò và phạm vi site_ids, area_ids, zone_ids."
+  - path: "frontend/src/i18n/locales/vi/kcn.json"
+    kind: i18n
+    note: "Xác minh nhãn menu, nút, field, validation và thông báo tạo Zone thành công."
+  - path: "frontend/src/i18n/locales/vi/common.json"
+    kind: i18n
+    note: "Xác minh nhãn Lưu."
+  - path: "frontend/src/features/kcn/system/hierarchy/KcnHierarchyPage.test.jsx"
+    kind: test
+    note: "Kiểm tra ma trận quyền dùng chung: AREA_ADMIN được tạo Zone dưới Area trong phạm vi và ZONE_ADMIN không được tạo nút con."
+  - path: "frontend/src/features/platform/sites/__tests__/SitesSlug.test.jsx"
+    kind: test
+    note: "Kiểm tra zone-z1 là Mã slug hợp lệ."
+last_verified: "2026-09-16"

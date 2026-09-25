@@ -1,0 +1,119 @@
+schema_version: "1.0.0"
+id: "how-to.ai.process-audio"
+type: how_to
+status: published
+locale: vi
+version: 1
+title: "Tải lên và xử lý audio bằng Speech-to-Text"
+intent: "process_audio"
+aliases:
+  - "tải audio để phân tích"
+  - "xử lý file speech to text"
+  - "xem lịch sử nhận dạng âm thanh"
+module: "speech_to_text"
+tags:
+  - "SPEECH_TO_TEXT"
+  - "audio"
+  - "phân tích hội thoại"
+roles:
+  - "authenticated_user"
+features:
+  - "ai_module_speech_to_text_enabled_for_organization"
+route: "/ai-modules/speech_to_text"
+menu_path:
+  - "Dịch Vụ"
+  - "Chuyển Đổi Giọng Nói (Speech-to-Text)"
+preconditions:
+  - "Người dùng đã đăng nhập vào VMS."
+  - "Tổ chức và người dùng đã được cấp module SPEECH_TO_TEXT."
+  - "Đã có Cửa hàng, Checklist và Barem chấm điểm để chọn."
+summary: "Chọn file audio, nhập đủ thông tin bắt buộc, tải file lên, gửi xử lý rồi kiểm tra kết quả trong Lịch sử."
+steps:
+  - order: 1
+    say: "Trong nhóm Dịch Vụ, chọn Chuyển Đổi Giọng Nói (Speech-to-Text)."
+    ui:
+      label: "Chuyển Đổi Giọng Nói (Speech-to-Text)"
+      i18n_key: "modules.SPEECH_TO_TEXT.label"
+      element_id: null
+  - order: 2
+    say: "Mở tab Phân tích hội thoại; nếu giao diện mở tab Tổng quan mặc định, dùng màn phân tích đang hiển thị."
+    ui:
+      label: "Phân tích hội thoại"
+      i18n_key: "modules.tabs.stt_analysis"
+      element_id: null
+  - order: 3
+    say: "Tại Tải lên audio mới, kéo thả hoặc bấm để chọn một hay nhiều file audio được hỗ trợ."
+    ui:
+      label: "Kéo thả hoặc bấm để chọn file audio"
+      i18n_key: "generated.SpeechToTextAnalysis.keoThaHoacBamDeChonFile"
+      element_id: null
+  - order: 4
+    say: "Nhập Tên nhân viên, chọn Cửa hàng, Checklist và Barem chấm điểm; Tiêu đề là tùy chọn."
+    fields:
+      - label: "Tên nhân viên"
+        i18n_key: "generated.SpeechToTextAnalysis.tenNhanVien"
+        required: true
+      - label: "Cửa hàng"
+        i18n_key: "common.store"
+        required: true
+      - label: "Checklist"
+        i18n_key: "electric.checklist"
+        required: true
+      - label: "Barem chấm điểm"
+        i18n_key: "generated.SpeechToTextAnalysis.baremChamDiem"
+        required: true
+      - label: "Tiêu đề"
+        i18n_key: "common.title"
+        required: false
+  - order: 5
+    say: "Chọn Tải lên và chờ file chuyển sang trạng thái đã tải."
+    ui:
+      label: "Tải lên"
+      i18n_key: "generated.SpeechToTextAnalysis.taiLenValue0"
+      element_id: null
+  - order: 6
+    say: "Chọn Xử lý để gửi các file đã tải lên đi xử lý."
+    ui:
+      label: "Xử lý"
+      i18n_key: "generated.SpeechToTextAnalysis.xuLyValue0"
+      element_id: null
+  - order: 7
+    say: "Mở tab Lịch sử, tìm bản ghi theo tên file, tiêu đề, transcript, trạng thái hoặc khoảng thời gian, rồi chọn bản ghi để xem chi tiết."
+    ui:
+      label: "Lịch sử"
+      i18n_key: "modules.tabs.stt_history"
+      element_id: null
+verify: "Bản ghi audio xuất hiện trong Lịch sử; khi mở chi tiết, người dùng xem được trạng thái và nội dung transcript khi xử lý hoàn tất."
+errors:
+  - if: "Không thấy module Speech-to-Text."
+    then: "Kiểm tra với quản trị viên xem tổ chức và người dùng đã được cấp module SPEECH_TO_TEXT chưa."
+  - if: "Nút Tải lên chưa khả dụng."
+    then: "Kiểm tra đã chọn file hợp lệ và đã nhập hoặc chọn đủ Tên nhân viên, Cửa hàng, Checklist và Barem chấm điểm."
+  - if: "Nút Xử lý chưa khả dụng."
+    then: "Chờ ít nhất một file tải lên hoàn tất rồi thử lại."
+sources:
+  - path: "frontend/src/utils/aiModuleTabs.js"
+    kind: component
+    note: "Xác minh các tab Phân tích hội thoại, Lịch sử và Quản lý của SPEECH_TO_TEXT."
+  - path: "frontend/src/core/registry/aiModuleRegistry.jsx"
+    kind: component
+    note: "Xác minh tab Phân tích/Tổng quan tải màn phân tích và tab Lịch sử tải màn lịch sử."
+  - path: "frontend/src/pages/AIModuleDetail/components/speech_to_text/SpeechToTextAnalysis.jsx"
+    kind: component
+    note: "Xác minh chọn file, định dạng và kích thước hỗ trợ, các field bắt buộc, Tải lên và Xử lý."
+  - path: "frontend/src/pages/AIModuleDetail/components/speech_to_text/SpeechToTextHistory.jsx"
+    kind: component
+    note: "Xác minh bộ lọc lịch sử và thao tác mở chi tiết bản ghi."
+  - path: "frontend/src/services/speechToTextService.js"
+    kind: component
+    note: "Xác minh luồng tải audio, yêu cầu xử lý và đọc lịch sử."
+  - path: "frontend/src/i18n/locales/vi/modules.json"
+    kind: i18n
+    note: "Xác minh nhãn module và các tab Speech-to-Text."
+  - path: "frontend/src/i18n/locales/vi/generated.json"
+    kind: i18n
+    note: "Xác minh nhãn vùng chọn file, field, Tải lên, Xử lý và lịch sử."
+  - path: "frontend/src/pages/AIModuleDetail/components/AIModalsInteraction.test.jsx"
+    kind: test
+    note: "Xác minh modal chi tiết Speech-to-Text mở được và chuyển sang nội dung transcript."
+last_verified: "2026-09-16"

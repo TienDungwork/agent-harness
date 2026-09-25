@@ -1,0 +1,80 @@
+schema_version: "1.0.0"
+id: "how-to.ai.view-counting"
+type: how_to
+status: published
+locale: vi
+version: 1
+title: "Xem dữ liệu đếm người và ra vào"
+intent: "view_counting"
+aliases:
+  - "xem thống kê đếm người"
+  - "xem lịch sử ra vào"
+  - "tra cứu dữ liệu counting"
+module: "counting"
+tags:
+  - "COUNTING"
+  - "đếm người"
+  - "ra vào"
+roles:
+  - "authenticated_user"
+features:
+  - "ai_module_counting_enabled_for_organization"
+route: "/service/counting"
+menu_path:
+  - "Dịch Vụ"
+  - "Đếm người / ra vào"
+preconditions:
+  - "Người dùng đã đăng nhập vào VMS."
+  - "Tổ chức và người dùng đã được cấp module COUNTING hoặc ENTRY_EXIT."
+summary: "Mở dịch vụ Counting để xem thống kê lưu lượng theo khu vực hoặc tra cứu lịch sử ra/vào."
+steps:
+  - order: 1
+    say: "Trong nhóm Dịch Vụ, chọn Đếm người / ra vào."
+    ui:
+      label: "Đếm người / ra vào"
+      i18n_key: "modules.COUNTING.label"
+      element_id: null
+  - order: 2
+    say: "Mở tab Thống kê để xem dữ liệu lưu lượng ra vào."
+    ui:
+      label: "Thống kê"
+      i18n_key: "counting.statistics"
+      element_id: null
+  - order: 3
+    say: "Nếu cần thu hẹp thống kê, chọn một khu vực trong bộ lọc Tất cả khu vực."
+    ui:
+      label: "Tất cả khu vực"
+      i18n_key: "counting.allZones"
+      element_id: null
+  - order: 4
+    say: "Để xem các bản ghi ra vào, chuyển sang tab Lịch sử Ra/Vào."
+    ui:
+      label: "Lịch sử Ra/Vào"
+      i18n_key: "counting.entryExitHistory"
+      element_id: null
+verify: "Tab Thống kê hiển thị dữ liệu lưu lượng theo lựa chọn khu vực, hoặc tab Lịch sử Ra/Vào hiển thị danh sách bản ghi."
+errors:
+  - if: "Không thấy module Đếm người / ra vào."
+    then: "Kiểm tra với quản trị viên xem tổ chức và người dùng đã được cấp module COUNTING hoặc ENTRY_EXIT chưa."
+  - if: "Không có dữ liệu cho khu vực đã chọn."
+    then: "Chọn Tất cả khu vực hoặc một khu vực khác đang có trong danh sách."
+sources:
+  - path: "frontend/src/App.jsx"
+    kind: route
+    note: "Xác minh route /service/counting và yêu cầu đăng nhập."
+  - path: "frontend/src/components/layout/Sidebar.jsx"
+    kind: component
+    note: "Xác minh COUNTING và ENTRY_EXIT cùng điều hướng tới màn Counting chuyên biệt."
+  - path: "frontend/src/components/layout/Header.jsx"
+    kind: component
+    note: "Xác minh ba tab Thống kê, Lịch sử Ra/Vào và Khu vực giám sát trên route Counting."
+  - path: "frontend/src/pages/CountingService/CountingService.jsx"
+    kind: component
+    note: "Xác minh tab mặc định Thống kê, bộ lọc khu vực và nội dung lịch sử ra/vào."
+  - path: "frontend/src/i18n/locales/vi/modules.json"
+    kind: i18n
+    note: "Xác minh nhãn module COUNTING và tiêu đề các màn dữ liệu."
+  - path: "frontend/src/i18n/locales/vi/retail.json"
+    kind: i18n
+    note: "Xác minh nhãn tab và bộ lọc khu vực của Counting."
+last_verified: "2026-09-16"

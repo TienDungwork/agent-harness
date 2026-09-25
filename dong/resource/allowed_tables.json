@@ -1,0 +1,60 @@
+{
+  "description": "Danh mục các bảng và cơ sở dữ liệu được phép truy cập trong hệ thống VMS KCN Hưng Phú",
+  "organization_id": 103,
+  "databases": {
+    "its": {
+      "db_key": "its",
+      "purpose": "Hệ thống giám sát giao thông thông minh (ITS) & nhận diện biển số (ALPR)",
+      "primary_table": "plate_event",
+      "time_column": "event_time",
+      "allowed_tables": [
+        "plate_event",
+        "plate_blacklist",
+        "plate_whitelist",
+        "plate_violation_case"
+      ]
+    },
+    "virtual_fence": {
+      "db_key": "virtual_fence",
+      "purpose": "Hệ thống hàng rào ảo & giám sát xâm nhập vùng cấm bảo vệ",
+      "primary_table": "zone_event",
+      "time_column": "event_time",
+      "allowed_tables": [
+        "zone_event",
+        "restricted_zones",
+        "zone_access_policy",
+        "zone_incident"
+      ]
+    },
+    "smart_face": {
+      "db_key": "smart_face",
+      "purpose": "Hệ thống nhận diện khuôn mặt & chấm công nhân viên",
+      "primary_table": "smf_face_events",
+      "time_column": "access_time",
+      "allowed_tables": [
+        "smf_face_events",
+        "smf_employees",
+        "smf_departments",
+        "view_face_events"
+      ]
+    },
+    "firesmoke": {
+      "db_key": "firesmoke",
+      "purpose": "Hệ thống cảnh báo phát hiện cháy và khói tự động",
+      "primary_table": "fire_smoke_event",
+      "time_column": "event_time",
+      "allowed_tables": [
+        "fire_smoke_event"
+      ]
+    },
+    "anomaly": {
+      "db_key": "anomaly",
+      "purpose": "Hệ thống phát hiện sự kiện bất thường AI (đám đông, ẩu đả, leo trèo rào, mực nước ngập)",
+      "primary_table": "anomaly_event",
+      "time_column": "event_time",
+      "allowed_tables": [
+        "anomaly_event"
+      ]
+    }
+  }
+}

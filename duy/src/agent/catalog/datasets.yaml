@@ -1,0 +1,143 @@
+# Dataset cards — Agent không nhận toàn bộ DDL.
+# database/table phải khớp Postgres 192.168.1.200:18644.
+- id: anomaly.events
+  name: Sự kiện bất thường
+  aliases: [bất thường, anomaly, cảnh báo AI, xâm nhập, intrusion, loitering, lảng vảng]
+  description: Sự kiện bất thường do AI phát hiện.
+  database: anomaly
+  table: anomaly_event
+  time_column: event_time
+  dimensions: [camera_name, event_type, severity]
+
+- id: smart_face.events
+  name: Sự kiện nhận diện khuôn mặt
+  aliases: [khuôn mặt, face, nhận diện, chấm công, chấm công ra vào, ra vào người, nhân viên ra vào, smart face]
+  description: Lượt nhận diện khuôn mặt tại camera (người). Không dùng cho ô tô/xe máy/biển số.
+  database: smart_face
+  table: smf_face_events
+  time_column: access_time
+  dimensions: [user_name, department_name, direction]
+
+- id: its.plate_events
+  name: Sự kiện nhận diện biển số xe
+  aliases:
+    [
+      biển số,
+      plate,
+      ALPR,
+      xe qua camera,
+      phương tiện,
+      license plate,
+      biển số xe,
+      vehicle,
+      camera phương tiện,
+      camera biển số,
+      camera xe,
+      ô tô,
+      xe máy,
+      xe tải,
+      xe buýt,
+      xe hơi,
+      oto,
+      car,
+      motorcycle,
+      truck,
+      bus,
+      ra vào xe,
+      xe ra vào,
+    ]
+  description: "Sự kiện biển số (ALPR). Ô tô=vehicle_type CAR; xe máy=MOTORCYCLE; ra/vào=direction IN/OUT. Đếm camera phương tiện: COUNT(DISTINCT camera_code). Không dùng bảng camera hay smf_face_events."
+  database: its
+  table: plate_event
+  time_column: event_time
+  dimensions: [camera_code, camera_name, direction, vehicle_type, license_plate_text]
+
+- id: its.plate_violations
+  name: Vi phạm giao thông (biển số)
+  aliases: [vi phạm giao thông, vi phạm, phạt nguội, lỗi giao thông, vượt đèn đỏ, violation]
+  description: Sự kiện vi phạm giao thông gắn với biển số.
+  database: its
+  table: plate_violation_event
+  time_column: created_at
+  dimensions: [violation_type_code]
+
+- id: firesmoke.events
+  name: Sự kiện cháy/khói
+  aliases: [cháy, khói, fire, smoke, hỏa hoạn, phát hiện cháy, báo cháy]
+  description: Sự kiện phát hiện cháy/khói.
+  database: firesmoke
+  table: fire_smoke_event
+  time_column: event_time
+  dimensions: [camera_name, entity_type, alert_level]
+
+- id: footfall.events
+  name: Sự kiện đếm người
+  aliases: [đếm người, footfall, lưu lượng người, lượng khách, người qua lại]
+  description: Sự kiện đếm người qua camera.
+  database: footfall
+  table: footfall_event
+  time_column: event_time
+  dimensions: [camera_name, entity_type]
+
+- id: ppe.events
+  name: Sự kiện PPE
+  aliases: [ppe, bảo hộ, đồ bảo hộ, mũ bảo hộ, an toàn lao động]
+  description: Kiểm tra tuân thủ đồ bảo hộ.
+  database: ppe
+  table: ppe_event
+  time_column: event_time
+  dimensions: [camera_name, compliance_status, department_name]
+
+- id: thermal.alerts
+  name: Cảnh báo nhiệt độ
+  aliases: [nhiệt độ, cảnh báo nhiệt, thermal, quá nhiệt]
+  description: Cảnh báo nhiệt từ camera/cảm biến.
+  database: thermal_db
+  table: thermal_alert
+  time_column: first_seen_at
+  dimensions: [alert_type, severity, status]
+
+- id: thermal.readings
+  name: Số đo nhiệt độ
+  aliases: [đo nhiệt, số đo nhiệt độ, thermal reading]
+  description: Các lần đo nhiệt độ.
+  database: thermal_db
+  table: thermal_reading
+  time_column: measured_at
+  dimensions: [quality_status]
+
+- id: virtual_fence.zone_events
+  name: Sự kiện vùng cấm
+  aliases: [vùng cấm, hàng rào ảo, virtual fence, xâm nhập vùng, zone]
+  description: Đối tượng ra/vào vùng giám sát.
+  database: virtual_fence
+  table: zone_event
+  time_column: event_time
+  dimensions: [camera_name, direction, entity_type]
+
+- id: virtual_fence.zone_incidents
+  name: Sự vụ vi phạm vùng cấm
+  aliases: [vi phạm vùng cấm, zone incident, xâm nhập trái phép]
+  description: Sự vụ vi phạm vùng cấm đã gom event.
+  database: virtual_fence
+  table: zone_incident
+  time_column: start_time
+  dimensions: [violation_type, severity, status]
+
+- id: vms.ai_events
+  name: Sự kiện AI tổng hợp (VMS)
+  aliases: [sự kiện ai, tất cả sự kiện, tổng hợp sự kiện, ai event, sự kiện camera]
+  description: Bảng sự kiện AI tổng của VMS. Có thể rỗng nếu hệ chưa gộp.
+  database: vms_db
+  table: ai_event
+  time_column: event_time
+  dimensions: [module_code, event_type, severity]
+
+- id: vms.cameras
+  name: Danh sách camera
+  aliases: [camera, cameras, số camera, camera đang hoạt động, thiết bị camera, danh sách camera]
+  description: "Danh sách thiết bị camera VMS (không phải camera phương tiện/ALPR). Cột định danh là code, không có camera_code. status ONLINE = đang hoạt động. Không bịa active."
+  database: vms_db
+  table: camera
+  time_column: null
+  dimensions: [name, status]

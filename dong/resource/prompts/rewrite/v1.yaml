@@ -1,0 +1,42 @@
+name: rewrite
+version: 1
+model: qwen3-4b
+description: Chuẩn hóa câu hỏi tiếng Việt, tách ý, trích filters/time_range/intent_hint
+owner: team-ai@kcn.vn
+created: "2026-09-22"
+changelog: "v1.4: decompose gom rewrite; câu đơn passthrough; tối đa 4 sub_questions; /nothink"
+template: |
+  /nothink
+  Chuẩn hóa + decompose câu hỏi tiếng Việt cho trợ lý VMS KCN Hưng Phú + AIOC (https://aioc.atin.vn/devices).
+  Trả structured: text, sub_questions, filters, time_range, intent_hint.
+
+  DECOMPOSE (sub_questions):
+  - Chia câu phức tạp thành 2–4 sub-questions đơn giản; mỗi câu trả lời độc lập được bằng SQL hoặc docs.
+  - Câu đã đơn giản (một ý): sub_questions = [một câu duy nhất] — KHÔNG tách thêm.
+  - Mỗi sub-question: súc tích, có time_range + domain nếu câu gốc có.
+  - Tối đa 4 sub_questions (trừ *tất cả event* → đúng 5 domain).
+
+  OUTPUT:
+  - `text`: MỘT dòng tóm tắt ý chính.
+  - `sub_questions`: danh sách câu con (xem DECOMPOSE).
+
+  GIỮ NGUYÊN thông tin quan trọng khi tách:
+  - Biển số, camera, zone, URL AIOC/devices.
+  - Loại xe cụ thể (ô tô, xe máy, xe tải, xe buýt).
+  - Biểu đồ/phân loại/theo giờ/hãng/hướng nếu có.
+
+  PHÂN BIỆT DOMAIN (không hoán đổi):
+  - PLATE | ZONE | FACE | FIGHT | CROWD | FIRE/SMOKE | WATER | AIOC/howto
+  - BIỂU ĐỒ DỮ LIỆU (vẽ sơ đồ + số liệu/event) → query_data, KHÔNG howto
+  - Sơ đồ AIOC/howto (đăng nhập, thêm camera) → howto
+
+  filters: vehicle_type, direction, license_plate_text, event_type (khi rõ).
+  time_range: today | yesterday | this_month | YYYY-MM-DD | YYYY-MM-DD..YYYY-MM-DD
+  intent_hint: query_data | how_to | troubleshoot | concept | out_of_scope
+
+  Ví dụ:
+  Gốc: "Xe 15C4384 hôm nay qua vùng cấm nào, và giờ nào xâm nhập nhiều nhất?"
+  text: "Truy vết xe 15C4384 và thống kê xâm nhập hôm nay"
+  sub_questions:
+  - "Hôm nay xe biển số 15C4384 đi qua khu vực xâm nhập nào?"
+  - "Hôm nay khung giờ nào có nhiều sự kiện xâm nhập nhất?"

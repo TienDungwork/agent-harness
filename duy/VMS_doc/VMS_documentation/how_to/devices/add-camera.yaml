@@ -1,0 +1,137 @@
+schema_version: "1.0.0"
+id: devices.add_camera
+type: how_to
+status: published
+locale: vi
+version: 1
+title: "Thêm camera"
+intent: add_camera
+aliases:
+  - "thêm camera"
+  - "tạo camera mới"
+  - "khai báo camera"
+  - "thêm thiết bị camera"
+module: devices
+tags:
+  - camera
+  - thiết bị
+  - thêm mới
+roles:
+  - authenticated_user
+features:
+  - devices
+route: "/devices"
+menu_path:
+  - "Cấu hình & Thiết bị"
+  - "Quản Lý Camera"
+preconditions:
+  - "Người dùng đã đăng nhập và feature devices được bật."
+  - "Tài khoản có phạm vi được phép quản lý Zone sẽ gán cho camera."
+  - "Zone được chọn đã có vùng GPS hợp lệ."
+summary: "Mở màn hình Quản lý camera, nhập các trường bắt buộc trong hộp thoại Thêm Camera Mới rồi tạo camera."
+steps:
+  - order: 1
+    say: "Tại màn hình Quản lý camera, bấm Thêm Camera."
+    ui:
+      label: "Thêm Camera"
+      i18n_key: "devices.addCamera"
+      element_id: null
+  - order: 2
+    say: "Trong hộp thoại Thêm Camera Mới, nhập thông tin camera. Các danh sách Tổ chức, Cơ sở / Site, Khu vực và Zone quản lý phụ thuộc phạm vi tài khoản."
+    ui:
+      label: "Thêm Camera Mới"
+      i18n_key: "devices.addNewCamera"
+      element_id: null
+    fields:
+      - label: "Mã Camera"
+        i18n_key: "devices.cameraCode"
+        required: true
+        constraints:
+          - "Không được để trống."
+          - "Không được trùng mã camera đang hoạt động trong Zone đã chọn."
+      - label: "Tên Camera"
+        i18n_key: "devices.cameraName"
+        required: true
+        constraints:
+          - "Không được để trống."
+      - label: "Tổ chức"
+        i18n_key: "devices.organization"
+        required: false
+        constraints:
+          - "Có thể được tự điền hoặc khóa theo phạm vi tài khoản."
+      - label: "Cơ sở / Site"
+        i18n_key: "devices.site"
+        required: false
+        constraints:
+          - "Danh sách phụ thuộc Tổ chức và có thể bị khóa theo phạm vi tài khoản."
+      - label: "Khu vực"
+        i18n_key: "devices.area"
+        required: false
+        constraints:
+          - "Danh sách phụ thuộc Cơ sở / Site và có thể bị khóa theo phạm vi tài khoản."
+      - label: "Zone quản lý"
+        i18n_key: "devices.zone"
+        required: true
+        constraints:
+          - "Không được để trống."
+          - "Danh sách phụ thuộc Khu vực và phạm vi tài khoản."
+      - label: "Trạng Thái"
+        i18n_key: "devices.status"
+        required: false
+        constraints:
+          - "Chọn một trong Trực Tuyến, Ngoại Tuyến hoặc Bảo Trì."
+      - label: "Luồng chính"
+        i18n_key: "devices.mainStreamLabel"
+        required: true
+        constraints:
+          - "Không được để trống."
+      - label: "Luồng phụ"
+        i18n_key: "devices.subStreamLabel"
+        required: false
+      - label: "Camera quay quét PTZ"
+        i18n_key: "devices.isPtz"
+        required: false
+      - label: "Mô tả"
+        i18n_key: "devices.description"
+        required: false
+  - order: 3
+    say: "Bấm Tạo Camera. Nếu form báo lỗi, sửa trường được đánh dấu rồi gửi lại."
+    ui:
+      label: "Tạo Camera"
+      i18n_key: "devices.createCamera"
+      element_id: null
+verify: "Khi tạo thành công, hộp thoại đóng, thông báo Thêm camera thành công! xuất hiện và camera được đưa vào danh sách rồi đồng bộ lại từ hệ thống."
+errors:
+  - if: "Mã camera bị trùng."
+    then: "Nhập mã khác tại trường Mã Camera rồi bấm Tạo Camera lại."
+  - if: "Form báo thiếu thông tin."
+    then: "Kiểm tra Mã Camera, Tên Camera, Zone quản lý và Luồng chính."
+sources:
+  - path: "frontend/src/App.jsx"
+    kind: route
+    note: "Khai báo route /devices với RequireAuth và RequireFeature featureKey devices."
+  - path: "frontend/src/pages/Devices/Devices.jsx"
+    kind: component
+    note: "Hiển thị nút Thêm Camera, mở CameraModal và cập nhật danh sách sau khi lưu."
+  - path: "frontend/src/pages/Devices/CameraModal.jsx"
+    kind: component
+    note: "Xác minh nhãn, trường, validation, khóa theo role scope, POST /cameras và kết quả thành công."
+  - path: "frontend/src/services/apiClient.js"
+    kind: route
+    note: "Xác minh phương thức POST gửi dữ liệu và xóa cache API sau khi thành công."
+  - path: "frontend/src/services/hierarchyService.js"
+    kind: route
+    note: "Xác minh dịch vụ tải cây Tổ chức, Cơ sở / Site, Phân khu / Area và Zone cho form."
+  - path: "frontend/src/i18n/locales/vi/playback.json"
+    kind: i18n
+    note: "Cung cấp các nhãn tiếng Việt của nút, hộp thoại và trường camera."
+  - path: "frontend/src/i18n/locales/vi/common.json"
+    kind: i18n
+    note: "Cung cấp nhãn phân cấp, validation và thông báo tạo thành công."
+  - path: "frontend/src/pages/Devices/CameraModal.test.jsx"
+    kind: test
+    note: "Kiểm tra luồng tạo gọi POST /cameras với mã, tên và Zone rồi gọi onSave."
+  - path: "backend/routers/cameras.py"
+    kind: route
+    note: "Xác minh endpoint tạo camera, kiểm tra mã, phạm vi Zone và vùng GPS."
+last_verified: "2026-09-16"

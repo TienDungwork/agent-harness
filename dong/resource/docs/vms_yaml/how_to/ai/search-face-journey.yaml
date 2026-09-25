@@ -1,0 +1,60 @@
+schema_version: "1.0.0"
+id: ai.search_face_journey
+type: how_to
+status: needs_review
+locale: vi
+version: 1
+title: "Kiểm tra khả năng tra cứu hành trình khuôn mặt"
+intent: search_face_journey
+aliases:
+  - "tra cứu hành trình khuôn mặt"
+  - "xem đường đi của nhân viên"
+  - "tìm hành trình nhận diện"
+  - "xem lộ trình khuôn mặt"
+module: face
+tags:
+  - face
+  - hành trình
+  - chưa khả dụng
+roles:
+  - authenticated_user
+features:
+  - ai_module_enabled_for_organization
+route: "/ai-modules/face"
+menu_path:
+  - "Dịch Vụ"
+  - "Nhận diện Khuôn mặt"
+preconditions:
+  - "Người dùng đã đăng nhập và module Nhận diện Khuôn mặt đang hiển thị."
+  - "Giao diện FACE hiện hành phải có tab và component hành trình trước khi có thể công bố hướng dẫn thao tác."
+summary: "Giao diện FACE hiện tại không có tab hoặc component Tra cứu hành trình; i18n còn nhãn liên quan nhưng không đủ để xác nhận tính năng đang khả dụng."
+steps:
+  - order: 1
+    say: "Mở module Nhận diện Khuôn mặt và kiểm tra các tab đang hiển thị."
+    ui:
+      label: "Nhận diện Khuôn mặt"
+      i18n_key: "modules.FACE.label"
+      element_id: null
+  - order: 2
+    say: "Nếu không thấy tab Tra cứu hành trình, dừng tại đây và hỏi quản trị viên hoặc đội sản phẩm về việc module có hỗ trợ tính năng này; không dùng nhãn i18n còn sót lại để suy ra các bước."
+verify: "Mã nguồn hiện hành xác nhận FACE không có tab journey và registry không render component hành trình; chỉ PLATE có tab Tra cứu hành trình."
+errors:
+  - if: "Người dùng thấy key hoặc nội dung i18n về Hành trình đối tượng nhưng không thấy tab tương ứng."
+    then: "Giữ card ở trạng thái needs_review; chỉ cập nhật hướng dẫn sau khi tab FACE và component xử lý hành trình xuất hiện trong mã nguồn hiện hành."
+sources:
+  - path: "frontend/src/utils/aiModuleTabs.js"
+    kind: component
+    note: "FACE_MENU_ITEMS không có journey; PLATE_MENU_ITEMS mới khai báo tab journey."
+  - path: "frontend/src/utils/aiModuleTabs.test.js"
+    kind: test
+    note: "Kiểm tra rõ FACE không chứa journey và PLATE có journey."
+  - path: "frontend/src/core/registry/aiModuleRegistry.jsx"
+    kind: component
+    note: "Registry FACE không có case journey; registry PLATE mới render PlateJourneySearch."
+  - path: "frontend/src/pages/AIModuleDetail/AIModuleDetail.jsx"
+    kind: component
+    note: "Chỉ tab hợp lệ của module mới được giữ trên URL và render; tab không hợp lệ bị thay bằng tab khả dụng."
+  - path: "frontend/src/i18n/locales/vi/modules.json"
+    kind: i18n
+    note: "Có nhãn modules.tabs.journey và nhóm faceJourney nhưng không có bằng chứng UI FACE sử dụng chúng."
+last_verified: "2026-09-16"

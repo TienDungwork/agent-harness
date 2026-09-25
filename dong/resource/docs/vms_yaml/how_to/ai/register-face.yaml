@@ -1,0 +1,115 @@
+schema_version: "1.0.0"
+id: ai.register_face
+type: how_to
+status: published
+locale: vi
+version: 1
+title: "Đăng ký khuôn mặt cho nhân viên"
+intent: register_face
+aliases:
+  - "đăng ký khuôn mặt"
+  - "thêm ảnh khuôn mặt nhân viên"
+  - "lưu khuôn mặt nhân viên"
+  - "nhận diện khuôn mặt nhân viên"
+module: face
+tags:
+  - face
+  - nhân viên
+  - đăng ký khuôn mặt
+roles:
+  - authenticated_user
+features:
+  - ai_module_enabled_for_organization
+  - employees
+route: "/ai-modules/face?tab=employees"
+menu_path:
+  - "Dịch Vụ"
+  - "Nhận diện Khuôn mặt"
+  - "Nhân viên"
+preconditions:
+  - "Người dùng đã đăng nhập, module Nhận diện Khuôn mặt đang hiển thị và tab Nhân viên không bị tắt."
+  - "Nhân viên cần đăng ký đã tồn tại trong danh sách và đang có trạng thái ○ Chưa đăng ký."
+  - "Có file ảnh chứa khuôn mặt cần đăng ký."
+summary: "Mở tab Nhân viên, chọn đúng nhân viên chưa có khuôn mặt và tải một ảnh để hệ thống nhận diện rồi lưu."
+steps:
+  - order: 1
+    say: "Trong module Nhận diện Khuôn mặt, chọn tab Nhân viên."
+    ui:
+      label: "Nhân viên"
+      i18n_key: "modules.tabs.employees"
+      element_id: null
+  - order: 2
+    say: "Dùng ô Tìm kiếm hoặc bộ lọc Phòng ban để tìm đúng nhân viên; kiểm tra cột Khuôn mặt đang hiển thị ○ Chưa đăng ký."
+    ui:
+      label: "Tìm kiếm"
+      i18n_key: "modules.faceEmployees.search"
+      element_id: null
+    fields:
+      - label: "Tìm kiếm"
+        i18n_key: "modules.faceEmployees.search"
+        required: false
+        constraints:
+          - "Có thể tìm theo tên hoặc mã nhân viên."
+      - label: "Phòng ban"
+        i18n_key: "modules.faceEmployees.department"
+        required: false
+      - label: "Khuôn mặt"
+        i18n_key: "modules.faceEmployees.face"
+        required: false
+        constraints:
+          - "Chọn dòng có trạng thái ○ Chưa đăng ký."
+  - order: 3
+    say: "Tại dòng của nhân viên, bấm nút có nhãn Đăng ký khuôn mặt."
+    ui:
+      label: "Đăng ký khuôn mặt"
+      i18n_key: "modules.faceEmployees.registerFace"
+      element_id: null
+  - order: 4
+    say: "Trong hộp thoại Đăng ký khuôn mặt, kéo thả ảnh vào vùng chọn ảnh hoặc bấm vùng này để chọn file. Hệ thống bắt đầu nhận diện ngay sau khi nhận file."
+    ui:
+      label: "Kéo thả ảnh vào đây hoặc bấm để chọn file"
+      i18n_key: "generated.FaceEmployees.keoThaAnhVaoDayHoacBam"
+      element_id: null
+    fields:
+      - label: "Ảnh khuôn mặt"
+        i18n_key: null
+        required: true
+        constraints:
+          - "Phải là file ảnh."
+          - "Ảnh phải có khuôn mặt để hệ thống nhận diện thành công."
+  - order: 5
+    say: "Nếu ảnh đã được chọn nhưng hộp thoại vẫn chờ thao tác, bấm Nhận diện & lưu."
+    ui:
+      label: "Nhận diện & lưu"
+      i18n_key: "generated.FaceEmployees.nhanDienLuu"
+      element_id: null
+    note: "Khi chọn hoặc kéo thả file, giao diện hiện tại thường tự bắt đầu nhận diện nên có thể không cần bấm nút này."
+verify: "Hệ thống báo Đăng ký khuôn mặt thành công, đóng hộp thoại và cập nhật nhân viên sang trạng thái ✓ Đã đăng ký."
+errors:
+  - if: "Hệ thống báo Vui lòng chọn file ảnh."
+    then: "Chọn lại một file ảnh thay vì file có loại khác."
+  - if: "Hệ thống báo Vui lòng chọn ảnh có khuôn mặt."
+    then: "Chọn ảnh khác có khuôn mặt nhìn thấy rõ rồi thử lại."
+sources:
+  - path: "frontend/src/components/layout/Sidebar.jsx"
+    kind: component
+    note: "Xác minh route module FACE được tạo từ module đang khả dụng."
+  - path: "frontend/src/utils/aiModuleTabs.js"
+    kind: component
+    note: "Xác minh FACE có tab employees với nhãn modules.tabs.employees."
+  - path: "frontend/src/core/registry/aiModuleRegistry.jsx"
+    kind: component
+    note: "Xác minh tab employees của FACE render FaceEmployees."
+  - path: "frontend/src/pages/AIModuleDetail/components/smart_face/FaceEmployees.jsx"
+    kind: component
+    note: "Xác minh bộ lọc, trạng thái khuôn mặt, nút đăng ký, vùng chọn ảnh, nhận diện tự động và kết quả lưu."
+  - path: "frontend/src/i18n/locales/vi/modules.json"
+    kind: i18n
+    note: "Xác minh nhãn tab, field, trạng thái và nút tiếng Việt."
+  - path: "frontend/src/i18n/locales/vi/generated.json"
+    kind: i18n
+    note: "Xác minh nhãn hộp thoại, vùng chọn ảnh và nút Nhận diện & lưu."
+  - path: "frontend/src/pages/AIModuleDetail/components/smart_face/FaceEmployees.test.jsx"
+    kind: test
+    note: "Kiểm tra danh sách nhân viên và nút khuôn mặt mở đúng hộp thoại đăng ký hoặc cập nhật."
+last_verified: "2026-09-16"

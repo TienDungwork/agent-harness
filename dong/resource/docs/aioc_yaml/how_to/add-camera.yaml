@@ -1,0 +1,73 @@
+schema_version: "1.0.0"
+id: aioc.add_camera
+type: how_to
+status: published
+locale: vi
+version: 1
+title: "Thêm camera mới trên AIOC"
+intent: add_camera
+aliases:
+  - "thêm camera trên aioc"
+  - "thêm camera mới trên aioc"
+  - "các bước thêm camera aioc"
+  - "các bước thêm camera mới trên trang quản lý camera của aioc là gì"
+  - "các bước thêm camera mới trên trang quản lý camera của aioc"
+  - "tạo camera mới aioc"
+  - "thêm camera aioc"
+  - "thêm camera mới vào aioc"
+  - "quy trình thêm camera aioc"
+module: devices
+tags:
+  - thêm camera
+  - camera
+  - aioc.atin.vn
+  - devices
+  - thêm mới
+  - quản lý camera
+roles:
+  - authenticated_user
+features:
+  - devices
+route: "/devices"
+menu_path:
+  - "Cấu hình & Thiết bị"
+  - "Quản Lý Camera"
+preconditions:
+  - "Người dùng đã đăng nhập hệ thống AIOC và có quyền quản trị thiết bị camera."
+summary: "Quy trình chi tiết các bước thêm một camera mới trên trang Quản Lý Camera của hệ thống AIOC (https://aioc.atin.vn/devices)."
+steps:
+  - order: 1
+    say: "Truy cập trang Quản Lý Camera trên hệ thống AIOC tại địa chỉ https://aioc.atin.vn/devices thông qua menu Cấu hình & Thiết bị > Quản Lý Camera."
+    ui:
+      label: "Quản Lý Camera"
+      i18n_key: "aioc.menuCameraManagement"
+      element_id: null
+  - order: 2
+    say: "Bấm nút 'Thêm Camera' ở phía trên bảng danh sách thiết bị để mở hộp thoại Thêm Camera Mới."
+    ui:
+      label: "Thêm Camera"
+      i18n_key: "aioc.btnAddCamera"
+      element_id: "btn-add-camera"
+  - order: 3
+    say: "Trong form thêm camera, nhập các thông tin cơ bản: Mã Camera (mã định danh duy nhất), Tên Camera, chọn Tổ chức, Cơ sở / Site, Phân khu / Khu vực và Zone quản lý."
+    ui:
+      label: "Thông tin camera"
+      i18n_key: "aioc.cameraInfoForm"
+      element_id: "camera-form"
+  - order: 4
+    say: "Cấu hình các thông số kết nối: nhập URL RTSP luồng chính (main stream) để xem trực tiếp chất lượng cao, URL RTSP luồng phụ (sub stream), địa chỉ IP của thiết bị camera, và tài khoản/mật khẩu camera nếu có."
+    ui:
+      label: "Thông số kết nối RTSP"
+      i18n_key: "aioc.streamConfig"
+      element_id: "stream-inputs"
+  - order: 5
+    say: "Kiểm tra lại toàn bộ thông tin đã nhập và nhấn nút 'Lưu' để hệ thống tiến hành kiểm tra kết nối, lưu cấu hình và hoàn tất việc thêm camera mới vào danh sách thiết bị AIOC."
+    ui:
+      label: "Lưu"
+      i18n_key: "aioc.btnSaveCamera"
+      element_id: "btn-save"
+sources:
+  - path: "https://aioc.atin.vn/devices"
+    kind: route
+    note: "Quy trình thêm mới camera trên AIOC devices"
+last_verified: "2026-09-22"

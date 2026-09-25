@@ -1,0 +1,90 @@
+schema_version: "1.0.0"
+id: events.handle_event
+type: how_to
+status: published
+locale: vi
+version: 1
+title: "Tiếp nhận và hoàn tất một sự kiện"
+intent: handle_event
+aliases:
+  - "xử lý cảnh báo"
+  - "tiếp nhận sự kiện"
+  - "đánh dấu sự cố đã xử lý"
+  - "báo động giả"
+module: events
+tags:
+  - event
+  - incident
+  - acknowledge
+  - resolve
+roles:
+  - operator
+  - admin
+features:
+  - events
+route: "/events"
+menu_path:
+  - "Vận hành"
+  - "Quản lý sự kiện"
+preconditions:
+  - "Người dùng mở được Quản lý sự kiện."
+  - "Sự kiện đang ở trạng thái MỚI, ĐANG XỬ LÝ hoặc ĐÃ ĐIỀU PHỐI."
+  - "Bản triển khai hiện tại có thể ẩn mục Quản lý sự kiện khỏi sidebar bằng cờ giao diện."
+summary: "Với sự kiện mới, chọn Tiếp nhận; nếu cần cử lực lượng thì chọn Điều phối; khi kết thúc chọn Xong hoặc Báo giả theo kết quả thực tế."
+steps:
+  - order: 1
+    say: "Nếu mở được Quản lý sự kiện, tìm sự kiện cần xử lý và kiểm tra thời gian, camera, vị trí, mức độ. Nếu không thấy menu, dừng lại và kiểm tra cấu hình hiển thị với quản trị viên."
+  - order: 2
+    say: "Nếu sự kiện đang ở trạng thái MỚI, chọn Tiếp nhận."
+    ui:
+      label: "Tiếp nhận"
+      i18n_key: "events.acknowledge"
+      element_id: null
+    note: "Sau khi tiếp nhận, trạng thái chuyển sang ĐANG XỬ LÝ."
+  - order: 3
+    say: "Nếu cần cử lực lượng tới hiện trường, chọn Điều phối."
+    ui:
+      label: "Điều phối"
+      i18n_key: "events.dispatch"
+      element_id: null
+    note: "Bước này chỉ xuất hiện khi sự kiện đã được tiếp nhận và chưa điều phối."
+  - order: 4
+    say: "Sau khi xác minh sự cố đã được xử lý, chọn Xong."
+    ui:
+      label: "Xong"
+      i18n_key: "events.resolve"
+      element_id: null
+  - order: 5
+    say: "Nếu xác minh cảnh báo không phải sự cố thật, chọn Báo giả thay cho Xong."
+    ui:
+      label: "Báo giả"
+      i18n_key: "events.falseAlarm"
+      element_id: null
+  - order: 6
+    say: "Kiểm tra trạng thái cuối là HOÀN TẤT hoặc BÁO GIẢ và xem cột Kết luận."
+verify: "Sự kiện hiển thị HOÀN TẤT hoặc BÁO GIẢ; thông tin tiếp nhận/kết luận xuất hiện trong danh sách."
+errors:
+  - if: "Không thấy nút Tiếp nhận."
+    then: "Kiểm tra sự kiện có còn ở trạng thái MỚI hay không."
+  - if: "Không thấy Xong hoặc Báo giả."
+    then: "Tiếp nhận sự kiện trước; các nút này chỉ xuất hiện khi sự kiện đang xử lý hoặc đã điều phối."
+  - if: "Thao tác cập nhật thất bại."
+    then: "Bấm Làm mới, kiểm tra trạng thái hiện tại và báo quản trị viên nếu lỗi tiếp diễn."
+related:
+  - operations.filter_events
+  - operations.view_event_detail
+  - troubleshooting.event_image_unavailable
+sources:
+  - path: "frontend/src/pages/Events/Events.jsx"
+    kind: component
+    note: "Điều kiện hiển thị và hành vi Tiếp nhận, Điều phối, Xong, Báo giả theo processing_status."
+  - path: "frontend/src/pages/Events/Events.test.jsx"
+    kind: test
+    note: "Bao phủ màn hình sự kiện và tương tác người dùng."
+  - path: "frontend/src/i18n/locales/vi/common.json"
+    kind: i18n
+    note: "Nhãn và trạng thái sự kiện tiếng Việt."
+  - path: "frontend/src/config/features.js"
+    kind: component
+    note: "Cờ FEATURE_EVENTS_ALERTS_VISIBLE có thể ẩn mục sự kiện khỏi sidebar."
+last_verified: "2026-09-16"

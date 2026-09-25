@@ -1,0 +1,120 @@
+schema_version: "1.0.0"
+id: operations.use_recording_calculator
+type: how_to
+status: published
+locale: vi
+version: 1
+title: "Sử dụng công cụ tính dung lượng ghi hình"
+intent: use_recording_calculator
+aliases:
+  - "tính dung lượng ghi hình"
+  - "ước tính lưu trữ camera"
+  - "tính số ngày lưu camera"
+  - "recording calculator"
+module: tools
+tags:
+  - ghi-hinh
+  - luu-tru
+  - bitrate
+  - planning
+roles:
+  - authenticated_user
+features:
+  - tools
+route: "/tools?tab=recording"
+menu_path:
+  - "Cấu hình & Thiết bị"
+  - "Công Cụ"
+  - "Tính dung lượng ghi hình"
+preconditions:
+  - "Người dùng đã đăng nhập."
+  - "Feature tools đã được bật cho tổ chức."
+  - "Người dùng có các thông số dự kiến về camera, luồng ghi hình và mục tiêu lưu trữ."
+summary: "Chọn chế độ tính dung lượng cần thiết hoặc thời gian lưu, nhập thông số camera và ghi hình, rồi đọc kết quả ước tính để planning sơ bộ."
+steps:
+  - order: 1
+    say: "Trong nhóm Cấu hình & Thiết bị, chọn Công Cụ."
+    ui:
+      label: "Công Cụ"
+      i18n_key: "sidebar.tools"
+      element_id: null
+  - order: 2
+    say: "Chọn Tính dung lượng ghi hình."
+    ui:
+      label: "Tính dung lượng ghi hình"
+      i18n_key: "tools.menu.recording"
+      element_id: null
+  - order: 3
+    say: "Chọn Cần bao nhiêu lưu trữ để tính dung lượng theo số ngày muốn lưu, hoặc chọn Ước tính thời gian lưu để tính số ngày theo dung lượng hiện có."
+    ui:
+      label: "Cần bao nhiêu lưu trữ"
+      i18n_key: "tools.calculator.needStorage"
+      element_id: null
+  - order: 4
+    say: "Kiểm tra và điều chỉnh thông số camera theo phương án cần tính."
+    fields:
+      - label: "Profile camera"
+        i18n_key: "tools.calculator.cameraProfile"
+        required: true
+      - label: "Số lượng camera"
+        i18n_key: "tools.calculator.cameraCount"
+        required: true
+      - label: "Độ phân giải"
+        i18n_key: "tools.calculator.resolution"
+        required: true
+      - label: "FPS"
+        i18n_key: "generated.Tools.fps"
+        required: true
+      - label: "Codec"
+        i18n_key: "tools.cameraSettings.codec"
+        required: true
+      - label: "Tốc độ bit (Kbps)"
+        i18n_key: "generated.Tools.bitrateKbps"
+        required: true
+  - order: 5
+    say: "Chọn Chế độ ghi hình. Nếu tính dung lượng cần thiết, nhập Số ngày muốn lưu; nếu ước tính thời gian lưu, nhập Dung lượng hiện có (TB)."
+    ui:
+      label: "Chế độ ghi hình"
+      i18n_key: "tools.calculator.recordingMode"
+      element_id: null
+    fields:
+      - label: "Số ngày muốn lưu"
+        i18n_key: "tools.calculator.retentionDays"
+        required: false
+        constraints:
+          - "Dùng trong chế độ Cần bao nhiêu lưu trữ."
+      - label: "Dung lượng hiện có (TB)"
+        i18n_key: "tools.calculator.availableStorage"
+        required: false
+        constraints:
+          - "Dùng trong chế độ Ước tính thời gian lưu."
+  - order: 6
+    say: "Đọc Kết quả ước tính, Băng thông tổng, Dung lượng / ngày và phần So sánh codec. Dùng kết quả cho planning sơ bộ, không coi đây là dung lượng vận hành thực tế."
+    ui:
+      label: "Kết quả ước tính"
+      i18n_key: "tools.calculator.estimatedResult"
+      element_id: null
+verify: "Kết quả tự cập nhật theo thông số đã chọn và hiển thị dung lượng cần thiết hoặc số ngày lưu ước tính cùng các chỉ số tham khảo."
+sources:
+  - path: "frontend/src/App.jsx"
+    kind: route
+    note: "Khai báo route /tools với RequireAuth và RequireFeature featureKey tools."
+  - path: "frontend/src/components/layout/Sidebar.jsx"
+    kind: component
+    note: "Xác minh mục Công Cụ dùng route /tools trong nhóm cấu hình."
+  - path: "frontend/src/pages/Tools/Tools.jsx"
+    kind: component
+    note: "Xác minh tab ghi hình, hai chế độ tính, các trường đầu vào, kết quả tự cập nhật và cảnh báo chỉ dùng để planning."
+  - path: "frontend/src/i18n/locales/vi/tools.json"
+    kind: i18n
+    note: "Xác minh nhãn tiếng Việt của công cụ, trường đầu vào, kết quả và lưu ý tham khảo."
+  - path: "frontend/src/i18n/locales/vi/common.json"
+    kind: i18n
+    note: "Xác minh nhãn sidebar Công Cụ."
+  - path: "frontend/src/i18n/locales/vi/generated.json"
+    kind: i18n
+    note: "Xác minh nhãn FPS, tốc độ bit và đơn vị kết quả."
+  - path: "frontend/tests/pages.spec.js"
+    kind: test
+    note: "Kiểm tra người dùng đã xác thực mở được route /tools và trang không rơi vào lỗi hệ thống."
+last_verified: "2026-09-16"

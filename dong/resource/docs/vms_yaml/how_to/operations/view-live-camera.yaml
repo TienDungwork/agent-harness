@@ -1,0 +1,98 @@
+schema_version: "1.0.0"
+id: "operations.view-live-camera"
+type: "how_to"
+status: "published"
+locale: "vi"
+version: 1
+title: "Xem trực tiếp một camera"
+intent: "view_live_camera"
+aliases:
+  - "xem camera trực tiếp"
+  - "xem cam trực tiếp"
+  - "mở live view camera"
+  - "coi camera đang chạy"
+  - "giám sát camera thời gian thực"
+module: "operations"
+tags:
+  - "camera"
+  - "giám sát trực tiếp"
+  - "live view"
+roles:
+  - "Người dùng đã đăng nhập có phạm vi camera được cấp"
+features:
+  - "monitoring"
+route: "/monitoring"
+menu_path:
+  - "Vận hành"
+  - "Giám Sát Trực Tiếp"
+preconditions:
+  - "Đã đăng nhập."
+  - "Tính năng monitoring được bật cho tổ chức."
+  - "Camera cần xem thuộc tổ chức, cấp phân vùng hoặc danh sách thiết bị mà tài khoản được cấp."
+summary: "Mở Giám Sát Trực Tiếp, dùng Chọn Camera để tìm và chọn camera nằm trong phạm vi quyền của bạn."
+steps:
+  - order: 1
+    say: "Trong nhóm Vận hành, mở Giám Sát Trực Tiếp."
+    ui:
+      label: "Giám Sát Trực Tiếp"
+      i18n_key: "sidebar.liveMonitoring"
+      element_id: null
+  - order: 2
+    say: "Chọn Chọn Camera trên thanh công cụ."
+    ui:
+      label: "Chọn Camera"
+      i18n_key: "liveMonitoring.selectCamera"
+      element_id: null
+  - order: 3
+    say: "Nếu danh sách dài, nhập tên hoặc mã camera vào ô Tìm kiếm camera theo tên/mã..."
+    ui:
+      label: "Tìm kiếm camera theo tên/mã..."
+      i18n_key: "liveMonitoring.searchCameraPlaceholder"
+      element_id: null
+    note: "Có thể bỏ qua bước tìm kiếm khi camera đã hiện trong danh sách."
+  - order: 4
+    say: "Nhấp vào camera cần xem để tích chọn và đưa camera vào lưới giám sát."
+    ui:
+      label: "Danh sách camera"
+      i18n_key: "liveMonitoring.cameraList"
+      element_id: null
+verify: "Camera đã chọn xuất hiện trong một ô của lưới Giám Sát Trực Tiếp và bộ đếm trên Chọn Camera tăng số camera đang chọn."
+errors:
+  - if: "Không thấy menu Giám Sát Trực Tiếp."
+    then: "Kiểm tra tính năng monitoring của tổ chức và quyền truy cập với quản trị viên."
+  - if: "Không tìm thấy camera trong Danh sách camera."
+    then: "Kiểm tra lại tên hoặc mã; nếu vẫn không thấy, đề nghị quản trị viên kiểm tra phạm vi tổ chức, site, area, zone hoặc camera được cấp."
+  - if: "Camera đã chọn nhưng luồng không hiển thị."
+    then: "Kiểm tra trạng thái camera trong danh sách; thử một camera Trực tuyến khác trong phạm vi được cấp và liên hệ quản trị viên nếu lỗi tiếp diễn."
+related:
+  - "auth.login"
+  - "operations.change-live-layout"
+sources:
+  - path: "frontend/src/App.jsx"
+    kind: "route"
+    note: "Route /monitoring được bảo vệ bởi RequireAuth và feature monitoring."
+  - path: "frontend/src/components/layout/Sidebar.jsx"
+    kind: "component"
+    note: "Khai báo mục Giám Sát Trực Tiếp tại /monitoring và lọc mục theo feature."
+  - path: "frontend/src/features/common/live-monitoring/Live/CameraSelector.jsx"
+    kind: "component"
+    note: "Xác minh nút Chọn Camera, tìm theo tên/mã, danh sách, trạng thái và hành vi nhấp để chọn camera."
+  - path: "frontend/src/features/common/live-monitoring/Live/Live.jsx"
+    kind: "component"
+    note: "Xác minh CameraSelector nhận danh sách camera đã lọc quyền và tải camera được chọn vào lưới."
+  - path: "frontend/src/utils/rolePermissions.js"
+    kind: "component"
+    note: "Lọc camera theo tổ chức, phạm vi site/area/zone và danh sách device hoặc camera được cấp; tài khoản không có phạm vi bị từ chối."
+  - path: "frontend/src/i18n/locales/vi/common.json"
+    kind: "i18n"
+    note: "Nguồn nhãn menu Giám Sát Trực Tiếp."
+  - path: "frontend/src/i18n/locales/vi/live.json"
+    kind: "i18n"
+    note: "Nguồn nhãn Chọn Camera, Danh sách camera, tìm kiếm và trạng thái camera."
+  - path: "frontend/src/features/common/live-monitoring/Live/LiveMonitoringTenantConsistency.test.jsx"
+    kind: "test"
+    note: "Kiểm tra Live Monitoring chỉ dùng cùng tập camera đã lọc theo tổ chức và quyền như trang thiết bị."
+  - path: "frontend/src/utils/rolePermissions.test.js"
+    kind: "test"
+    note: "Kiểm tra lọc camera cho quản trị viên, người dùng theo device, site, zone và trường hợp không có phạm vi."
+last_verified: "2026-09-16"

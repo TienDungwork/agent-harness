@@ -1,0 +1,108 @@
+schema_version: "1.0.0"
+id: "how-to.ai.search-plate-journey"
+type: how_to
+status: published
+locale: vi
+version: 1
+title: "Tra cứu hành trình phương tiện theo biển số"
+intent: "search_plate_journey"
+aliases:
+  - "tìm hành trình xe theo biển số"
+  - "xem lộ trình phương tiện"
+  - "tra cứu xe đã đi qua camera nào"
+module: "ai"
+tags:
+  - "biển số"
+  - "hành trình phương tiện"
+  - "bản đồ lộ trình"
+  - "PLATE"
+roles:
+  - "authenticated_user"
+features:
+  - "ai_module_PLATE_enabled_for_organization"
+  - "PLATE_journey_tab_enabled"
+route: "/ai-modules/plate?tab=journey"
+menu_path:
+  - "Dịch Vụ"
+  - "Hệ thống giám sát phương tiện"
+  - "Tra cứu hành trình"
+preconditions:
+  - "Người dùng đã đăng nhập vào VMS."
+  - "Module PLATE đang được bật cho tổ chức và tab journey không bị tắt."
+  - "Có dữ liệu nhận diện cho biển số cần tra cứu trong khoảng thời gian đã chọn."
+summary: "Nhập biển số và khoảng thời gian trong tab Tra cứu hành trình để mở bản đồ lộ trình cùng danh sách các sự kiện phương tiện."
+steps:
+  - order: 1
+    say: "Trong nhóm Dịch Vụ, mở Hệ thống giám sát phương tiện."
+    ui:
+      label: "Hệ thống giám sát phương tiện"
+      i18n_key: "modules.PLATE.label"
+      element_id: null
+  - order: 2
+    say: "Chọn tab Tra cứu hành trình."
+    ui:
+      label: "Tra cứu hành trình"
+      i18n_key: "modules.tabs.journey"
+      element_id: null
+  - order: 3
+    say: "Nhập biển số xe cần tra cứu."
+    fields:
+      - label: "Biển số xe"
+        i18n_key: "modules.plateJourney.plate"
+        required: true
+        constraints:
+          - "Nút Tra cứu hành trình chỉ được bật khi biển số không rỗng."
+  - order: 4
+    say: "Chọn Ngày, Tuần, Tháng hoặc Tùy chọn; nếu chọn Tùy chọn, đặt thời điểm bắt đầu và kết thúc."
+    fields:
+      - label: "Khoảng thời gian"
+        i18n_key: "report.timeRange"
+        required: true
+  - order: 5
+    say: "Nhấn Tra cứu hành trình."
+    ui:
+      label: "Tra cứu hành trình"
+      i18n_key: "modules.plateJourney.searchJourney"
+      element_id: null
+  - order: 6
+    say: "Trong cửa sổ Hành trình phương tiện, xem bản đồ lộ trình hoặc các trạm ghi nhận; đóng cửa sổ khi hoàn tất."
+    ui:
+      label: "Hành trình phương tiện"
+      i18n_key: "modules.plateJourney.title"
+      element_id: null
+verify: "Cửa sổ Hành trình phương tiện mở với dữ liệu của biển số và khoảng thời gian đã chọn; trước khi tra cứu, màn hình hiển thị Chưa có dữ liệu tra cứu hành trình."
+errors:
+  - if: "Nút Tra cứu hành trình đang bị vô hiệu hóa."
+    then: "Nhập biển số xe; nút chỉ được bật khi giá trị sau khi bỏ khoảng trắng không rỗng."
+  - if: "Cửa sổ hiển thị Không có sự kiện nào trong khoảng thời gian đã chọn."
+    then: "Thử nới rộng khoảng thời gian hoặc tìm biển số khác."
+  - if: "Cửa sổ báo Camera chưa có tọa độ GPS."
+    then: "Xem dữ liệu bằng Dòng thời gian; bản đồ chỉ vẽ được khi camera có tọa độ."
+  - if: "Không thấy module hoặc tab Tra cứu hành trình."
+    then: "Kiểm tra module PLATE và feature journey của tổ chức với quản trị viên."
+sources:
+  - path: "frontend/src/App.jsx"
+    kind: route
+    note: "Xác minh route chi tiết module AI yêu cầu đăng nhập."
+  - path: "frontend/src/pages/AIModuleDetail/AIModuleDetail.jsx"
+    kind: component
+    note: "Xác minh query tab, feature tab bị tắt và điều hướng tab hợp lệ."
+  - path: "frontend/src/utils/aiModuleTabs.js"
+    kind: component
+    note: "Xác minh module PLATE có tab journey với nhãn modules.tabs.journey."
+  - path: "frontend/src/core/registry/aiModuleRegistry.jsx"
+    kind: component
+    note: "Xác minh tab journey của PLATE render PlateJourneySearch."
+  - path: "frontend/src/pages/AIModuleDetail/components/its/PlateJourneySearch.jsx"
+    kind: component
+    note: "Xác minh field biển số, bộ chọn thời gian, nút tra cứu và empty state ban đầu."
+  - path: "frontend/src/pages/AIModuleDetail/components/its/JourneyMapModal.jsx"
+    kind: component
+    note: "Xác minh cửa sổ kết quả, trạng thái không có sự kiện và thiếu tọa độ camera."
+  - path: "frontend/src/i18n/locales/vi/modules.json"
+    kind: i18n
+    note: "Xác minh nhãn module, tab, field, nút và empty state."
+  - path: "frontend/src/pages/AIModuleDetail/components/its/__tests__/PlateJourneySearch.test.jsx"
+    kind: test
+    note: "Xác minh field biển số, preset thời gian, trạng thái nút và việc mở cửa sổ hành trình."
+last_verified: "2026-09-16"

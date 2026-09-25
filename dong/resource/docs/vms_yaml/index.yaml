@@ -1,0 +1,298 @@
+schema_version: "1.0.0"
+knowledge_base: "vms-usage-guide"
+default_locale: vi
+last_updated: "2026-09-16"
+
+ingestion:
+  include_statuses:
+    - published
+  exclude_statuses:
+    - needs_review
+    - draft
+    - deprecated
+  card_schema: "schema.yaml"
+  glossary: "glossary.yaml"
+
+coverage:
+  total_cards: 42
+  by_status:
+    published: 40
+    needs_review: 2
+    draft: 0
+    deprecated: 0
+  by_type:
+    how_to: 34
+    troubleshooting: 5
+    concept: 3
+  modules:
+    - access-control
+    - ai
+    - auth
+    - counting
+    - dashboard
+    - devices
+    - events
+    - face
+    - fire-ppe
+    - map
+    - monitoring
+    - navigation
+    - operations
+    - organization
+    - playback
+    - speech_to_text
+    - system
+
+cards:
+  - id: concept.ai-modules-overview
+    file: concepts/ai-modules-overview.yaml
+    type: concept
+    status: published
+    module: ai
+    title: "Module AI và menu Dịch Vụ"
+  - id: concept.navigation_overview
+    file: concepts/navigation-overview.yaml
+    type: concept
+    status: published
+    module: navigation
+    title: "Tổng quan điều hướng trong VMS"
+  - id: concept.permissions-and-features
+    file: concepts/permissions-and-features.yaml
+    type: concept
+    status: published
+    module: access-control
+    title: "Quyền, feature và lý do menu có thể khác nhau"
+  - id: how-to.ai.manage-monitoring-zone
+    file: how_to/ai/manage-monitoring-zone.yaml
+    type: how_to
+    status: published
+    module: ai
+    title: "Vẽ vùng giám sát AI trên camera trực tiếp"
+  - id: how-to.ai.open-module
+    file: how_to/ai/open-module.yaml
+    type: how_to
+    status: published
+    module: ai
+    title: "Mở một module AI đang khả dụng"
+  - id: how-to.ai.process-audio
+    file: how_to/ai/process-audio.yaml
+    type: how_to
+    status: published
+    module: speech_to_text
+    title: "Tải lên và xử lý audio bằng Speech-to-Text"
+  - id: ai.register_face
+    file: how_to/ai/register-face.yaml
+    type: how_to
+    status: published
+    module: face
+    title: "Đăng ký khuôn mặt cho nhân viên"
+  - id: ai.search_face_journey
+    file: how_to/ai/search-face-journey.yaml
+    type: how_to
+    status: needs_review
+    module: face
+    title: "Kiểm tra khả năng tra cứu hành trình khuôn mặt"
+  - id: how-to.ai.search-plate-history
+    file: how_to/ai/search-plate-history.yaml
+    type: how_to
+    status: published
+    module: ai
+    title: "Tra cứu lịch sử nhận diện biển số"
+  - id: how-to.ai.search-plate-journey
+    file: how_to/ai/search-plate-journey.yaml
+    type: how_to
+    status: published
+    module: ai
+    title: "Tra cứu hành trình phương tiện theo biển số"
+  - id: how-to.ai.view-counting
+    file: how_to/ai/view-counting.yaml
+    type: how_to
+    status: published
+    module: counting
+    title: "Xem dữ liệu đếm người và ra vào"
+  - id: ai.view_face_attendance
+    file: how_to/ai/view-face-attendance.yaml
+    type: how_to
+    status: published
+    module: face
+    title: "Xem lịch sử chấm công khuôn mặt"
+  - id: how-to.ai.view-safety-alerts
+    file: how_to/ai/view-safety-alerts.yaml
+    type: how_to
+    status: published
+    module: fire-ppe
+    title: "Xem lịch sử cảnh báo Cháy hoặc PPE"
+  - id: auth.login
+    file: how_to/auth/login.yaml
+    type: how_to
+    status: published
+    module: auth
+    title: "Đăng nhập VMS"
+  - id: auth.reset_password
+    file: how_to/auth/reset-password.yaml
+    type: how_to
+    status: published
+    module: auth
+    title: "Khôi phục mật khẩu đăng nhập"
+  - id: devices.add_camera
+    file: how_to/devices/add-camera.yaml
+    type: how_to
+    status: published
+    module: devices
+    title: "Thêm camera"
+  - id: devices.delete_camera
+    file: how_to/devices/delete-camera.yaml
+    type: how_to
+    status: published
+    module: devices
+    title: "Xóa camera"
+  - id: devices.edit_camera
+    file: how_to/devices/edit-camera.yaml
+    type: how_to
+    status: published
+    module: devices
+    title: "Chỉnh sửa camera"
+  - id: operations.capture_live_snapshot
+    file: how_to/operations/capture-live-snapshot.yaml
+    type: how_to
+    status: published
+    module: monitoring
+    title: "Chụp ảnh từ camera trực tiếp"
+  - id: operations.change-live-layout
+    file: how_to/operations/change-live-layout.yaml
+    type: how_to
+    status: published
+    module: operations
+    title: "Chuyển sang layout trực tiếp đã lưu"
+  - id: operations.export_playback_clip
+    file: how_to/operations/export-playback-clip.yaml
+    type: how_to
+    status: published
+    module: playback
+    title: "Xuất một đoạn video từ Phát Lại"
+  - id: operations.filter_events
+    file: how_to/operations/filter-events.yaml
+    type: how_to
+    status: published
+    module: events
+    title: "Lọc danh sách sự kiện"
+  - id: events.handle_event
+    file: how_to/operations/handle-event.yaml
+    type: how_to
+    status: published
+    module: events
+    title: "Tiếp nhận và hoàn tất một sự kiện"
+  - id: operations.use_dashboard
+    file: how_to/operations/use-dashboard.yaml
+    type: how_to
+    status: published
+    module: dashboard
+    title: "Sử dụng Dashboard theo phạm vi tổ chức"
+  - id: operations.view_event_detail
+    file: how_to/operations/view-event-detail.yaml
+    type: how_to
+    status: published
+    module: events
+    title: "Xem chi tiết một sự kiện"
+  - id: operations.view-live-camera
+    file: how_to/operations/view-live-camera.yaml
+    type: how_to
+    status: published
+    module: operations
+    title: "Xem trực tiếp một camera"
+  - id: operations.view_map_camera
+    file: how_to/operations/view-map-camera.yaml
+    type: how_to
+    status: published
+    module: map
+    title: "Xem camera trên Bản Đồ Quốc Gia"
+  - id: operations.view_playback
+    file: how_to/operations/view-playback.yaml
+    type: how_to
+    status: published
+    module: playback
+    title: "Xem lại bản ghi camera"
+  - id: organization.assign-device-ai
+    file: how_to/organization/assign-device-ai.yaml
+    type: how_to
+    status: published
+    module: organization
+    title: "Gắn camera vào cây phân cấp và kích hoạt Module AI"
+  - id: organization.configure-floorplan
+    file: how_to/organization/configure-floorplan.yaml
+    type: how_to
+    status: published
+    module: organization
+    title: "Vẽ ranh giới GPS trên sơ đồ mặt bằng"
+  - id: organization.create_site_area
+    file: how_to/organization/create-site-area.yaml
+    type: how_to
+    status: published
+    module: organization
+    title: "Tạo Cơ sở hoặc Khu vực theo quan hệ cha"
+  - id: organization.create_zone
+    file: how_to/organization/create-zone.yaml
+    type: how_to
+    status: published
+    module: organization
+    title: "Tạo Phân vùng trong Khu vực"
+  - id: organization.manage_hierarchy
+    file: how_to/organization/manage-hierarchy.yaml
+    type: how_to
+    status: published
+    module: organization
+    title: "Xem và tra cứu Cây tổ chức"
+  - id: organization.use-sop
+    file: how_to/organization/use-sop.yaml
+    type: how_to
+    status: published
+    module: organization
+    title: "Xem một quy trình SOP"
+  - id: system.assign-role
+    file: how_to/system/assign-role.yaml
+    type: how_to
+    status: published
+    module: system
+    title: "Gán vai trò cho người dùng"
+  - id: system.configure-alert-channel
+    file: how_to/system/configure-alert-channel.yaml
+    type: how_to
+    status: needs_review
+    module: system
+    title: "Cấu hình kênh nhận cảnh báo"
+  - id: system.create-user
+    file: how_to/system/create-user.yaml
+    type: how_to
+    status: published
+    module: system
+    title: "Tạo người dùng VMS"
+  - id: troubleshooting.event_image_unavailable
+    file: troubleshooting/event-image-unavailable.yaml
+    type: troubleshooting
+    status: published
+    module: events
+    title: "Ảnh sự kiện không hiển thị"
+  - id: troubleshooting.journey_no_data
+    file: troubleshooting/journey-no-data.yaml
+    type: troubleshooting
+    status: published
+    module: ai
+    title: "Tra cứu hành trình không có dữ liệu"
+  - id: troubleshooting.live_stream_unavailable
+    file: troubleshooting/live-stream-unavailable.yaml
+    type: troubleshooting
+    status: published
+    module: monitoring
+    title: "Camera trực tiếp không phát video"
+  - id: troubleshooting.menu_not_visible
+    file: troubleshooting/menu-not-visible.yaml
+    type: troubleshooting
+    status: published
+    module: navigation
+    title: "Không thấy menu hoặc chức năng trong VMS"
+  - id: troubleshooting.playback_no_recording
+    file: troubleshooting/playback-no-recording.yaml
+    type: troubleshooting
+    status: published
+    module: playback
+    title: "Phát Lại không có bản ghi"

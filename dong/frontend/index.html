@@ -1,0 +1,409 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>agent_ATIN — Trợ lý Giám sát & Thống kê VMS KCN Hưng Phú</title>
+  <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+  <meta http-equiv="Pragma" content="no-cache">
+  <meta http-equiv="Expires" content="0">
+  <link rel="stylesheet" href="style.css">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+</head>
+<body>
+  <div class="app-layout">
+    <!-- Sidebar -->
+    <aside class="sidebar" id="sidebar">
+      <div class="sidebar-header">
+        <div class="brand">
+          <div class="brand-icon">AI</div>
+          <div class="brand-text">
+            <h2>agent_ATIN</h2>
+            <span class="badge-vms">VMS Analytics</span>
+          </div>
+        </div>
+        <button class="btn-new-chat" id="btn-new-chat" title="Tạo đoạn chat mới">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14M5 12h14"/></svg>
+          <span>Đoạn chat mới</span>
+        </button>
+      </div>
+
+      <!-- Mục Câu hỏi mẫu (Accordion từ v2.yaml) -->
+      <div class="sample-questions-accordion" id="sample-questions-accordion">
+        <button type="button" class="sample-accordion-header" id="sample-accordion-header" aria-expanded="false" title="Nhấn để xem các câu hỏi mẫu từ bộ đề v2.yaml">
+          <div class="sample-header-title">
+            <svg class="sample-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M12 2a7 7 0 0 1 7 7c0 2.38-1.19 4.47-3 5.74V17a2 2 0 0 1-2 2h-4a2 2 0 0 1-2-2v-2.26C6.19 13.47 5 11.38 5 9a7 7 0 0 1 7-7z"/>
+              <path d="M9 21h6"/>
+            </svg>
+            <span>Câu hỏi mẫu</span>
+            <span class="sample-count-badge">v2.yaml</span>
+          </div>
+          <svg class="sample-chevron-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <polyline points="6 9 12 15 18 9"/>
+          </svg>
+        </button>
+
+        <div class="sample-accordion-body" id="sample-accordion-body">
+          <!-- Nhóm 1: Lưu lượng & Phương tiện -->
+          <div class="sample-group">
+            <div class="sample-group-title">
+              <span class="sample-group-icon">🚗</span> Lưu lượng & Biển số
+            </div>
+            <div class="sample-group-items">
+              <button type="button" class="sample-question-btn" data-query="Hôm nay có bao nhiêu lượt xe vào?" title="Hôm nay có bao nhiêu lượt xe vào? (v2_001)">
+                <span class="sample-question-bullet">•</span>
+                <span class="sample-question-text">Hôm nay có bao nhiêu lượt xe vào?</span>
+                <span class="sample-send-arrow">↗</span>
+              </button>
+              <button type="button" class="sample-question-btn" data-query="Truy vết lịch sử di chuyển của biển số 15K40139." title="Truy vết lịch sử di chuyển của biển số 15K40139. (v2_002)">
+                <span class="sample-question-bullet">•</span>
+                <span class="sample-question-text">Truy vết lịch sử biển số 15K40139</span>
+                <span class="sample-send-arrow">↗</span>
+              </button>
+              <button type="button" class="sample-question-btn" data-query="Số liệu ô tô theo hãng xe hôm nay như thế nào?" title="Số liệu ô tô theo hãng xe hôm nay như thế nào? (v2_003)">
+                <span class="sample-question-bullet">•</span>
+                <span class="sample-question-text">Số liệu ô tô theo hãng xe hôm nay</span>
+                <span class="sample-send-arrow">↗</span>
+              </button>
+            </div>
+          </div>
+
+          <!-- Nhóm 2: Vùng cấm & An ninh -->
+          <div class="sample-group">
+            <div class="sample-group-title">
+              <span class="sample-group-icon">🚨</span> Vùng cấm & Bất thường
+            </div>
+            <div class="sample-group-items">
+              <button type="button" class="sample-question-btn" data-query="Khung giờ nào có nhiều lượt xâm nhập khu vực nhất hôm nay?" title="Khung giờ nào có nhiều lượt xâm nhập khu vực nhất hôm nay? (v2_004)">
+                <span class="sample-question-bullet">•</span>
+                <span class="sample-question-text">Khung giờ xâm nhập nhiều nhất?</span>
+                <span class="sample-send-arrow">↗</span>
+              </button>
+              <button type="button" class="sample-question-btn" data-query="Trong khoảng từ 04/09/2026 đến 16/09/2026 có bao nhiêu vụ ẩu đả?" title="Trong khoảng từ 04/09/2026 đến 16/09/2026 có bao nhiêu vụ ẩu đả? (v2_007)">
+                <span class="sample-question-bullet">•</span>
+                <span class="sample-question-text">Số vụ ẩu đả (04/09 - 16/09/2026)</span>
+                <span class="sample-send-arrow">↗</span>
+              </button>
+              <button type="button" class="sample-question-btn" data-query="Hôm nay có phát hiện leo trèo không?" title="Hôm nay có phát hiện leo trèo không? (v2_009)">
+                <span class="sample-question-bullet">•</span>
+                <span class="sample-question-text">Hôm nay có phát hiện leo trèo không?</span>
+                <span class="sample-send-arrow">↗</span>
+              </button>
+              <button type="button" class="sample-question-btn" data-query="Hôm nay có cảnh báo cháy hoặc khói không?" title="Hôm nay có cảnh báo cháy hoặc khói không? (v2_010)">
+                <span class="sample-question-bullet">•</span>
+                <span class="sample-question-text">Cảnh báo cháy hoặc khói hôm nay</span>
+                <span class="sample-send-arrow">↗</span>
+              </button>
+              <button type="button" class="sample-question-btn" data-query="Trong khoảng từ 07/09/2026 đến 14/09/2026 có bao nhiêu lượt nhận diện khuôn mặt?" title="Trong khoảng từ 07/09/2026 đến 14/09/2026 có bao nhiêu lượt nhận diện khuôn mặt? (v2_006)">
+                <span class="sample-question-bullet">•</span>
+                <span class="sample-question-text">Nhận diện khuôn mặt (07/09 - 14/09)</span>
+                <span class="sample-send-arrow">↗</span>
+              </button>
+              <button type="button" class="sample-question-btn" data-query="Hôm nay mực nước có vượt ngưỡng cảnh báo không?" title="Hôm nay mực nước có vượt ngưỡng cảnh báo không? (v2_011)">
+                <span class="sample-question-bullet">•</span>
+                <span class="sample-question-text">Mực nước có vượt ngưỡng hôm nay?</span>
+                <span class="sample-send-arrow">↗</span>
+              </button>
+            </div>
+          </div>
+
+          <!-- Nhóm 3: Biểu đồ & So sánh -->
+          <div class="sample-group">
+            <div class="sample-group-title">
+              <span class="sample-group-icon">📊</span> Biểu đồ & So sánh
+            </div>
+            <div class="sample-group-items">
+              <button type="button" class="sample-question-btn" data-query="Biểu đồ hôm nay có bao nhiêu lượt xe ra và vào, phân loại theo xe máy, ô tô?" title="Biểu đồ hôm nay có bao nhiêu lượt xe ra và vào, phân loại theo xe máy, ô tô? (v2_019)">
+                <span class="sample-question-bullet">•</span>
+                <span class="sample-question-text">Biểu đồ xe ra/vào theo xe máy, ô tô</span>
+                <span class="sample-send-arrow">↗</span>
+              </button>
+              <button type="button" class="sample-question-btn" data-query="Trong khoảng từ 04/09/2026 đến 16/09/2026, ẩu đả hay đám đông xảy ra nhiều hơn?" title="Trong khoảng từ 04/09/2026 đến 16/09/2026, ẩu đả hay đám đông xảy ra nhiều hơn? (v2_022)">
+                <span class="sample-question-bullet">•</span>
+                <span class="sample-question-text">So sánh ẩu đả vs đám đông</span>
+                <span class="sample-send-arrow">↗</span>
+              </button>
+              <button type="button" class="sample-question-btn" data-query="Xe biển số 15K40139 hôm nay có đi qua khu vực xâm nhập nào không, và khung giờ xâm nhập nhiều nhất hôm nay là mấy giờ?" title="Xe biển số 15K40139 hôm nay có đi qua khu vực xâm nhập nào không, và khung giờ xâm nhập nhiều nhất hôm nay là mấy giờ? (v2_021)">
+                <span class="sample-question-bullet">•</span>
+                <span class="sample-question-text">Xe 15K40139 & giờ xâm nhập cao nhất</span>
+                <span class="sample-send-arrow">↗</span>
+              </button>
+            </div>
+          </div>
+
+          <!-- Nhóm 4: AIOC Howto & Sơ đồ -->
+          <div class="sample-group">
+            <div class="sample-group-title">
+              <span class="sample-group-icon">⚙️</span> AIOC & Sơ đồ
+            </div>
+            <div class="sample-group-items">
+              <button type="button" class="sample-question-btn" data-query="Làm sao đăng nhập Cloud Cam để vào trang quản lý camera https://aioc.atin.vn/devices?" title="Làm sao đăng nhập Cloud Cam để vào trang quản lý camera https://aioc.atin.vn/devices? (v2_012)">
+                <span class="sample-question-bullet">•</span>
+                <span class="sample-question-text">Cách đăng nhập vào Quản lý camera</span>
+                <span class="sample-send-arrow">↗</span>
+              </button>
+              <button type="button" class="sample-question-btn" data-query="Các bước thêm camera mới trên trang Quản Lý Camera của AIOC là gì?" title="Các bước thêm camera mới trên trang Quản Lý Camera của AIOC là gì? (v2_014)">
+                <span class="sample-question-bullet">•</span>
+                <span class="sample-question-text">Các bước thêm camera mới trên AIOC</span>
+                <span class="sample-send-arrow">↗</span>
+              </button>
+              <button type="button" class="sample-question-btn" data-query="Vẽ sơ đồ quy trình thêm một camera mới trên AIOC (từ mở form đến tạo xong)." title="Vẽ sơ đồ quy trình thêm một camera mới trên AIOC (v2_017)">
+                <span class="sample-question-bullet">•</span>
+                <span class="sample-question-text">Sơ đồ quy trình thêm camera mới</span>
+                <span class="sample-send-arrow">↗</span>
+              </button>
+              <button type="button" class="sample-question-btn" data-query="Vẽ sơ đồ phân biệt: hỏi thống kê sự kiện VMS (Postgres) với hỏi hướng dẫn dùng trang devices trên AIOC." title="Vẽ sơ đồ phân biệt: hỏi thống kê sự kiện VMS (Postgres) với hỏi hướng dẫn dùng trang devices trên AIOC. (v2_018)">
+                <span class="sample-question-bullet">•</span>
+                <span class="sample-question-text">Sơ đồ phân biệt VMS DB vs AIOC Howto</span>
+                <span class="sample-send-arrow">↗</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="sidebar-section-title">Phiên chat</div>
+      <div class="session-list" id="session-list"></div>
+
+      <div class="sidebar-footer">
+        <div class="model-pill" id="btn-open-settings" title="Nhấn để đổi cấu hình Model">
+          <div class="model-indicator"></div>
+          <span id="sidebar-model-label">OpenAI (gpt-4o-mini)</span>
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/></svg>
+        </div>
+      </div>
+    </aside>
+
+    <!-- Main workspace: chat ~50% | live graph ~50% (Phase 2) -->
+    <div class="workspace">
+    <main class="chat-main">
+      <header class="topbar">
+        <div class="topbar-left">
+          <button class="btn-toggle-sidebar" id="btn-toggle-sidebar" title="Đóng/Mở menu">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 12h18M3 6h18M3 18h18"/></svg>
+          </button>
+          <div class="chat-title">
+            <h1>Trợ lý Giám sát Sự kiện Camera AI</h1>
+            <span class="sub-title">Khu công nghiệp Hưng Phú</span>
+          </div>
+        </div>
+        <div class="topbar-right">
+          <div class="status-badge" id="system-status-badge">
+            <span class="status-dot"></span>
+            <span id="system-status-text">Đang kết nối</span>
+          </div>
+        </div>
+      </header>
+
+      <!-- Messages Container -->
+      <div class="chat-viewport" id="chat-viewport">
+        <!-- Welcome Screen -->
+        <div class="welcome-container" id="welcome-screen">
+          <div class="welcome-badge">agent_ATIN v4</div>
+          <h2 class="welcome-heading">Hỏi đáp & Thống kê Camera AI</h2>
+          <p class="welcome-desc">Đặt câu hỏi bằng tiếng Việt. Cột phải hiện luồng graph trực tiếp.</p>
+
+          <div class="suggestions-grid">
+            <button class="suggestion-card" data-query="Hôm nay có bao nhiêu lượt xe vào, phân loại theo xe máy và ô tô?">
+              <span class="card-icon">🚗</span>
+              <div class="card-content">
+                <strong>Lưu lượng xe hôm nay</strong>
+                <p>Thống kê số lượng lượt xe ra vào phân loại theo chủng loại.</p>
+              </div>
+            </button>
+
+            <button class="suggestion-card" data-query="Khung thời gian nào xảy ra xâm nhập vùng cấm nhiều nhất hôm nay?">
+              <span class="card-icon">🚧</span>
+              <div class="card-content">
+                <strong>Xâm nhập vùng cấm</strong>
+                <p>Khung giờ có số lượng sự kiện vượt hàng rào ảo cao nhất.</p>
+              </div>
+            </button>
+
+            <button class="suggestion-card" data-query="Hôm nay có vụ ẩu đả hoặc cảnh báo đám đông nào không?">
+              <span class="card-icon">⚠️</span>
+              <div class="card-content">
+                <strong>Bất thường an ninh</strong>
+                <p>Kiểm tra các sự kiện ẩu đả, đám đông hoặc leo trèo hôm nay.</p>
+              </div>
+            </button>
+
+            <button class="suggestion-card" data-query="Mực nước hôm nay có vượt ngưỡng cảnh báo ngập không?">
+              <span class="card-icon">💧</span>
+              <div class="card-content">
+                <strong>Giám sát mực nước</strong>
+                <p>Xem số liệu đo mức nước ngập úng và cảnh báo an toàn hạ tầng.</p>
+              </div>
+            </button>
+          </div>
+        </div>
+
+        <!-- Chat messages list -->
+        <div class="messages-list" id="messages-list"></div>
+      </div>
+
+      <!-- Input Area -->
+      <div class="input-container">
+        <div class="domain-chips" id="domain-chips">
+          <button type="button" class="domain-chip" data-query="Hôm nay có bao nhiêu lượt xe vào?">🚗 Phương tiện (ITS)</button>
+          <button type="button" class="domain-chip" data-query="Khung thời gian nào xảy ra xâm nhập khu vực nhiều nhất hôm nay?">🚧 Vùng cấm (Fence)</button>
+          <button type="button" class="domain-chip" data-query="Hôm nay có bao nhiêu lượt nhận diện khuôn mặt?">👤 Khuôn mặt (Face)</button>
+          <button type="button" class="domain-chip" data-query="Hôm nay có vụ ẩu đả nào không?">⚠️ Ẩu đả (Fight)</button>
+          <button type="button" class="domain-chip" data-query="Hôm nay có cảnh báo đám đông ở khu vực nào không?">👥 Đám đông (Crowd)</button>
+          <button type="button" class="domain-chip" data-query="Hôm nay có phát hiện leo trèo không?">🧗 Leo trèo (Intrusion)</button>
+          <button type="button" class="domain-chip" data-query="Hôm nay có cảnh báo cháy hoặc khói không?">🔥 Cháy khói (Fire)</button>
+          <button type="button" class="domain-chip" data-query="Mực nước hôm nay có vượt ngưỡng cảnh báo không?">💧 Mực nước (Water)</button>
+        </div>
+        <div class="input-wrapper">
+          <textarea
+            id="question-input"
+            placeholder="Hỏi về số liệu xe ra/vào, vùng cấm, ẩu đả, khuôn mặt, cháy khói, mực nước..."
+            rows="1"
+          ></textarea>
+          <button id="btn-send" class="btn-send" title="Gửi câu hỏi (Enter)">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M22 2L11 13M22 2l-7 20-4-9-9-4 20-7z"/></svg>
+          </button>
+        </div>
+        <div class="input-footer">
+          <span>Hệ thống truy vấn trực tiếp từ 5 cơ sở dữ liệu Postgres Read-Only an toàn.</span>
+        </div>
+      </div>
+    </main>
+
+    <aside class="graph-panel" id="graph-panel" aria-label="Live agent graph">
+      <div class="graph-panel-header">
+        <h2>Luồng agent</h2>
+        <span class="graph-panel-hint" id="graph-panel-hint">~50% màn hình · Phase 6 SSE</span>
+      </div>
+      <div class="graph-canvas" id="graph-canvas">
+        <p class="graph-placeholder" id="graph-placeholder">Chờ sự kiện node</p>
+        <div class="graph-nodes" id="graph-nodes"></div>
+      </div>
+      <div class="graph-io" id="graph-io">
+        <div class="graph-io-title">Input / Output node</div>
+        <div class="graph-io-empty" id="graph-io-empty">Trỏ hoặc chọn một node đã chạy để xem input và output.</div>
+        <pre class="graph-io-body" id="graph-io-body" hidden></pre>
+      </div>
+    </aside>
+    </div>
+  </div>
+
+  <!-- Settings Drawer / Modal -->
+  <div class="modal-backdrop" id="settings-modal">
+    <div class="modal-card">
+      <div class="modal-header">
+        <h3>Cài đặt Cấu hình Model & API</h3>
+        <button class="btn-close-modal" id="btn-close-settings">&times;</button>
+      </div>
+      <div class="modal-body">
+        <div class="form-group">
+          <label class="form-label">Chọn LLM Backend</label>
+          <div class="radio-group">
+            <label class="radio-card">
+              <input type="radio" name="model_provider" value="openai" checked id="radio-openai">
+              <div class="radio-info">
+                <strong>OpenAI Cloud</strong>
+                <span>gpt-4o-mini (Cloud API)</span>
+              </div>
+            </label>
+            <label class="radio-card">
+              <input type="radio" name="model_provider" value="self_hosted" id="radio-self-hosted">
+              <div class="radio-info">
+                <strong>Model Tự Host (Local)</strong>
+                <span>qwen3-4b (vLLM / Local Endpoint)</span>
+              </div>
+            </label>
+          </div>
+        </div>
+
+        <div class="form-group" id="self-hosted-details">
+          <label class="form-label">Thông tin Endpoint Tự Host (LLM Model)</label>
+          <div class="info-box">
+            <div><strong>Base URL:</strong> <code>http://192.168.1.196:18083/v1</code></div>
+            <div><strong>Model Name:</strong> <code>qwen3-4b</code></div>
+            <div><strong>Endpoint:</strong> <code>http://192.168.1.196:18083/v1/chat/completions</code></div>
+            <small class="form-hint" style="display: block; margin-top: 8px;"><em>Lưu ý: Đây là địa chỉ của mô hình LLM, KHÔNG dán địa chỉ này vào ô API Base URL bên dưới.</em></small>
+          </div>
+        </div>
+
+        <div class="form-group">
+          <label class="form-label" for="input-api-url">API Base URL (Backend)</label>
+          <input type="text" class="form-input" id="input-api-url" placeholder="http://localhost:8000" value="">
+          <small class="form-hint">Để trống để tự động sử dụng máy chủ hiện tại. Nếu cấu hình, đây là backend FastAPI (src.main:app).</small>
+        </div>
+
+        <div class="form-group">
+          <button class="btn-secondary" id="btn-check-health">Kiểm tra kết nối Backend</button>
+          <div id="health-result" class="health-result"></div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn-primary" id="btn-save-settings">Lưu Cấu Hình</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Feedback Modal -->
+  <div class="modal-backdrop" id="feedback-modal" aria-hidden="true">
+    <div class="modal-card feedback-modal-card">
+      <div class="modal-header">
+        <div class="feedback-modal-title">
+          <span class="feedback-icon-badge">👎</span>
+          <h3>Góp ý câu trả lời của trợ lý AI</h3>
+        </div>
+        <button class="btn-close-modal" id="btn-close-feedback">&times;</button>
+      </div>
+      <div class="modal-body">
+        <p class="feedback-desc">
+          Ý kiến của bạn giúp trợ lý cải thiện độ chính xác và thông minh hơn. Vui lòng cho biết điểm chưa đúng:
+        </p>
+
+        <div class="form-group">
+          <label class="form-label" for="feedback-reason-input">Lý do chưa đúng hoặc góp ý bổ sung <span class="required">*</span></label>
+          <textarea
+            class="form-textarea"
+            id="feedback-reason-input"
+            rows="3"
+            placeholder="Ví dụ: Thiếu 4 camera vùng cấm và cháy khói, số liệu xe ra vào chưa khớp thực tế..."
+          ></textarea>
+        </div>
+
+        <div class="form-group">
+          <label class="form-label">Ảnh minh họa (tùy chọn)</label>
+          <div class="image-upload-zone" id="feedback-upload-zone">
+            <input type="file" id="feedback-file-input" accept="image/png,image/jpeg,image/webp" style="display:none">
+            <div class="upload-prompt" id="upload-prompt">
+              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <rect x="3" y="3" width="18" height="18" rx="2" ry="2"/>
+                <circle cx="8.5" cy="8.5" r="1.5"/>
+                <polyline points="21 15 16 10 5 21"/>
+              </svg>
+              <span>Nhấn để chọn ảnh hoặc dán ảnh chụp màn hình (Ctrl+V)</span>
+              <small>Hỗ trợ PNG, JPG, WebP tối đa 5MB</small>
+            </div>
+            <div class="upload-preview" id="upload-preview" style="display:none">
+              <img id="feedback-preview-img" src="" alt="Ảnh minh họa">
+              <button type="button" class="btn-remove-img" id="btn-remove-preview" title="Xóa ảnh">&times;</button>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn-secondary" id="btn-cancel-feedback">Hủy bỏ</button>
+        <button type="button" class="btn-primary" id="btn-submit-feedback">
+          <span id="btn-submit-feedback-text">Xác nhận gửi phản hồi</span>
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Toast Notification Container -->
+  <div class="toast-container" id="toast-container" aria-live="polite"></div>
+
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>

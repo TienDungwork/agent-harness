@@ -1,0 +1,92 @@
+schema_version: "1.0.0"
+id: "operations.change-live-layout"
+type: "how_to"
+status: "published"
+locale: "vi"
+version: 1
+title: "Chuyển sang layout trực tiếp đã lưu"
+intent: "change_live_layout"
+aliases:
+  - "đổi bố cục live"
+  - "chọn layout camera"
+  - "mở layout đã lưu"
+  - "chuyển bố cục giám sát"
+module: "operations"
+tags:
+  - "layout"
+  - "bố cục"
+  - "giám sát trực tiếp"
+roles:
+  - "Người dùng đã đăng nhập có phạm vi camera được cấp"
+features:
+  - "monitoring"
+route: "/monitoring"
+menu_path:
+  - "Vận hành"
+  - "Giám Sát Trực Tiếp"
+preconditions:
+  - "Đã đăng nhập."
+  - "Tính năng monitoring được bật cho tổ chức."
+  - "Có ít nhất một layout đang hiển thị trong danh sách Layouts."
+summary: "Trong Giám Sát Trực Tiếp, mở Layouts và chọn một layout đã lưu để áp dụng số ô cùng các camera còn thuộc phạm vi quyền của bạn."
+steps:
+  - order: 1
+    say: "Trong nhóm Vận hành, mở Giám Sát Trực Tiếp."
+    ui:
+      label: "Giám Sát Trực Tiếp"
+      i18n_key: "sidebar.liveMonitoring"
+      element_id: null
+  - order: 2
+    say: "Chọn Layouts trên thanh công cụ."
+    ui:
+      label: "Layouts"
+      i18n_key: "liveMonitoring.layouts"
+      element_id: null
+  - order: 3
+    say: "Nếu danh sách dài, nhập tên layout vào ô Tìm layout..."
+    ui:
+      label: "Tìm layout..."
+      i18n_key: "liveMonitoring.searchLayout"
+      element_id: null
+    note: "Có thể bỏ qua bước tìm kiếm khi layout cần dùng đã hiện trong danh sách."
+  - order: 4
+    say: "Nhấp vào tên layout cần dùng."
+    ui:
+      label: "Tên layout đã lưu"
+      i18n_key: null
+      element_id: null
+verify: "Layout được chọn được đánh dấu đang hoạt động; lưới đổi sang số ô của layout và chỉ nạp các camera còn nằm trong phạm vi quyền hiện tại."
+errors:
+  - if: "Danh sách báo Không tìm thấy layout."
+    then: "Xóa nội dung trong ô Tìm layout... để xem lại toàn bộ layout đang hiển thị; nếu danh sách vẫn trống, chưa có layout phù hợp để chọn."
+  - if: "Một camera từng lưu trong layout không xuất hiện sau khi áp dụng."
+    then: "Camera đó không còn trong danh sách camera được phép của phiên hiện tại; đề nghị quản trị viên kiểm tra phạm vi camera nếu cần."
+related:
+  - "auth.login"
+  - "operations.view-live-camera"
+sources:
+  - path: "frontend/src/App.jsx"
+    kind: "route"
+    note: "Route /monitoring được bảo vệ bởi RequireAuth và feature monitoring."
+  - path: "frontend/src/features/common/live-monitoring/Live/LayoutSelector.jsx"
+    kind: "component"
+    note: "Xác minh nút Layouts, ô Tìm layout..., danh sách layout hiển thị và thao tác nhấp để áp dụng layout."
+  - path: "frontend/src/features/common/live-monitoring/Live/Live.jsx"
+    kind: "component"
+    note: "applyLayout đổi kích thước lưới, đánh dấu layout hoạt động và loại camera không thuộc tập camera được phép trước khi nạp luồng."
+  - path: "frontend/src/utils/rolePermissions.js"
+    kind: "component"
+    note: "Xác minh tập camera cho Live được lọc theo tổ chức và phạm vi quyền."
+  - path: "frontend/src/i18n/locales/vi/common.json"
+    kind: "i18n"
+    note: "Nguồn nhãn menu Giám Sát Trực Tiếp."
+  - path: "frontend/src/i18n/locales/vi/live.json"
+    kind: "i18n"
+    note: "Nguồn nhãn Layouts và Tìm layout..."
+  - path: "frontend/src/i18n/locales/vi/generated.json"
+    kind: "i18n"
+    note: "Nguồn thông báo Không tìm thấy layout."
+  - path: "frontend/src/features/common/live-monitoring/Live/Live.grid.test.jsx"
+    kind: "test"
+    note: "Kiểm tra việc kết hợp camera của layout với tập camera hệ thống và các kích thước lưới được hỗ trợ."
+last_verified: "2026-09-16"

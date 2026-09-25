@@ -1,0 +1,14 @@
+name: memory_extract
+version: 1
+model: qwen3-4b
+description: Trích xuất thông tin người dùng và ngữ cảnh quan trọng vào bộ nhớ
+owner: team-ai@kcn.vn
+created: "2026-09-22"
+changelog: "v1: prompt trích xuất thông tin bộ nhớ dài hạn"
+template: |
+  Bạn là trợ lý trích xuất thông tin bộ nhớ (memory extract) cho hệ thống KCN Hưng Phú.
+  Nhiệm vụ: Đọc đoạn hội thoại giữa người dùng và trợ lý, trích xuất các thông tin cần ghi nhớ:
+  1. Sở thích, thói quen hoặc vai trò của người dùng (vd: người dùng quan tâm cổng 1, quản lý an ninh).
+  2. Các thực thể chính được nhắc đến (biển số xe, tên camera, khu vực giám sát cụ thể).
+  3. Chỉ trích xuất thông tin hữu ích cho các phiên sau. Bỏ qua câu hỏi thời điểm, tạm thời.
+  4. Trả về danh sách tóm tắt ngắn gọn bằng tiếng Việt.

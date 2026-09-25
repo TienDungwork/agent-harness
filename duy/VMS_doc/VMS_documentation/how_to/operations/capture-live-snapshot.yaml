@@ -1,0 +1,59 @@
+schema_version: "1.0.0"
+id: operations.capture_live_snapshot
+type: how_to
+status: published
+locale: vi
+version: 1
+title: "Chụp ảnh từ camera trực tiếp"
+intent: capture_live_snapshot
+aliases:
+  - "chụp ảnh camera"
+  - "lưu snapshot live"
+  - "chụp khung hình trực tiếp"
+  - "tải ảnh từ camera"
+module: monitoring
+tags:
+  - live
+  - camera
+  - snapshot
+roles:
+  - authenticated_user
+features:
+  - monitoring
+route: "/monitoring"
+menu_path:
+  - "Vận hành"
+  - "Giám Sát Trực Tiếp"
+preconditions:
+  - "Camera đang được chọn trong lưới và video đang hiển thị."
+summary: "Trên ô camera đang phát, chọn nút chụp ảnh snapshot để lưu khung hình hiện tại."
+steps:
+  - order: 1
+    say: "Mở Giám Sát Trực Tiếp và đưa camera cần chụp vào lưới."
+  - order: 2
+    say: "Di chuyển con trỏ tới ô camera để hiện các nút điều khiển."
+  - order: 3
+    say: "Chọn Chụp ảnh snapshot trên ô camera."
+    ui:
+      label: "Chụp ảnh snapshot"
+      i18n_key: "generated.Live.chupAnhSnapshot"
+      element_id: null
+  - order: 4
+    say: "Chờ thông báo lưu snapshot thành công và kiểm tra file ảnh do trình duyệt tải xuống."
+verify: "Hệ thống thông báo snapshot đã được lưu và file ảnh xuất hiện trong thư mục tải xuống của trình duyệt."
+errors:
+  - if: "Hệ thống báo video không khả dụng."
+    then: "Chờ video phát ổn định rồi thử lại; nếu stream không hoạt động, xử lý lỗi live trước."
+  - if: "Không thấy file tải xuống."
+    then: "Kiểm tra quyền tải file hoặc cài đặt chặn tải xuống của trình duyệt."
+related:
+  - operations.view-live-camera
+  - troubleshooting.live_stream_unavailable
+sources:
+  - path: "frontend/src/features/common/live-monitoring/Live/Live.jsx"
+    kind: component
+    note: "Triển khai nút snapshot trên ô video, capture frame, tải file và thông báo thành công/lỗi."
+  - path: "frontend/src/i18n/locales/vi/generated.json"
+    kind: i18n
+    note: "Nhãn Chụp ảnh snapshot."
+last_verified: "2026-09-16"

@@ -1,0 +1,84 @@
+schema_version: "1.0.0"
+id: operations.view_event_detail
+type: how_to
+status: published
+locale: vi
+version: 1
+title: "Xem chi tiết một sự kiện"
+intent: view_event_detail
+aliases:
+  - "xem chi tiết sự kiện"
+  - "mở thông tin cảnh báo"
+  - "xem ảnh và dữ liệu sự kiện"
+module: events
+tags:
+  - "sự kiện"
+  - "chi tiết"
+  - "ảnh sự kiện"
+roles:
+  - unknown
+features:
+  - events
+route: "/events"
+menu_path:
+  - "Vận hành"
+  - "Quản lý sự kiện"
+preconditions:
+  - "Đã đăng nhập vào VMS."
+  - "Tính năng events được bật cho tổ chức và hiển thị với tài khoản hiện tại."
+  - "Danh sách đang có ít nhất một sự kiện."
+  - "Bản triển khai hiện tại có thể ẩn mục Quản lý sự kiện khỏi sidebar bằng cờ giao diện."
+summary: "Chọn một sự kiện và mở cửa sổ chi tiết để xem dữ liệu, ảnh hoặc video hiện có; thao tác này không tiếp nhận, điều phối, hoàn tất hay đánh dấu báo giả."
+steps:
+  - order: 1
+    say: "Nếu mục Quản lý sự kiện đang hiển thị trong nhóm Vận hành, hãy mở mục đó. Nếu không thấy, dừng lại và kiểm tra quyền, feature cùng cấu hình hiển thị với quản trị viên."
+    ui:
+      label: "Quản lý sự kiện"
+      i18n_key: "sidebar.eventsAlerts"
+      element_id: null
+  - order: 2
+    say: "Tìm sự kiện cần xem trong danh sách."
+    note: "Có thể dùng bộ lọc sự kiện trước; việc lọc không phải là thao tác xem chi tiết."
+  - order: 3
+    say: "Trên màn hình lớn, nhấn Xem chi tiết ở dòng sự kiện; trên thiết bị di động, nhấn Chi tiết trên thẻ sự kiện."
+    ui:
+      label: "Xem chi tiết"
+      i18n_key: "events.eventDetail"
+      element_id: null
+    note: "Nhãn trên thiết bị di động là Chi tiết, dùng i18n key events.viewDetail."
+  - order: 4
+    say: "Trong cửa sổ chi tiết, xem thời gian, khu vực hoặc phân vùng và các trường tương ứng với loại sự kiện."
+    note: "Tiêu đề và trường dữ liệu thay đổi theo sự kiện khuôn mặt, biển số, vùng cấm, cháy khói, đám đông, cảm biến hoặc cảnh báo AI khác."
+  - order: 5
+    say: "Xem Ảnh sự kiện hoặc Video nếu sự kiện có dữ liệu tương ứng, rồi đóng cửa sổ khi hoàn tất."
+    ui:
+      label: "Ảnh sự kiện"
+      i18n_key: "events.eventImage"
+      element_id: null
+verify: "Cửa sổ chi tiết của đúng sự kiện hiển thị dữ liệu và nội dung đa phương tiện hiện có."
+sources:
+  - path: "frontend/src/App.jsx"
+    kind: route
+    note: "Route /events yêu cầu đăng nhập và feature events."
+  - path: "frontend/src/components/layout/Sidebar.jsx"
+    kind: component
+    note: "Menu Quản lý sự kiện dùng route /events và i18n key sidebar.eventsAlerts."
+  - path: "frontend/src/pages/Events/Events.jsx"
+    kind: component
+    note: "Xác minh nút Xem chi tiết, nhãn Chi tiết trên di động và cấu hình trường theo từng loại sự kiện."
+  - path: "frontend/src/components/EventDetailModal.jsx"
+    kind: component
+    note: "Xác minh cửa sổ hiển thị trường dữ liệu, ảnh và video khi có."
+  - path: "frontend/src/i18n/locales/vi/common.json"
+    kind: i18n
+    note: "Xác minh nhãn menu Quản lý sự kiện."
+  - path: "frontend/src/i18n/locales/vi/events.json"
+    kind: i18n
+    note: "Xác minh nhãn Xem chi tiết, Chi tiết, Ảnh sự kiện và tiêu đề theo loại sự kiện."
+  - path: "frontend/src/pages/AIModuleDetail/components/AIModalsInteraction.test.jsx"
+    kind: test
+    note: "Xác minh cửa sổ chi tiết hiển thị trường sự kiện và các tab ảnh, video."
+  - path: "frontend/src/config/features.js"
+    kind: component
+    note: "Cờ FEATURE_EVENTS_ALERTS_VISIBLE có thể ẩn mục sự kiện khỏi sidebar."
+last_verified: "2026-09-16"

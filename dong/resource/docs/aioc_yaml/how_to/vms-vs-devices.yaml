@@ -1,0 +1,49 @@
+schema_version: "1.0.0"
+id: aioc.vms_vs_devices
+type: concept
+status: published
+locale: vi
+version: 1
+title: "Phân biệt hỏi thống kê sự kiện VMS và hướng dẫn AIOC devices"
+intent: vms_vs_devices
+aliases:
+  - "vẽ sơ đồ các bước thêm camera trên aioc devices và cho biết khác gì so với câu hỏi thống kê số lượt xe hôm nay"
+  - "vẽ sơ đồ phân biệt hỏi thống kê sự kiện vms với hỏi hướng dẫn dùng trang devices trên aioc"
+  - "phân biệt hỏi thống kê sự kiện vms với hỏi hướng dẫn dùng trang devices trên aioc"
+  - "phân biệt thống kê vms và aioc devices"
+  - "khác gì so với câu hỏi thống kê"
+  - "khác gì so với câu hỏi thống kê số lượt xe hôm nay"
+  - "phân biệt câu hỏi thống kê và hướng dẫn devices"
+module: devices
+tags:
+  - phân biệt
+  - thống kê
+  - aioc.atin.vn
+  - devices
+  - camera
+  - sơ đồ
+roles:
+  - authenticated_user
+features:
+  - devices
+route: "/devices"
+menu_path:
+  - "Cấu hình & Thiết bị"
+  - "Quản Lý Camera"
+preconditions:
+  - "Người dùng sử dụng chatbot trợ lý hỗ trợ cả hai chức năng hướng dẫn tác vụ và thống kê số liệu."
+summary: "Phân biệt sự khác nhau rõ ràng giữa hai nhóm câu hỏi: hỏi thống kê sự kiện VMS (truy vấn cơ sở dữ liệu) và hỏi hướng dẫn sử dụng trang thiết bị AIOC (thao tác giao diện /devices)."
+steps:
+  - order: 1
+    say: "Sơ đồ phân biệt giữa hai nhóm câu hỏi:\n[Yêu cầu người dùng]\n├── Nhánh 1: Hướng dẫn thao tác AIOC (devices)\n│   ├── Mục đích: Hướng dẫn thao tác trên giao diện web quản lý thiết bị/camera (https://aioc.atin.vn/devices).\n│   ├── Xử lý: Tra cứu tài liệu task cards AIOC/VMS, trả lời quy trình, các bước thực hiện, đường dẫn menu hoặc sơ đồ.\n│   └── Đặc điểm: Không truy vấn cơ sở dữ liệu số liệu thực tế.\n└── Nhánh 2: Thống kê sự kiện VMS (PostgreSQL)\n    ├── Mục đích: Truy vấn dữ liệu thực tế về lưu lượng xe ra vào (plate_event), chấm công (smf_face_events), cảnh báo cháy khói (fire_smoke_event), sự kiện bất thường (anomaly_event).\n    ├── Xử lý: Sinh truy vấn SQL, thực thi trên CSDL quan hệ và tổng hợp số liệu.\n    └── Đặc điểm: Trả về số lượng, danh sách sự kiện hoặc biểu đồ phân tích."
+    ui:
+      label: "Sơ đồ phân nhánh"
+      i18n_key: "aioc.diagramVmsVsDevices"
+      element_id: null
+  - order: 2
+    say: "Phân biệt cụ thể nội dung:\n- Hướng dẫn AIOC devices: Hướng dẫn đăng nhập, thêm/xóa/sửa camera, giải thích và đổi trạng thái Trực Tuyến / Ngoại Tuyến / Bảo Trì trên màn hình Quản Lý Camera.\n- Thống kê sự kiện VMS: Đếm số lượng, thống kê theo thời gian, lọc theo biển số hoặc khu vực dựa trên dữ liệu đã được ghi nhận trong cơ sở dữ liệu."
+sources:
+  - path: "https://aioc.atin.vn/devices"
+    kind: route
+    note: "Tài liệu phân biệt nhiệm vụ hướng dẫn thiết bị và thống kê sự kiện"
+last_verified: "2026-09-22"

@@ -1,0 +1,80 @@
+schema_version: "1.0.0"
+id: aioc.camera_status
+type: how_to
+status: published
+locale: vi
+version: 1
+title: "Trạng thái camera trên AIOC và cách thay đổi"
+intent: camera_status
+aliases:
+  - "trạng thái camera"
+  - "trên aioc devices trạng thái camera trực tuyến ngoại tuyến bảo trì nghĩa là gì và đổi ở đâu"
+  - "trạng thái camera trực tuyến ngoại tuyến bảo trì"
+  - "trạng thái camera trên aioc"
+  - "đổi trạng thái camera trên aioc"
+  - "giải thích trạng thái camera"
+  - "trực tuyến ngoại tuyến bảo trì"
+  - "cách đổi trạng thái camera"
+module: devices
+tags:
+  - trực tuyến
+  - ngoại tuyến
+  - bảo trì
+  - camera
+  - aioc.atin.vn
+  - devices
+  - trạng thái
+  - đổi trạng thái
+roles:
+  - authenticated_user
+features:
+  - devices
+route: "/devices"
+menu_path:
+  - "Cấu hình & Thiết bị"
+  - "Quản Lý Camera"
+preconditions:
+  - "Người dùng đã đăng nhập hệ thống AIOC và có quyền xem/chỉnh sửa thiết bị camera."
+summary: "Giải thích ý nghĩa 3 trạng thái camera (Trực Tuyến, Ngoại Tuyến, Bảo Trì) trên AIOC devices và hướng dẫn chi tiết cách đổi trạng thái camera."
+steps:
+  - order: 1
+    say: "Giải thích ý nghĩa 3 trạng thái camera trên AIOC devices:\n- Trực Tuyến: Camera đang kết nối mạng ổn định và truyền luồng video hình ảnh bình thường về máy chủ AIOC.\n- Ngoại Tuyến: Camera bị mất kết nối mạng, mất nguồn điện, sai địa chỉ IP hoặc luồng RTSP không khả dụng.\n- Bảo Trì: Camera được tạm ngưng hoạt động để kỹ thuật viên kiểm tra, vệ sinh, sửa chữa hoặc bảo dưỡng định kỳ."
+    ui:
+      label: "Trạng thái Camera"
+      i18n_key: "aioc.cameraStatusExplain"
+      element_id: null
+  - order: 2
+    say: "Cách đổi trạng thái camera: Mở menu Cấu hình & Thiết bị > Quản Lý Camera trên hệ thống AIOC tại địa chỉ URL https://aioc.atin.vn/devices."
+    ui:
+      label: "Quản Lý Camera"
+      i18n_key: "aioc.menuCameraManagement"
+      element_id: null
+  - order: 3
+    say: "Trong bảng danh sách camera, tìm camera cần đổi trạng thái (có thể dùng thanh tìm kiếm hoặc bộ lọc Zone)."
+    ui:
+      label: "Tìm kiếm camera"
+      i18n_key: "aioc.searchCamera"
+      element_id: "camera-search"
+  - order: 4
+    say: "Bấm vào biểu tượng hoặc nút 'Chỉnh Sửa' (Edit) tương ứng với dòng camera đó để mở hộp thoại Chỉnh Sửa Camera."
+    ui:
+      label: "Chỉnh Sửa"
+      i18n_key: "aioc.btnEditCamera"
+      element_id: "btn-edit"
+  - order: 5
+    say: "Tại trường 'Trạng Thái', chọn giá trị trạng thái mới mong muốn (Trực Tuyến, Ngoại Tuyến, hoặc Bảo Trì)."
+    ui:
+      label: "Trường Trạng Thái"
+      i18n_key: "aioc.statusField"
+      element_id: "select-status"
+  - order: 6
+    say: "Bấm nút 'Lưu' để hệ thống xác nhận và cập nhật trạng thái mới cho camera."
+    ui:
+      label: "Lưu"
+      i18n_key: "aioc.btnSave"
+      element_id: "btn-save"
+sources:
+  - path: "https://aioc.atin.vn/devices"
+    kind: route
+    note: "Giải thích và hướng dẫn đổi trạng thái camera trên AIOC devices"
+last_verified: "2026-09-22"
