@@ -1,5 +1,280 @@
 # Change Log — agent dong
 
+## 2026-09-25 — Chuẩn hóa Golden Dataset (eval/datasets/agent_stat/v2.yaml v2.3) bám sát mục đích sản phẩm v8
+
+### Thay đổi
+- **`eval/datasets/agent_stat/v2.yaml`**: Nâng cấp lên version 2.3, giữ nguyên cấu trúc chuẩn 30 case (18 lookup / 6 comparison / 3 out_of_scope / 3 injection) theo LLM Evaluation Pipelines:
+  - Thay thế 3 case "vẽ sơ đồ" (#016-#018) bằng các case kiểm thử trực tiếp mục tiêu cốt lõi của sản phẩm v8:
+    * `#016`: AC-1 kiểm tra đếm chuẩn xác 10 camera ONLINE thuộc 3 phân hệ từ AIOC Master Registry (*"Hiện có bao nhiêu camera đang hoạt động?"*).
+    * `#017`: AC-2 kiểm tra liệt kê đầy đủ 10 camera bao gồm các camera vùng cấm và cháy khói (*"Kể tên các camera trong hệ thống"*).
+    * `#018`: Nghiệp vụ KCN kiểm tra thống kê lưu lượng xe tải (*"Hôm nay có bao nhiêu lượt xe tải ra vào?"*).
+  - Bổ sung assertion `must_include_tool: ["docs"]` cho nhóm AIOC How-to (#012-#015) để kiểm tra định tuyến đúng node tài liệu nghiệp vụ, không gọi SQL.
+  - Tinh chỉnh câu hỏi so sánh `#024` chuyển từ "vẽ sơ đồ" sang "hướng dẫn thao tác" để đánh giá đúng năng lực so sánh nghiệp vụ UI vs số liệu VMS.
+  - Cập nhật case `#005` ghi nhận danh sách 10 camera ONLINE toàn hệ thống.
+- **`resource/db/dataset_catalog.yaml`**: Cập nhật metadata và keywords cho `#016` (camera_registry), `#017` (camera_registry), `#018` (plate_event xe tải) và `#024` (hướng dẫn AIOC vs VMS).
+- **`tests/test_product_sql_agent.py`**: Đồng bộ assertion tiêu đề bảng markdown trong `test_golden_30_report_writes_30_rows` khớp cấu trúc cột thực tế của `write_golden_30`.
+
+### Review vs `specs/product-spec.md` + `specs/test-plan.md`
+- **AC-1 & AC-2 Coverage**: Golden dataset đã có 2 case kiểm thử độc lập cho Feature 1 (10 Camera Master Data Registry).
+- **Domain Coverage**: Đảm bảo đủ 8 domain VMS + AIOC Howto + Nghiệp vụ xe tải KCN.
+- **Live Eval Results (`golden-30.md`)**:
+  - Tỷ lệ pass: **28/30 pass (93.3%)** — tăng từ 27/30 pass.
+  - Lookup slice: **18/18 pass (100%)** — cả 2 case AC-1 (#016) và AC-2 (#017) đều đạt 5/5⭐.
+  - Injection: **3/3 pass (100%)** | Out of Scope: **3/3 pass (100%)**.
+  - Comparison: **4/6 pass** (#020 phân loại loại xe kèm ghi chú số chỗ ngồi đạt 5/5⭐).
+  - LLM as a Judge trung bình: **4.73 / 5.0** (tăng từ 4.47/5.0), với **27/30 case đạt điểm tuyệt đối 5⭐**.
+
+---
+
+
+### Thay đổi
+- **`resource/prompts/respond_inline/v1.yaml`** & **`production.txt`**: Tạo prompt chuyên biệt cho phản hồi `respond_inline`, cung cấp thời gian thực hệ thống `{current_time}` theo giờ Việt Nam.
+  - Chào hỏi (`chat`): Chào lịch sự, thân thiện, giới thiệu vai trò giám sát VMS KCN Hưng Phú và gợi ý 2-3 câu hỏi cụ thể (lượt xe ra/vào, cảnh báo an ninh, nhận diện khuôn mặt, hướng dẫn AIOC).
+  - Ngoài phạm vi (`out_of_scope`): Trả lời ngắn gọn 1-2 câu (ngày giờ, thời tiết, kiến thức phổ thông...), giải thích nhẹ nhàng chuyên môn chính là VMS KCN Hưng Phú, và chủ động gợi ý các câu hỏi nghiệp vụ VMS để dẫn dắt người dùng quay lại chủ đề chính (Helpful Redirection).
+- **`src/agent/inline_respond.py`**: Module xử lý tạo phản hồi inline:
+  - Hàm `get_system_time_vietnam()` định dạng ngày giờ Việt Nam (UTC+7).
+  - Hàm `generate_inline_response()` hỗ trợ cả chế độ online (gọi LLM qua `invoke_text`) và chế độ offline fallback.
+- **`src/agent/graph.py`**:
+  - `respond_inline_node`: Gọi `generate_inline_response` cho cả 2 intent `chat` và `out_of_scope`.
+  - `respond_node`: Sử dụng câu trả lời sinh động từ state cho `out_of_scope` thay vì gán đè chuỗi cứng `OUT_OF_SCOPE_REPLY`.
+- **`src/agent/guardrail_nodes.py`**: Bổ sung `result.answer` vào `evidence` trong `_build_output_evidence` đối với các phản hồi không truy vấn database (`inline`, `out_of_scope`) để `check_output` không gắn disclaimer số liệu sai đối với các con số thời gian/ngày tháng (ví dụ: ngày 25/09/2026).
+- **`tests/test_product_api_gateway.py`** & **`tests/test_product_guardrails_safety.py`**: Cập nhật assertion kiểm tra out_of_scope xác thực câu trả lời định hướng về VMS / KCN Hưng Phú.
+
+### Review vs `specs/product-spec.md` + `specs/test-plan.md`
+
+#### What Passes:
+- **Smart Redirection (`out_of_scope`)**: Trả lời ngắn gọn, cung cấp thời gian thực chính xác theo giờ Việt Nam, giải thích chuyên môn chính là VMS KCN Hưng Phú và chủ động gợi ý các câu hỏi nghiệp vụ VMS / AIOC (Helpful Redirection). Live test: *"hôm nay là ngày bao nhiêu"* -> `25/09/2026`, *"thời tiết hôm nay thế nào"* -> trả lời lịch sự + gợi ý xem xe/an ninh.
+- **Friendly Greeting (`chat`)**: Chào hỏi thân thiện, giới thiệu vai trò và gợi ý 2-3 câu hỏi mẫu (lượt xe, an ninh, AIOC). Live test: *"chào bạn"* -> phản hồi tự nhiên, định hướng đúng VMS.
+- **1-hop Optimization**: Giữ nguyên `state["answer"]` nếu `classify` (hoặc test mock) đã sinh phản hồi chào hỏi, tránh gọi thừa LLM lần 2 làm tăng latency.
+- **Guardrail False-Positive Fix**: `_build_output_evidence` bổ sung `answer` vào evidence khi `query is None`, loại bỏ hoàn toàn cảnh báo sai `(Lưu ý: số liệu chưa xác minh...)` đối với câu trả lời ngày tháng/thời gian.
+- **Offline & Fallback Safety**: Cả `chat` và `out_of_scope` đều có fallback an toàn, không im lặng hoặc crash khi offline hay lỗi LLM.
+- **Test Suites**:
+  - `tests/test_inline_respond.py`: 8/8 passed (100%).
+  - `tests/test_product_graph_orchestrator.py`: 88/88 passed (100% — bao gồm 11/11 greeting tests).
+  - `tests/test_product_guardrails_safety.py`: 62/62 passed (100%).
+  - `tests/test_product_llm_prompts.py`: 54/54 passed (100%).
+  - `tests/test_product_api_gateway.py`: 60/61 passed (chỉ 1 lỗi pre-existing về timing stream).
+
+#### What Fails:
+- **0 lỗi liên quan đến feature này.**
+- *Pre-existing (ngoài scope)*: `test_api_agent_stream_running_before_done_timing` (do node `guardrail_input` chạy đầu tiên trước `recall`).
+
+#### What was Missing & Fixed:
+- **Thiếu kiểm tra `ans` sẵn có trong `respond_inline_node`**: Trước đó code ghi đè vô điều kiện `generate_inline_response`, làm mất câu trả lời 1-hop của `classify` và gây lỗi 3 test greeting trong `test_product_graph_orchestrator.py`. Đã fix: `if not ans: ans = generate_inline_response(...)`.
+- **Thiếu test suite riêng cho `inline_respond.py`**: Đã bổ sung `tests/test_inline_respond.py` với 8 unit tests bao phủ toàn bộ nhánh offline, online, fallback error, graph node và guardrail evidence.
+
+---
+
+## 2026-09-25 — Cấu hình múi giờ kết nối PostgreSQL (DB_TIMEZONE / Asia/Ho_Chi_Minh)
+
+### Thay đổi
+- **`src/config.py`**: Bổ sung `db_timezone: str = Field(default="Asia/Ho_Chi_Minh", alias="DB_TIMEZONE")` vào `Settings`.
+- **`src/db/connection.py`**: Thiết lập múi giờ cho phiên kết nối PostgreSQL thông qua `options=f"-c timezone={tz}"` trong `psycopg2.connect` và `cur.execute("SET timezone = %s;", (tz,))`. Thêm xử lý strip whitespace/quotes phòng thủ.
+- **`docker-compose.yml` & `.env`**: Khai báo biến môi trường `DB_TIMEZONE=Asia/Ho_Chi_Minh`.
+- **`tests/test_product_sql_agent.py`**: Thêm unit test `test_get_connection_sets_session_timezone` xác thực cấu hình default và timezone trên session thật khi kết nối.
+
+### Fix
+- Khắc phục lỗi lệch số liệu thống kê (152 sự kiện vs 427 sự kiện trên Web AIOC): Do server Postgres có múi giờ gốc `Etc/UTC`, `event_time::date = CURRENT_DATE` trước đây chỉ lấy dữ liệu từ 07:00 sáng (00:00 UTC), bỏ sót toàn bộ 275 xe ra/vào từ 00:00 đến 06:59 sáng giờ VN. Sau khi cấu hình session `Asia/Ho_Chi_Minh`, toàn bộ hàm ngày giờ trong SQL (`CURRENT_DATE`, `CURRENT_DATE - 1`, `date_trunc`, `::date`) tính toán chính xác theo giờ Việt Nam.
+
+### Review vs `specs/product-spec.md` + `specs/test-plan.md`
+
+| Tiêu chí | Kết quả |
+|----------|---------|
+| Truy vấn sự kiện theo ngày `CURRENT_DATE` khớp múi giờ Việt Nam | **Pass** — live API query trả về 452 sự kiện (khớp 100% web AIOC) |
+| Cấu hình `DB_TIMEZONE` linh hoạt (mặc định `Asia/Ho_Chi_Minh`) | **Pass** — load từ `.env`, fallback an toàn |
+| Không ảnh hưởng các kết nối read-only và statement timeout | **Pass** — readonly session và timeout giữ nguyên |
+| Unit test `test_product_sql_agent.py` | **Pass** — 123/123 passed |
+
+| Fail (ngoài scope feature) | Ghi chú |
+|----------------------------|---------|
+| `test_api_agent_stream_running_before_done_timing` | Guardrail entry node (pre-existing) |
+| `test_retrieve_schema_node_selected_tables_max_4` | Pre-existing catalog |
+| 3 ERROR memory_cache TTL mock | Pre-existing |
+
+---
+
+## 2026-09-25 — Batch sub-question cùng `query_data` → một lần `generate_sql` / `execute_sql`
+
+### Thay đổi
+- **`src/agent/sql_batch.py`**: Gom sub-question cùng agent; `build_sql_batch`, `validate_sql_batch`, `execute_sql_batch`, `offline_sql_for_sub_question`.
+- **`generate_sql` / `validate_sql` / `execute_sql` / `repair_sql`**: Hỗ trợ `sql_batch` khi `orchestrator_batch_sub_questions` ≥ 2.
+- **`graph.py`**: `_batch_steps_from_plan` gom bước liên tiếp cùng agent; một vòng SQL thay vì lặp từng sub-question.
+- **`tests/test_sql_batch.py`**: Unit batch plate/zone/face/anomaly + date range.
+- **`tests/test_product_graph_orchestrator.py`**: Cross-DB và all-events assert `retrieve_schema`/`execute_sql` ×1, `batch_size` ≥ 2.
+
+### Fix
+- Cross-DB *"phương tiện hay vùng cấm"* — trước: 2 hop cùng SQL UNION sai; sau: 2 SQL riêng, trả lời đúng.
+- All-events batch — `smf_face_events` dùng `access_time`; *"bất thường"* map `anomaly_event` (trước validate fail → repair loop).
+- Offline batch — parse khoảng `từ DD/MM/YYYY đến DD/MM/YYYY` vào `time_column::date BETWEEN …` (trước `WHERE TRUE`).
+
+### Review vs `specs/product-spec.md` + `specs/test-plan.md`
+
+| Tiêu chí | Kết quả |
+|----------|---------|
+| Sub-question cùng `query_data` → 1× `generate_sql` + 1× `execute_sql` | **Pass** — cross-DB, all-events (5 domain) |
+| Mỗi sub-question một SQL riêng, `execute_sql_batch` chạy hết | **Pass** — `sql_batch_results` → `orchestrator_collect` |
+| Same-DB so sánh (ẩu đả vs đám đông) không ép multi batch | **Pass** — single SQL, `is_multi=False` |
+| Mixed docs + query_data (case 023) không batch chéo agent | **Pass** — 2 hop tuần tự docs → SQL |
+| Offline repair batch | **Pass** — `repair_sql` rebuild `sql_batch` |
+| Unit + orchestrator regression | **Pass** — `test_sql_batch` 3/3, `test_product_graph_orchestrator` 88/88 |
+
+| Missing (ngoài scope batch `query_data`) | Ghi chú |
+|------------------------------------------|---------|
+| Batch nhiều sub-question `docs` liên tiếp | Chưa yêu cầu — mỗi hop docs vẫn trả lời `question` đầu batch |
+| Eval golden `agent_stat_v2_023` | Fail eval cũ (thiếu *camera* ở vế docs) — không liên quan batch SQL |
+
+| Fail (ngoài scope feature) | Ghi chú |
+|----------------------------|---------|
+| `test_api_agent_stream_running_before_done_timing` | Guardrail entry node |
+| `test_retrieve_schema_node_selected_tables_max_4` | Pre-existing catalog |
+| 3 ERROR memory_cache TTL mock | Pre-existing |
+
+---
+
+## 2026-09-25 — Multi-hop: orchestrator điều phối, nhánh graph thực thi tuần tự (bỏ `orchestrator_respond`)
+
+### Thay đổi
+- **`src/agent/graph.py`**: Xóa `orchestrator_respond`; thêm `orchestrator_collect` + loop `orchestrator` → `query_data|docs` → `orchestrator_collect` → … → `respond`. State mới: `orchestrator_step_index`, `orchestrator_multi_active`. Fix `respond_node` ưu tiên multi trước `respond_mode=docs`.
+- **`src/monitoring/tracing.py`**, **`tests/test_product_graph_orchestrator.py`**, **`graph.mmd`/`graph.png`**: cập nhật theo luồng mới.
+
+### Review vs `specs/product-spec.md` + `specs/test-plan.md`
+
+| Tiêu chí | Kết quả |
+|----------|---------|
+| Multi-hop cross-DB / all-events / mixed docs+SQL | **Pass** — orchestrator tests 88/88 |
+| Single-query không lọt multi loop | **Pass** |
+| Stream SSE: plan + SQL nodes từng hop | **Pass** |
+| Hồi quy guardrails (test-plan §1) | **Pass** — guardrails 62/62 |
+
+| Fail (ngoài scope feature) | Ghi chú |
+|----------------------------|---------|
+| `test_api_agent_stream_running_before_done_timing` | Node đầu graph = `guardrail_input` (guardrail refactor trước) |
+| `test_retrieve_schema_node_selected_tables_max_4` | Pre-existing catalog |
+| 3 ERROR memory_cache TTL mock | Pre-existing |
+
+---
+
+## 2026-09-25 — Gộp `out_of_scope` vào `respond_inline` & Tinh giản toàn diện đồ thị LangGraph
+
+### Bối cảnh & Yêu cầu
+- Node `guardrail_out_of_scope` cũ thực chất không phải là một validator (rào chắn kiểm tra) mà chỉ là một responder (gán chuỗi template từ chối `OUT_OF_SCOPE_REPLY`). Việc đặt tên `guardrail_*` và tạo riêng 1 node độc lập gây cồng kềnh đồ thị.
+- Toàn bộ các câu hỏi không dùng tool nghiệp vụ (chào hỏi `chat`, làm rõ `clarify`, và từ chối ngoài phạm vi `out_of_scope`) được **gộp chung vào node `respond_inline`**.
+- Loại bỏ hoàn toàn node `guardrail_out_of_scope` khỏi LangGraph.
+
+### Thay đổi
+- **`src/agent/graph.py`**:
+  - Cập nhật `respond_inline_node`:
+    - Nếu `intent == "out_of_scope"`: Gán `answer = OUT_OF_SCOPE_REPLY`, `respond_mode = "out_of_scope"`.
+    - Nếu `intent == "chat"`: Gán câu chào mặc định.
+    - Giữ nguyên `answer` nếu đã có (clarify).
+  - Loại bỏ hoàn toàn node `guardrail_out_of_scope`.
+  - Cập nhật `route_classify`: Nếu câu hỏi là `chat`, `clarify`, hoặc `out_of_scope` $\rightarrow$ rẽ trực tiếp sang `respond_inline` (kèm safety guard cho câu hỏi sự kiện).
+  - Cập nhật `route_orchestrator`: Nhánh fallback `out` rẽ trực tiếp sang `respond_inline`.
+- **`tests/test_product_guardrails_safety.py`**, **`tests/test_product_graph_orchestrator.py`**, **`tests/test_product_memory_cache.py`**:
+  - Cập nhật các assertions theo luồng node mới (`respond_inline` thay vì `guardrail_out_of_scope`).
+  - Toàn bộ test suite vượt qua 100%:
+    - `test_product_guardrails_safety.py`: **62/62 passed**.
+    - `test_product_graph_orchestrator.py`: **88/88 passed**.
+    - `test_product_memory_cache.py`: **passed**.
+- **`graph.mmd` / `graph.png` / `graph_diagram.html`**:
+  - Xuất lại đồ thị Live Graph: Đồ thị giảm từ 17 node xuống còn 16 node chuẩn hóa, rõ ràng và mạch lạc.
+
+### Thay đổi
+- **`src/agent/guardrail_nodes.py`** (mới): `guardrail_input`, `guardrail_scope`, `guardrail_redact`, `guardrail_out_of_scope`, `guardrail_output`.
+- **`src/agent/graph.py`**: Pipeline `START → guardrail_input → guardrail_scope → … → respond → guardrail_output → END`; đổi node `out_of_scope` → `guardrail_out_of_scope`.
+- **`src/main.py`**: Bỏ gọi trùng `check_input`/`in_scope`/`check_output` trên `/api/chat` và `/ask` (graph xử lý); stream vẫn `check_input` sớm cho HTTP 400 injection.
+- **`graph.mmd` / `graph.png`**: Cập nhật sơ đồ Live Graph.
+
+### Hành vi
+- Entry out-of-scope (keyword `in_scope`): `guardrail_scope` → `guardrail_out_of_scope` → `respond` → `guardrail_output`.
+- Classify intent `out_of_scope`: cùng node `guardrail_out_of_scope`.
+- Output groundedness/PII/length: node `guardrail_output` sau `respond`.
+
+---
+
+## 2026-09-25 — Khắc phục chặn nhầm Guardrail (Out of Scope) cho câu hỏi VMS ("Vùng cấm", "Giám sát vùng cấm", "Event")
+
+### Nguyên nhân lỗi
+- Người dùng hỏi: *"hôm nay có bao nhiêu event giám sát vùng cấm"* hoặc *"hôm nay có bao nhiêu event vùng cấm?"*.
+- Trợ lý trả lời: *"Xin lỗi, câu hỏi này ngoài phạm vi hỗ trợ..."* do bị chặn ở lớp guardrail đầu vào `in_scope()` trước khi đến pipeline phân loại và truy vấn DB.
+- **Lý do**: Tập từ khóa `STAT_KEYWORDS` trong `src/guardrails.py` trước đó chỉ có `"khu vực cấm"` (`khu vuc cam`), chưa có danh xưng dịch vụ chính thức trên giao diện VMS là `"vùng cấm"`, `"giám sát vùng cấm"`, cùng các từ khóa tổng quát như `"event"`, `"sự kiện"`.
+
+### Khắc phục
+- **`src/guardrails.py`**:
+  - Bổ sung các tên dịch vụ VMS chuẩn hóa từ giao diện vào `STAT_KEYWORDS`:
+    - Vùng cấm: `"vùng cấm"`, `"vung cam"`, `"giám sát vùng cấm"`, `"giam sat vung cam"`, `"virtual fence"`, `"zone"`.
+    - Phương tiện: `"giám sát phương tiện"`, `"giam sat phuong tien"`.
+    - Khuôn mặt: `"nhận diện khuôn mặt"`, `"nhan dien khuon mat"`.
+    - An ninh & Bất thường: `"phát hiện đánh nhau"`, `"phát hiện đám đông"`, `"phát hiện leo trèo"`, `"giám sát mực nước"`, `"phát hiện cháy"`.
+    - Từ khóa sự kiện: `"event"`, `"events"`, `"sự kiện"`, `"su kien"`, `"bao nhiêu event"`, `"bao nhiêu sự kiện"`, `"số event"`, `"số sự kiện"`.
+- **`src/agent/intent.py`**:
+  - Bổ sung `"vùng cấm"`, `"vung cam"`, `"giám sát vùng cấm"`, `"giam sat vung cam"`, `"virtual fence"`, `"xâm nhập"` vào `STAT_EVENT_DOMAIN_KEYWORDS` và `has_event_stat`.
+- **`tests/test_product_guardrails_safety.py`**:
+  - Bổ sung 2 test case cho câu hỏi *"hôm nay có bao nhiêu event giám sát vùng cấm"* và *"hôm nay có bao nhiêu event vùng cấm?"*, đảm bảo `in_scope = True` (toàn bộ 62/62 unit test pass 100%).
+
+---
+
+### Mục tiêu
+- Cung cấp mục câu hỏi mẫu trực quan ở cột trái (Sidebar), cho phép người dùng click để xổ ra các câu hỏi tiêu biểu đại diện cho các nhóm bài toán từ dataset `eval/datasets/agent_stat/v2.yaml`, đồng thời bấm vào câu hỏi sẽ tự động điền và gửi chat ngay lập tức.
+
+### Thay đổi
+- **`frontend/index.html`**:
+  - Bổ sung component `.sample-questions-accordion` vào sidebar giữa nút "Đoạn chat mới" và danh sách phiên chat.
+  - Phân loại 4 nhóm câu hỏi tiêu biểu từ `v2.yaml` (bao phủ đủ cả 8 domain VMS + AIOC Howto + Sơ đồ):
+    1. 🚗 *Lưu lượng & Biển số*: #001 (lượt xe vào hôm nay), #002 (truy vết biển số 15K40139), #003 (hãng xe).
+    2. 🚨 *Vùng cấm & Bất thường*: #004 (xâm nhập vùng cấm), #007 (ẩu đả), #009 (leo trèo), #010 (cháy khói), #006 (nhận diện khuôn mặt), #011 (mực nước).
+    3. 📊 *Biểu đồ & So sánh*: #019 (biểu đồ xe ra/vào), #022 (so sánh ẩu đả vs đám đông), #021 (multihop biển số & giờ cao điểm).
+    4. ⚙️ *AIOC Howto & Sơ đồ*: #012 (đăng nhập Cloud Cam), #014 (thêm camera mới), #017 (sơ đồ thêm camera), #018 (sơ đồ phân biệt VMS vs AIOC).
+- **`frontend/style.css`**:
+  - Xây dựng giao diện accordion hiện đại theo bảng màu ấm Claude của `agent_ATIN`: hiệu ứng chuyển động xổ xuống mượt mà (`max-height`, `opacity`), xoay chevron 180°, hover card nhích 2px, đổi màu viền sang hổ phách, hiệu ứng mũi tên gửi `↗` xuất hiện khi hover.
+  - Hỗ trợ scrollbar cross-browser chuẩn (`scrollbar-width: thin`, `scrollbar-color`), kèm outline `:focus-visible` cho người dùng điều hướng bàn phím (Accessibility).
+- **`frontend/app.js`**:
+  - Bổ sung event listener toggle accordion đóng/mở, cập nhật thuộc tính `aria-expanded` và lưu trữ trạng thái vào `localStorage` (`agent_sample_accordion_open`).
+  - Tích hợp với listener `[data-query]` toàn cục để điền input và gửi tin nhắn tự động khi click.
+  - Thêm guard kiểm tra `state.isGenerating`: cảnh báo toast thân thiện nếu người dùng bấm khi trợ lý đang stream trả lời, tránh ghi đè textarea.
+  - Tự động đóng sidebar drawer trên màn hình nhỏ/mobile khi người dùng chọn câu hỏi mẫu.
+
+### Kết quả Review & Nghiệm thu
+- **Pass**:
+  - Đóng/mở accordion mượt mà, chevron xoay 180°, giữ nguyên vị trí danh sách phiên chat.
+  - Click vào câu hỏi tự động gửi chat và hiển thị luồng stream kèm live graph.
+  - Phủ đủ các domain chính của `v2.yaml` (ITS, Zone, Face, Fight, Crowd, Intrusion, Fire, Water, AIOC, Diagram, Comparison).
+- **Đã khắc phục (Fixes applied)**:
+  - Khắc phục lỗi ghi đè input khi đang stream (`state.isGenerating` guard + toast).
+  - Bổ sung ghi nhớ trạng thái đóng/mở qua `localStorage`.
+  - Bổ sung câu hỏi nhận diện khuôn mặt (#006) để bao quát trọn vẹn 8 domain VMS.
+  - Chuẩn hóa scrollbar cross-browser và `:focus-visible` cho accessibility.
+
+---
+
+## 2026-09-25 — Chuyển quyết định loại biểu đồ lên `classify_node` & Pure Execution cho `render_chart`
+
+### Mục tiêu
+- Giảm độ trễ (latency): Chuyển việc xác định nhu cầu vẽ biểu đồ (`chart_requested`) và lựa chọn loại biểu đồ (`chart_type`) từ bước `render_chart` lên bước `classify` (gộp vào `IntentResult`), giúp `render_chart_node` thực thi thuần túy từ dữ liệu mà không cần gọi LLM (tiết kiệm 1.5s - 2.5s).
+
+### Thay đổi
+- **`src/llm/schemas.py`**:
+  - Bổ sung `chart_requested: bool = False` và `chart_type: Literal["bar", "pie", "line"] | None = None` vào `IntentResult`.
+  - Khai báo `normalize_chart_type` trước `IntentResult` và thêm field validator chuẩn hóa `chart_type`.
+- **`resource/prompts/classify/v2.yaml`**:
+  - Bổ sung quy định đầu ra cho `chart_requested` và `chart_type` vào prompt hệ thống `classify v2`.
+- **`src/agent/intent.py`**:
+  - Cập nhật `_offline_classify` và `classify_intent_safe` để xác định cờ `chart_requested` và `chart_type` (qua cả heuristic lẫn LLM).
+- **`src/chart/render.py`**:
+  - `plan_chart(rows, question, chart_type=None)`: khi nhận `chart_type` đã được quyết định trước đó, hàm chọn cột và trả về `ChartSpec` trực tiếp (Pure Execution), loại bỏ hoàn toàn lời gọi `invoke_structured` trong luồng chính.
+- **`src/agent/graph.py`**:
+  - Bổ sung `chart_requested` và `chart_type` vào `AgentState` và `_fresh_invoke_state`.
+  - `classify_node`: trích xuất `chart_requested` và `chart_type` từ `IntentResult` lưu vào State.
+  - `render_chart_node`: lấy trực tiếp `state.get("chart_type") or _detect_chart_type(q)` truyền vào `plan_chart`.
+  - `should_render_chart_edge`: kiểm tra trực tiếp `state.get("chart_requested") or should_render_chart(q_text)`.
+  - `respond_node`: truyền `chart_type` vào `plan_chart` cho nhánh orchestrator.
+
+### Tests
+- `tests/test_product_chart_visualization.py`: 92/92 passed (100%).
+- `tests/test_product_llm_prompts.py`: 54/54 passed (100%).
+
+---
+
 ## 2026-09-24 — Rewrite tách `sub_questions` (ý súc tích) → orchestrator
 
 ### Thay đổi

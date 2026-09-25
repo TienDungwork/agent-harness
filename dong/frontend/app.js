@@ -35,6 +35,8 @@
     sidebar: document.getElementById('sidebar'),
     btnToggleSidebar: document.getElementById('btn-toggle-sidebar'),
     btnNewChat: document.getElementById('btn-new-chat'),
+    sampleQuestionsAccordion: document.getElementById('sample-questions-accordion'),
+    sampleAccordionHeader: document.getElementById('sample-accordion-header'),
     sessionList: document.getElementById('session-list'),
     domainChips: document.getElementById('domain-chips'),
     btnOpenSettings: document.getElementById('btn-open-settings'),
@@ -350,12 +352,34 @@
     // New Chat (#btn-new-chat)
     el.btnNewChat.addEventListener('click', createNewSession);
 
-    // Domain Chips & Suggestion Cards (data-query click -> send)
+    // Sample Questions Accordion Toggle (v2.yaml)
+    const savedAccordionState = localStorage.getItem('agent_sample_accordion_open');
+    if (savedAccordionState === 'true' && el.sampleQuestionsAccordion && el.sampleAccordionHeader) {
+      el.sampleQuestionsAccordion.classList.add('expanded');
+      el.sampleAccordionHeader.setAttribute('aria-expanded', 'true');
+    }
+
+    if (el.sampleAccordionHeader && el.sampleQuestionsAccordion) {
+      el.sampleAccordionHeader.addEventListener('click', () => {
+        const isExpanded = el.sampleQuestionsAccordion.classList.toggle('expanded');
+        el.sampleAccordionHeader.setAttribute('aria-expanded', String(isExpanded));
+        localStorage.setItem('agent_sample_accordion_open', String(isExpanded));
+      });
+    }
+
+    // Domain Chips, Suggestion Cards & Sample Questions (data-query click -> send)
     document.addEventListener('click', (e) => {
       const item = e.target.closest('[data-query]');
       if (!item) return;
       const query = item.getAttribute('data-query');
       if (query) {
+        if (state.isGenerating) {
+          showToast('Trợ lý đang phản hồi, vui lòng chờ trong giây lát...', 'warning');
+          return;
+        }
+        if (window.innerWidth <= 768 && el.sidebar && el.sidebar.classList.contains('active')) {
+          el.sidebar.classList.remove('active');
+        }
         el.questionInput.value = query;
         adjustTextareaHeight();
         handleSendMessage();

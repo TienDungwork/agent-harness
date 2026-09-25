@@ -873,6 +873,19 @@ def test_get_connection_chan_dbname_ngoai_whitelist():
             pass
 
 
+def test_get_connection_sets_session_timezone():
+    """Kiểm tra get_connection áp dụng cấu hình DB_TIMEZONE vào session PostgreSQL."""
+    from src.config import settings
+
+    assert settings.db_timezone == "Asia/Ho_Chi_Minh"
+    if settings.db_configured:
+        with get_connection(settings.db_name_its) as conn:
+            with conn.cursor() as cur:
+                cur.execute("SELECT current_setting('timezone');")
+                tz = cur.fetchone()[0]
+                assert tz == settings.db_timezone
+
+
 def test_v2_yaml_structure():
     """Kiểm tra dataset v2.yaml có đủ 30 cases và phân bổ đúng 18/6/3/3."""
     import yaml
@@ -913,7 +926,7 @@ def test_golden_30_report_writes_30_rows(tmp_path):
     write_golden_30(rows, dataset="agent_stat", version="2.1", total_pass=15, output_path=out)
 
     text = out.read_text(encoding="utf-8")
-    assert "| id | slice | pass/fail | latency_ms | tool | note | judge |" in text
+    assert "| id | slice | pass/fail | latency_ms | câu hỏi | câu trả lời | tool | note | judge |" in text
     assert text.count("| agent_stat_v2_") == 30
     assert "15/30 pass" in text
     assert "4/5 — ok" in text

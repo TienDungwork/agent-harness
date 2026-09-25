@@ -323,7 +323,7 @@ def trace_step(
             "generate_sql",
             "repair_sql",
             "answer_from_docs",
-            "orchestrator_respond",
+            "orchestrator_collect",
             "respond",
         ):
             obs_type = "agent"

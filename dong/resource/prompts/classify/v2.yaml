@@ -4,7 +4,7 @@ model: qwen3-4b
 description: Phân loại ý định người dùng thành 7 nhóm intent cho trợ lý VMS KCN Hưng Phú
 owner: team-ai@kcn.vn
 created: "2026-09-22"
-changelog: "v2: hỗ trợ 7 intents, hướng dẫn phân biệt tự nhiên, quy định inline answer cho chat/clarify và rỗng cho pipeline"
+changelog: "v2.1: siết chart_requested — true chỉ khi yêu cầu trực quan hóa rõ"
 template: |
   Phân loại ý định câu người dùng cho trợ lý VMS KCN Hưng Phú (số liệu DB và hướng dẫn sử dụng).
   Hiểu ngữ cảnh tiếng Việt tự nhiên, không phụ thuộc vào danh sách từ khóa cố định.
@@ -22,7 +22,7 @@ template: |
   - "ô tô vi phạm gần nhất lúc nào?" / "phương tiện vi phạm gần đây nhất" / "xe máy nào vừa vào?" -> query_data (tra cứu sự kiện/thời gian vi phạm trong DB, KHÔNG ĐƯỢC chọn clarify).
   - "Có bao nhiêu camera đang hoạt động?" / "Hôm nay có bao nhiêu xe máy vào cổng?" -> query_data (hỏi số liệu trực tiếp).
   - "Truy vết lịch sử xe biển số 15K40139" / "Xe nào đi qua khu vực cấm?" -> query_data.
-  - "Vẽ biểu đồ số xe theo loại" / "Thống kê sự kiện theo ngày" -> query_data (truy vấn DB để vẽ biểu đồ).
+  - "Vẽ biểu đồ số xe theo loại" / "Thống kê sự kiện theo ngày" -> query_data (chart_requested=true nếu có từ biểu đồ/phân bố/theo ngày).
   - "Làm sao thêm camera?" / "Hướng dẫn xem lại video" -> how_to (hỏi thao tác).
   - "Làm thế nào để xem báo cáo xe?" -> how_to (hỏi thao tác trên giao diện, dù có nhắc số liệu).
   - Khi câu vừa có "làm thế nào / cách / hướng dẫn" vừa có từ số liệu: ưu tiên how_to.
@@ -33,8 +33,12 @@ template: |
 
   Quy định đầu ra (IntentResult):
   - BẮT BUỘC trả lời 100% bằng tiếng Việt thuần túy, TUYỆT ĐỐI KHÔNG dùng tiếng Trung (như 进出) hay ngoại ngữ khác.
+  - intent: Chọn 1 trong 7 intent trên.
   - reason: Cụm từ tiếng Việt ngắn gọn giải thích lý do.
   - answer:
     + Với chat: Chào lịch sự và gợi ý hỏi số liệu hoặc cách dùng VMS (tối đa 1 câu).
     + Với clarify: Hỏi lại người dùng bằng tiếng Việt để làm rõ yêu cầu (tối đa 1 câu).
     + Với pipeline intents (query_data, how_to, troubleshoot, concept, out_of_scope): BẮT BUỘC để chuỗi rỗng "".
+  - chart_requested: mặc định false. true chỉ khi có từ biểu đồ/chart/đồ thị/vẽ biểu đồ/phân bố/cơ cấu/tỷ lệ/xu hướng hoặc "theo ngày|giờ|tháng|loại" kèm ý vẽ. false nếu chỉ đếm, tra cứu, có/không, truy vết, hoặc "A hay B"/"nhiều hơn"/"ít hơn" không kèm từ biểu đồ. "Vẽ sơ đồ" howto → false.
+  - chart_type: null nếu chart_requested=false; nếu true chọn bar|pie|line (pie=tỷ lệ/cơ cấu, line=theo thời gian/xu hướng, bar=mặc định).
+

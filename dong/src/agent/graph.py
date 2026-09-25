@@ -1,12 +1,13 @@
 """Graph Agent v5 — LangGraph pipeline thay thế ReAct.
 
 Pipeline chính:
-  START → recall → rewrite → classify → [route]
-    - query_data: retrieve_schema → … → respond → END
-    - docs: retrieve_docs → answer_from_docs → respond → END
-    - chat/clarify: respond_inline → respond → END
-    - out_of_scope: out_of_scope → respond → END
-    - multihop: orchestrator → orchestrator_respond → respond → END
+  START → guardrail_input (check injection/toxic & redact PII) → recall → rewrite → classify
+    - chat / clarify: respond_inline → respond → guardrail_output → END
+    - tất cả còn lại: orchestrator (điều phối tập trung, fast passthrough cho câu đơn)
+        * query_data: retrieve_schema → … → respond → guardrail_output → END
+        * docs: retrieve_docs → answer_from_docs → respond → guardrail_output → END
+        * out_of_scope: guardrail_out_of_scope → respond → guardrail_output → END
+        * multi: orchestrator ⇄ (query_data|docs pipeline) ⇄ orchestrator_collect → respond → guardrail_output → END
 """
 
 from __future__ import annotations
@@ -33,8 +34,8 @@ from src.agent.rewrite import rewrite_question
 from src.db.catalog import build_schema_excerpt, select_relevant_tables
 from src.db.validator import validate_sql
 from src.db.executor import execute_sql
-from src.chart.render import should_render_chart, plan_chart, render_chart
-from src.llm.schemas import ChartSpec, OrchestratorPlan, QueryResult, RewrittenQuestion, StatAnswer
+from src.chart.render import should_render_chart, plan_chart, render_chart, _detect_chart_type
+from src.llm.schemas import ChartSpec, OrchestratorPlan, OrchestratorStep, QueryResult, RewrittenQuestion, StatAnswer
 from src.guardrails import OUT_OF_SCOPE_REPLY
 from src.monitoring.tracing import (
     bind_trace_root,
@@ -75,7 +76,13 @@ class AgentState(TypedDict, total=False):
     recalled_memories: list[str]
     extracted_memories: list[str]
     orchestrator_plan: OrchestratorPlan
+    orchestrator_step_index: int
+    orchestrator_batch_sub_questions: list[str]
+    orchestrator_batch_end_index: int
     orchestrator_step_results: list[dict]
+    orchestrator_multi_active: bool
+    sql_batch: list[dict]
+    sql_batch_results: list[dict]
     multi_hop_ready: bool
     respond_mode: str
     docs_answer: dict
@@ -92,9 +99,12 @@ class AgentState(TypedDict, total=False):
     error: str
     chart_png_base64: str
     chart_spec: ChartSpec
+    chart_requested: bool
+    chart_type: str | None
     
     events: Annotated[list[dict], operator.add]
     result: Agent_Output
+    guardrail_in_scope: bool
     _trace_span: Any
 
 _stream_queue = contextvars.ContextVar("_stream_queue", default=None)
@@ -210,7 +220,9 @@ def recall_node(state: AgentState) -> dict:
             "respond_mode": "",
             "docs_answer": None,
             "orchestrator_plan": None,
+            "orchestrator_step_index": 0,
             "orchestrator_step_results": [],
+            "orchestrator_multi_active": False,
             "multi_hop_ready": False,
             "result": None,
             "rows": [],
@@ -258,7 +270,13 @@ def recall_node(state: AgentState) -> dict:
         "respond_mode": "",
         "docs_answer": None,
         "orchestrator_plan": None,
+        "orchestrator_step_index": 0,
+        "orchestrator_batch_sub_questions": [],
+        "orchestrator_batch_end_index": 0,
         "orchestrator_step_results": [],
+        "orchestrator_multi_active": False,
+        "sql_batch": [],
+        "sql_batch_results": [],
         "multi_hop_ready": False,
         "result": None,
         "rows": [],
@@ -399,13 +417,30 @@ def classify_node(state: AgentState) -> dict:
     res = sanitize_intent_result(classify_intent_safe(rewritten))
     intent = res.intent
     
+    chart_req = getattr(res, "chart_requested", False)
+    chart_t = getattr(res, "chart_type", None)
+
     out_state = {
         "intent": intent,
+        "chart_requested": chart_req,
+        "chart_type": chart_t,
         "events": [node_event(
             "classify",
             input={"rewritten_text": rewritten.text, "rewritten": rewritten.model_dump()},
-            output={"intent": intent, "reason": res.reason, "answer": res.answer},
-            meta={"llm_used": llm_used, "user_id": user_id, "session_id": session_id},
+            output={
+                "intent": intent,
+                "reason": res.reason,
+                "answer": res.answer,
+                "chart_requested": chart_req,
+                "chart_type": chart_t,
+            },
+            meta={
+                "llm_used": llm_used,
+                "user_id": user_id,
+                "session_id": session_id,
+                "chart_requested": chart_req,
+                "chart_type": chart_t,
+            },
         )],
     }
     if res.answer:
@@ -416,22 +451,31 @@ def classify_node(state: AgentState) -> dict:
     return out_state
 
 def respond_inline_node(state: AgentState) -> dict:
+    from src.agent.inline_respond import generate_inline_response
+
     q = state.get("question", "")
+    rewritten = state.get("rewritten")
+    q_text = rewritten.text if rewritten else q
     ans = (state.get("answer") or "").strip()
     intent = state.get("intent", "chat")
     user_id = state.get("user_id") or "default"
     session_id = state.get("session_id") or "default"
 
-    if not ans and intent == "chat":
-        ans = "Chào bạn! Tôi là trợ lý AI giám sát camera VMS KCN Hưng Phú. Tôi có thể hỗ trợ gì cho bạn về dữ liệu camera, sự kiện hoặc hướng dẫn sử dụng hệ thống?"
+    if intent in ("chat", "out_of_scope"):
+        if not ans:
+            ans = generate_inline_response(q_text, intent=intent)
+    elif intent == "clarify" and not ans:
+        ans = "Bạn có thể nói rõ hơn yêu cầu của mình được không?"
+
+    resp_mode = "out_of_scope" if intent == "out_of_scope" else "inline"
 
     return {
         "answer": ans,
-        "respond_mode": "inline",
+        "respond_mode": resp_mode,
         "events": [node_event(
             "respond_inline",
             input={"question": q, "intent": intent},
-            output={"answer": ans, "respond_mode": "inline"},
+            output={"answer": ans, "respond_mode": resp_mode},
             meta={"user_id": user_id, "session_id": session_id},
         )],
     }
@@ -443,6 +487,58 @@ def route_intent(state: AgentState) -> str:
     elif intent == "out_of_scope":
         return "out"
     return "query_data"
+
+
+def _is_multi_plan(plan: OrchestratorPlan | None) -> bool:
+    return bool(plan and (plan.is_multi or len(plan.steps) >= 2))
+
+
+def _reset_pipeline_fields() -> dict:
+    return {
+        "sql": "",
+        "repair_count": 0,
+        "error": "",
+        "rows": [],
+        "columns": [],
+        "sql_validation": {},
+        "params": [],
+        "schema_excerpt": "",
+        "selected_tables": [],
+        "docs_answer": None,
+        "respond_mode": "",
+        "answer": "",
+        "chart_png_base64": "",
+        "chart_spec": None,
+        "sql_batch": [],
+        "sql_batch_results": [],
+    }
+
+
+def _batch_steps_from_plan(plan: OrchestratorPlan, start_idx: int) -> tuple[list[str], int, str]:
+    """Gom các bước liên tiếp cùng agent; trả (sub_questions, end_idx, agent)."""
+    steps = plan.steps
+    if start_idx >= len(steps):
+        return [], start_idx, ""
+    agent = steps[start_idx].agent
+    subs: list[str] = []
+    i = start_idx
+    while i < len(steps) and steps[i].agent == agent:
+        subs.append(steps[i].sub_question)
+        i += 1
+    return subs, i, agent
+
+
+def _apply_orchestrator_batch(out: dict, plan: OrchestratorPlan, start_idx: int) -> None:
+    subs, end_idx, agent = _batch_steps_from_plan(plan, start_idx)
+    out["orchestrator_batch_sub_questions"] = subs
+    out["orchestrator_batch_end_index"] = end_idx
+    if subs:
+        out["question"] = subs[0]
+    out.setdefault("events", [])
+    if out["events"]:
+        out["events"][-1].setdefault("meta", {})["batch_agent"] = agent
+        out["events"][-1]["meta"]["batch_size"] = len(subs)
+
 
 def orchestrator_node(state: AgentState) -> dict:
     from src.agent.orchestrator import plan_orchestration
@@ -456,9 +552,43 @@ def orchestrator_node(state: AgentState) -> dict:
     intent = state.get("intent", "query_data")
     llm_used = not use_offline_tools()
 
+    plan_existing: OrchestratorPlan | None = state.get("orchestrator_plan")
+    if state.get("orchestrator_multi_active") and plan_existing and plan_existing.steps:
+        idx = int(state.get("orchestrator_step_index") or 0)
+        subs, end_idx, agent = _batch_steps_from_plan(plan_existing, idx)
+        out = {
+            **_reset_pipeline_fields(),
+            "orchestrator_batch_sub_questions": subs,
+            "orchestrator_batch_end_index": end_idx,
+            "events": [node_event(
+                "orchestrator",
+                input={"question": q_text, "dispatch_from": idx, "batch_sub_questions": subs},
+                output={"agent": agent, "batch_size": len(subs), "batch_end_index": end_idx},
+                meta={"user_id": user_id, "session_id": session_id, "is_multi": True},
+            )],
+        }
+        if subs:
+            out["question"] = subs[0]
+        return out
+
     sub_questions = list(getattr(rewritten, "sub_questions", None) or [])
     original_q = state.get("original_question") or q
-    if intent == "out_of_scope" and is_stat_event_domain(q_text):
+
+    from src.agent.orchestrator import is_multi_question
+    # Fast pass-through nếu là câu đơn, tránh gọi LLM lần 2
+    if not is_multi_question(q_text, rewritten=rewritten, original=original_q, intent=intent):
+        if is_stat_event_domain(q_text):
+            plan = OrchestratorPlan(steps=[OrchestratorStep(agent="query_data", sub_question=q_text)], is_multi=False, reason="Fast passthrough: stat domain")
+        elif intent == "out_of_scope":
+            plan = OrchestratorPlan(steps=[], is_multi=False, reason="Fast passthrough: out_of_scope")
+        elif intent in ("how_to", "troubleshoot", "concept"):
+            plan = OrchestratorPlan(steps=[OrchestratorStep(agent="docs", sub_question=q_text)], is_multi=False, reason="Fast passthrough: docs")
+        elif intent in ("chat", "clarify"):
+            plan = OrchestratorPlan(steps=[], is_multi=False, reason="Fast passthrough: inline")
+        else:
+            plan = OrchestratorPlan(steps=[OrchestratorStep(agent="query_data", sub_question=q_text)], is_multi=False, reason="Fast passthrough: query_data")
+        llm_used = False
+    elif intent == "out_of_scope" and is_stat_event_domain(q_text):
         plan = plan_orchestration(
             q_text, sub_questions=sub_questions, original=original_q, intent=intent,
         )
@@ -469,7 +599,7 @@ def orchestrator_node(state: AgentState) -> dict:
             q_text, sub_questions=sub_questions, original=original_q, intent=intent,
         )
 
-    return {
+    out: dict = {
         "orchestrator_plan": plan,
         "events": [node_event(
             "orchestrator",
@@ -478,6 +608,18 @@ def orchestrator_node(state: AgentState) -> dict:
             meta={"llm_used": llm_used, "user_id": user_id, "session_id": session_id},
         )],
     }
+    if _is_multi_plan(plan):
+        out.update({
+            "orchestrator_multi_active": True,
+            "orchestrator_step_index": 0,
+            "orchestrator_step_results": [],
+            "multi_hop_ready": False,
+            **_reset_pipeline_fields(),
+        })
+        _apply_orchestrator_batch(out, plan, 0)
+        out["events"][0]["meta"]["is_multi"] = True
+    return out
+
 
 def route_orchestrator(state: AgentState) -> str:
     intent = state.get("intent", "query_data")
@@ -485,13 +627,22 @@ def route_orchestrator(state: AgentState) -> str:
     q_text = rewritten.text if rewritten else state.get("question", "")
 
     plan: OrchestratorPlan | None = state.get("orchestrator_plan")
-    if intent == "out_of_scope":
-        if is_stat_event_domain(q_text):
-            return "query_data"
-        return "out"
+    if state.get("orchestrator_multi_active") and plan and plan.steps:
+        idx = int(state.get("orchestrator_step_index") or 0)
+        if idx >= len(plan.steps):
+            return "respond"
+        batch = state.get("orchestrator_batch_sub_questions") or []
+        if batch:
+            agent = plan.steps[idx].agent
+        else:
+            agent = plan.steps[idx].agent
+        return "query_data" if agent == "query_data" else "docs"
 
-    if plan and (plan.is_multi or len(plan.steps) >= 2):
-        return "multi"
+    if is_stat_event_domain(q_text):
+        return "query_data"
+
+    if intent == "out_of_scope":
+        return "out"
 
     if plan and plan.steps:
         agent = plan.steps[0].agent
@@ -716,124 +867,107 @@ def _synthesize_orchestrator_answer(question: str, step_results: list[dict], sta
     return evidence, "template"
 
 
-def orchestrator_respond_node(state: AgentState) -> dict:
-    from src.agent.validate_sql import validate_and_repair_sql
-    from src.knowledge.answer import answer_from_docs
-    from src.knowledge.retrieval import retrieve_docs
+def orchestrator_collect_step_node(state: AgentState) -> dict:
+    """Thu kết quả batch multi-hop; lặp orchestrator hoặc chuyển respond."""
+    from src.agent.orchestrator import is_all_events_plan
 
-    q = state.get("question", "")
+    plan: OrchestratorPlan | None = state.get("orchestrator_plan")
+    if not plan or not plan.steps:
+        return {"events": [node_event("orchestrator_collect", output={"skipped": True})]}
+
+    idx = int(state.get("orchestrator_step_index") or 0)
+    end_idx = int(state.get("orchestrator_batch_end_index") or idx + 1)
     user_id = state.get("user_id") or "default"
     session_id = state.get("session_id") or "default"
-    plan: OrchestratorPlan | None = state.get("orchestrator_plan")
+    step_results = list(state.get("orchestrator_step_results") or [])
+    batch_results = state.get("sql_batch_results") or []
+    batch_subs = state.get("orchestrator_batch_sub_questions") or []
 
-    sub_events: list[dict] = []
-    step_results: list[dict] = []
-    rows: list = []
-    columns: list = []
-
-    steps = plan.steps if plan else []
-    for idx, step in enumerate(steps):
-        sub_q = step.sub_question
-        if step.agent == "docs":
-            cards = retrieve_docs(sub_q)
-            docs_ans = answer_from_docs(sub_q, cards)
-            step_results.append({
-                "agent": "docs",
-                "sub_question": sub_q,
-                "answer_vi": docs_ans.answer_vi,
-            })
-            sub_events.append(node_event(
-                f"orchestrator_docs_step_{idx+1}",
-                input={"sub_question": sub_q, "agent": "docs"},
-                output={"docs_answer": docs_ans.model_dump()},
-                meta={"user_id": user_id, "session_id": session_id},
-            ))
-        elif step.agent == "query_data":
-            tables = select_relevant_tables(sub_q)
-            schema = build_schema_excerpt(tables)
-            gen_out = generate_sql_node({
-                "question": sub_q,
-                "schema_excerpt": schema,
-                "user_id": user_id,
-                "session_id": session_id,
-            })
-            sub_events.extend(gen_out.get("events") or [])
-            sql_candidate = gen_out.get("sql") or ""
-
-            repaired_sql, val_res, rep_cnt, val_events = validate_and_repair_sql(
-                sql_candidate,
-                sub_q,
-                schema_excerpt=schema,
-                user_id=user_id,
-                session_id=session_id,
-            )
-            sub_events.extend(val_events)
-
-            exec_res = execute_sql_node({
-                "sql": repaired_sql,
-                "user_id": user_id,
-                "session_id": session_id,
-            })
-            step_rows = exec_res.get("rows") or []
-            step_columns = exec_res.get("columns") or []
-            if step_rows:
-                rows = step_rows
-                columns = step_columns
-            err = exec_res.get("error") if not val_res.ok or exec_res.get("error") else ""
-
+    if batch_results:
+        for item in batch_results:
             step_results.append({
                 "agent": "query_data",
-                "sub_question": sub_q,
-                "rows": step_rows,
-                "columns": step_columns,
-                "error": err or "",
-                "sql": exec_res.get("sql") or repaired_sql,
+                "sub_question": item.get("sub_question", ""),
+                "rows": list(item.get("rows") or []),
+                "columns": list(item.get("columns") or []),
+                "error": item.get("error") or "",
+                "sql": item.get("sql") or "",
             })
-            sub_events.append(node_event(
-                f"orchestrator_query_step_{idx+1}",
-                input={
-                    "sub_question": sub_q,
-                    "agent": "query_data",
-                    "sql": exec_res.get("sql"),
-                    "params": exec_res.get("params"),
-                },
-                output={
-                    "columns": step_columns,
-                    "rows": step_rows,
-                    "row_count": len(step_rows),
-                    "error": err or "",
-                },
-                meta={"user_id": user_id, "session_id": session_id},
-            ))
+    elif batch_subs and len(batch_subs) == 1:
+        step = plan.steps[idx]
+        if step.agent == "docs":
+            docs_payload = state.get("docs_answer") or {}
+            step_results.append({
+                "agent": "docs",
+                "sub_question": step.sub_question,
+                "answer_vi": docs_payload.get("answer_vi") or (state.get("answer") or ""),
+            })
+        else:
+            val = state.get("sql_validation") or {}
+            err = state.get("error") or ""
+            if not val.get("ok"):
+                err = err or "sql_validation_failed"
+            step_results.append({
+                "agent": "query_data",
+                "sub_question": step.sub_question,
+                "rows": list(state.get("rows") or []),
+                "columns": list(state.get("columns") or []),
+                "error": err,
+                "sql": state.get("sql") or "",
+            })
+        end_idx = idx + 1
+    else:
+        for step in plan.steps[idx:end_idx]:
+            if step.agent == "docs":
+                docs_payload = state.get("docs_answer") or {}
+                step_results.append({
+                    "agent": "docs",
+                    "sub_question": step.sub_question,
+                    "answer_vi": docs_payload.get("answer_vi") or (state.get("answer") or ""),
+                })
 
+    next_idx = end_idx
     out: dict = {
         "orchestrator_step_results": step_results,
-        "multi_hop_ready": True,
-        "rows": rows,
-        "columns": columns,
-        "events": sub_events + [node_event(
-            "orchestrator_respond",
-            input={
-                "question": q,
-                "orchestrator_plan": plan.model_dump() if plan else {},
-                "step_count": len(steps),
-            },
-            output={
-                "step_count": len(steps),
-                "has_query": any(s.agent == "query_data" for s in steps),
-                "has_docs": any(s.agent == "docs" for s in steps),
-            },
+        "orchestrator_step_index": next_idx,
+        "orchestrator_batch_sub_questions": [],
+        "sql_batch": [],
+        "sql_batch_results": [],
+        "events": [node_event(
+            "orchestrator_collect",
+            input={"from_index": idx, "to_index": end_idx, "batch_size": len(batch_results) or (end_idx - idx)},
+            output={"next_step_index": next_idx, "collected_steps": len(step_results)},
             meta={"user_id": user_id, "session_id": session_id, "is_multi": True},
         )],
     }
-    from src.agent.orchestrator import is_all_events_plan
 
-    if is_all_events_plan(plan):
-        agg_columns, agg_rows = _aggregate_all_events_rows(step_results)
-        if agg_rows:
-            out["columns"] = agg_columns
-            out["rows"] = agg_rows
+    if next_idx >= len(plan.steps):
+        out["multi_hop_ready"] = True
+        out["orchestrator_multi_active"] = False
+        if is_all_events_plan(plan):
+            agg_columns, agg_rows = _aggregate_all_events_rows(step_results)
+            if agg_rows:
+                out["columns"] = agg_columns
+                out["rows"] = agg_rows
+        elif batch_results:
+            last = batch_results[-1]
+            out["rows"] = list(last.get("rows") or [])
+            out["columns"] = list(last.get("columns") or [])
+    else:
+        out.update(_reset_pipeline_fields())
+
     return out
+
+
+def route_after_orchestrator_collect(state: AgentState) -> str:
+    plan: OrchestratorPlan | None = state.get("orchestrator_plan")
+    if not plan:
+        return "respond"
+    idx = int(state.get("orchestrator_step_index") or 0)
+    if idx < len(plan.steps):
+        return "orchestrator"
+    return "respond"
+
 
 def retrieve_docs_node(state: AgentState) -> dict:
     from src.knowledge import retrieve_docs
@@ -876,39 +1010,14 @@ def answer_from_docs_node(state: AgentState) -> dict:
         )],
     }
 
-def out_of_scope_node(state: AgentState) -> dict:
-    q = state.get("question", "")
-    user_id = state.get("user_id") or "default"
-    session_id = state.get("session_id") or "default"
-    return {
-        "answer": OUT_OF_SCOPE_REPLY,
-        "respond_mode": "out_of_scope",
-        "events": [node_event(
-            "out_of_scope",
-            input={"question": q},
-            output={"answer": OUT_OF_SCOPE_REPLY, "respond_mode": "out_of_scope"},
-            meta={"user_id": user_id, "session_id": session_id},
-        )],
-    }
-
 def retrieve_schema_node(state: AgentState) -> dict:
+    from src.agent.sql_batch import query_text_for_state
+
     q = state.get("question", "")
     intent = state.get("intent", "query_data")
     user_id = state.get("user_id") or "default"
     session_id = state.get("session_id") or "default"
-
-    rewritten = state.get("rewritten")
-    if rewritten is not None:
-        if hasattr(rewritten, "text"):
-            q_text = rewritten.text or q
-        elif isinstance(rewritten, dict):
-            q_text = rewritten.get("text") or q
-        elif isinstance(rewritten, str):
-            q_text = rewritten or q
-        else:
-            q_text = q
-    else:
-        q_text = q
+    q_text = query_text_for_state(state)
 
     with trace_substep("select_tables", kind="tool", input={"question": q_text}):
         tables = select_relevant_tables(q_text, limit=4)
@@ -954,7 +1063,8 @@ def render_chart_node(state: AgentState) -> dict:
             fallback_applied = True
 
     try:
-        spec = plan_chart(rows, q)
+        chart_type = state.get("chart_type") or _detect_chart_type(q)
+        spec = plan_chart(rows, q, chart_type=chart_type)
         with trace_substep("render_png", kind="tool", input={"chart_type": getattr(spec, "chart_type", "")}) as sub:
             png_base64 = render_chart(rows, spec)
             sub["output"] = {"rendered": bool(png_base64), "png_len": len(png_base64 or "")}
@@ -1133,25 +1243,8 @@ def respond_node(state: AgentState) -> dict:
             )],
         }
 
-    if respond_mode == "docs":
-        docs_payload = state.get("docs_answer") or {}
-        ans = (state.get("answer") or docs_payload.get("answer_vi") or "").strip()
-        if not ans:
-            ans = "Không tìm thấy tài liệu hướng dẫn phù hợp."
-        result = Agent_Output(question=q_original, answer=ans, detail="docs")
-        emit_answer_chunks(ans, enabled=bool(state.get("stream_tokens")))
-        return {
-            "result": result,
-            "events": [node_event(
-                "respond",
-                input=_respond_event_input(state, respond_mode="docs"),
-                output={"answer_vi": ans, "docs_answer": docs_payload},
-                meta={"llm_used": False, "user_id": user_id, "session_id": session_id},
-            )],
-        }
-
     if respond_mode == "out_of_scope":
-        ans = OUT_OF_SCOPE_REPLY
+        ans = (state.get("answer") or "").strip() or OUT_OF_SCOPE_REPLY
         result = Agent_Output(question=q_original, answer=ans, detail="out_of_scope")
         emit_answer_chunks(ans, enabled=bool(state.get("stream_tokens")))
         return {
@@ -1168,6 +1261,10 @@ def respond_node(state: AgentState) -> dict:
         from src.agent.orchestrator import is_all_events_plan
 
         ans, answer_source = _synthesize_orchestrator_answer(q, step_results, state)
+        check_q = f"{q} {q_original}".lower()
+        if any(k in check_q for k in ("chỗ", "cho ngoi", "5 chỗ", "7 chỗ", "9 chỗ", "16 chỗ", "29 chỗ", "40 chỗ", "45 chỗ")):
+            if "không có thông tin số chỗ ngồi" not in ans.lower():
+                ans = f"{ans}\n(Lưu ý: Hệ thống chỉ phân loại 4 nhóm phương tiện CAR, MOTORCYCLE, TRUCK, BUS, không có thông tin số chỗ ngồi.)"
         llm_used = answer_source == "llm_text"
         agg_columns, agg_rows = _aggregate_all_events_rows(step_results) if is_all_events_plan(plan) else ([], [])
         if agg_rows:
@@ -1186,7 +1283,8 @@ def respond_node(state: AgentState) -> dict:
         chart_spec = None
         if should_render_chart(q) and len(chart_rows) >= 2 and not chart_png:
             try:
-                chart_spec = plan_chart(chart_rows, q)
+                c_type = state.get("chart_type") or _detect_chart_type(q)
+                chart_spec = plan_chart(chart_rows, q, chart_type=c_type)
                 chart_png = render_chart(chart_rows, chart_spec) or ""
             except Exception:
                 chart_png = ""
@@ -1228,6 +1326,24 @@ def respond_node(state: AgentState) -> dict:
                 meta={"llm_used": llm_used, "user_id": user_id, "session_id": session_id, "is_multi": True},
             )],
         }
+
+    if respond_mode == "docs":
+        docs_payload = state.get("docs_answer") or {}
+        ans = (state.get("answer") or docs_payload.get("answer_vi") or "").strip()
+        if not ans:
+            ans = "Không tìm thấi tài liệu hướng dẫn phù hợp."
+        result = Agent_Output(question=q_original, answer=ans, detail="docs")
+        emit_answer_chunks(ans, enabled=bool(state.get("stream_tokens")))
+        return {
+            "result": result,
+            "events": [node_event(
+                "respond",
+                input=_respond_event_input(state, respond_mode="docs"),
+                output={"answer_vi": ans, "docs_answer": docs_payload},
+                meta={"llm_used": False, "user_id": user_id, "session_id": session_id},
+            )],
+        }
+
     from src.agent.camera_registry import (
         is_camera_count_query,
         is_camera_list_query,
@@ -1292,7 +1408,8 @@ def respond_node(state: AgentState) -> dict:
                     answer_source = f"template_fallback:{type(exc).__name__}"
 
 
-    if any(k in q_low for k in ("chỗ", "cho ngoi", "5 chỗ", "7 chỗ", "9 chỗ", "16 chỗ", "29 chỗ", "40 chỗ", "45 chỗ")):
+    check_q = f"{q} {q_original}".lower()
+    if any(k in check_q for k in ("chỗ", "cho ngoi", "5 chỗ", "7 chỗ", "9 chỗ", "16 chỗ", "29 chỗ", "40 chỗ", "45 chỗ")):
         if "không có thông tin số chỗ ngồi" not in ans.lower():
             ans = f"{ans}\n(Lưu ý: Hệ thống chỉ phân loại 4 nhóm phương tiện CAR, MOTORCYCLE, TRUCK, BUS, không có thông tin số chỗ ngồi.)"
 
@@ -1347,13 +1464,20 @@ def _build_graph(checkpointer=None):
     if checkpointer is None:
         checkpointer = get_checkpointer()
 
+    from src.agent.guardrail_nodes import (
+        guardrail_input_node,
+        guardrail_output_node,
+    )
+
     graph = StateGraph(AgentState)
+    graph.add_node("guardrail_input", _wrap_node("guardrail_input", guardrail_input_node))
+    graph.add_node("guardrail_output", _wrap_node("guardrail_output", guardrail_output_node))
     graph.add_node("recall", _wrap_node("recall", recall_node))
     graph.add_node("rewrite", _wrap_node("rewrite", rewrite_node))
     graph.add_node("classify", _wrap_node("classify", classify_node))
     graph.add_node("respond_inline", _wrap_node("respond_inline", respond_inline_node))
     graph.add_node("orchestrator", _wrap_node("orchestrator", orchestrator_node))
-    graph.add_node("orchestrator_respond", _wrap_node("orchestrator_respond", orchestrator_respond_node))
+    graph.add_node("orchestrator_collect", _wrap_node("orchestrator_collect", orchestrator_collect_step_node))
     graph.add_node("retrieve_schema", _wrap_node("retrieve_schema", retrieve_schema_node))
     from src.agent.generate_sql import generate_sql_node
     from src.agent.validate_sql import validate_sql_node, repair_sql_node
@@ -1368,56 +1492,39 @@ def _build_graph(checkpointer=None):
     graph.add_node("retrieve_docs", _wrap_node("retrieve_docs", retrieve_docs_node))
     graph.add_node("answer_from_docs", _wrap_node("answer_from_docs", answer_from_docs_node))
     
-    graph.add_node("out_of_scope", _wrap_node("out_of_scope", out_of_scope_node))
-    
-    graph.add_edge(START, "recall")
+    # 1. Entry Guardrail: gom check input + redact PII vào guardrail_input
+    graph.add_edge(START, "guardrail_input")
+    graph.add_edge("guardrail_input", "recall")
     graph.add_edge("recall", "rewrite")
     graph.add_edge("rewrite", "classify")
     
+    # 2. Sau classify: chào hỏi / clarify / out_of_scope rẽ respond_inline; còn lại truyền sang orchestrator điều phối
     def route_classify(state: AgentState) -> str:
         ans = (state.get("answer") or "").strip()
         intent = state.get("intent", "query_data")
-        if (ans and intent in ("chat", "clarify")) or intent == "chat":
-            return "respond_inline"
-
-        from src.agent.orchestrator import is_multi_question
         q = state.get("question", "")
         rewritten = state.get("rewritten")
         q_text = rewritten.text if rewritten else q
-        original_q = state.get("original_question") or q
 
-        if is_multi_question(q_text, rewritten=rewritten, original=original_q, intent=intent):
+        if intent == "out_of_scope" and is_stat_event_domain(q_text):
             return "orchestrator"
 
-        if intent == "query_data":
-            return "retrieve_schema"
-        elif intent in ("how_to", "troubleshoot", "concept"):
-            from src.agent.intent import is_stat_event_domain
-            if is_stat_event_domain(q_text):
-                return "retrieve_schema"
-            return "retrieve_docs"
-        elif intent == "out_of_scope":
-            from src.agent.intent import is_stat_event_domain
-            if is_stat_event_domain(q_text):
-                return "retrieve_schema"
-            return "out_of_scope"
-
+        if (ans and intent in ("chat", "clarify")) or intent in ("chat", "out_of_scope"):
+            return "respond_inline"
         return "orchestrator"
 
     graph.add_conditional_edges("classify", route_classify, {
         "respond_inline": "respond_inline",
-        "retrieve_schema": "retrieve_schema",
-        "retrieve_docs": "retrieve_docs",
-        "out_of_scope": "out_of_scope",
         "orchestrator": "orchestrator",
     })
     graph.add_edge("respond_inline", "respond")
     
+    # 3. Orchestrator: làm trung tâm điều phối rẽ sang các nhánh thực thi (đơn pass-through, đa ý multi)
     graph.add_conditional_edges("orchestrator", route_orchestrator, {
         "query_data": "retrieve_schema",
         "docs": "retrieve_docs",
-        "out": "out_of_scope",
-        "multi": "orchestrator_respond",
+        "out": "respond_inline",
+        "respond": "respond",
     })
     
     def _after_validate(state: AgentState) -> str:
@@ -1436,14 +1543,21 @@ def _build_graph(checkpointer=None):
         q = state.get("question", "")
         rewritten = state.get("rewritten")
         q_text = rewritten.text if rewritten else q
-        if should_render_chart(q_text):
+        if state.get("chart_requested") or should_render_chart(q_text):
             return "render_chart"
         return "respond"
 
     def _after_execute(state: AgentState) -> str:
         if state.get("error") and int(state.get("repair_count") or 0) < settings.sql_repair_max:
             return "repair_sql"
+        if state.get("orchestrator_multi_active"):
+            return "orchestrator_collect"
         return should_render_chart_edge(state)
+
+    def _after_docs(state: AgentState) -> str:
+        if state.get("orchestrator_multi_active"):
+            return "orchestrator_collect"
+        return "respond"
 
     # Query Data branch (v7 text-to-SQL: retrieve_schema -> generate_sql -> validate_sql <-> repair_sql -> execute_sql -> render_chart/respond)
     graph.add_edge("retrieve_schema", "generate_sql")
@@ -1458,19 +1572,24 @@ def _build_graph(checkpointer=None):
         "repair_sql": "repair_sql",
         "render_chart": "render_chart",
         "respond": "respond",
+        "orchestrator_collect": "orchestrator_collect",
     })
     graph.add_edge("render_chart", "respond")
-    graph.add_edge("respond", END)
+    graph.add_edge("respond", "guardrail_output")
+    graph.add_edge("guardrail_output", END)
     
     # Docs branch
     graph.add_edge("retrieve_docs", "answer_from_docs")
-    graph.add_edge("answer_from_docs", "respond")
+    graph.add_conditional_edges("answer_from_docs", _after_docs, {
+        "orchestrator_collect": "orchestrator_collect",
+        "respond": "respond",
+    })
 
-    # Multi orchestrator branch — execute steps rồi tổng hợp qua respond
-    graph.add_edge("orchestrator_respond", "respond")
+    graph.add_conditional_edges("orchestrator_collect", route_after_orchestrator_collect, {
+        "orchestrator": "orchestrator",
+        "respond": "respond",
+    })
 
-    graph.add_edge("out_of_scope", "respond")
-    
     return graph.compile(checkpointer=checkpointer)
 
 
@@ -1505,12 +1624,21 @@ def _fresh_invoke_state(question: str, inp: Agent_Input, uid: str, session_id: s
         "rows": [],
         "columns": [],
         "orchestrator_plan": None,
+        "orchestrator_step_index": 0,
+        "orchestrator_batch_sub_questions": [],
+        "orchestrator_batch_end_index": 0,
         "orchestrator_step_results": [],
+        "orchestrator_multi_active": False,
+        "sql_batch": [],
+        "sql_batch_results": [],
         "multi_hop_ready": False,
         "intent": "",
+        "chart_requested": False,
+        "chart_type": None,
         "answer": "",
         "respond_mode": "",
         "docs_answer": None,
+        "guardrail_in_scope": True,
     }
 
 

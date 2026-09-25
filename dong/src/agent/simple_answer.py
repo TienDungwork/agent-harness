@@ -146,17 +146,17 @@ def try_format_simple_answer(question: str, rows: list[dict[str, Any]] | None) -
         if any(kw in q for kw in ("lượt xe", "phương tiện", "bao nhiêu xe", "tổng số xe", "số xe")):
             return f"Có {n} lượt xe{when}."
 
-        # 4. Sự kiện bất thường — chỉ khi không hỏi phương tiện/xe
+        # 4. Người / Khuôn mặt — trước nhánh "sự kiện" chung
+        if any(kw in q for kw in ("người", "khuôn mặt", "khuon mat", "face", "nhân sự")):
+            return f"Có {n} lượt người/khuôn mặt ghi nhận{when}."
+
+        # 5. Sự kiện bất thường — chỉ khi không hỏi phương tiện/xe/khuôn mặt
         if any(kw in q for kw in ("bất thường", "anomaly")):
             return f"Có {n} sự kiện bất thường{when}."
         if any(kw in q for kw in ("sự kiện", "su kien", "cảnh báo")) and not any(
-            kw in q for kw in ("phương tiện", "xe", "biển số", "bien so", "plate", "lượt xe")
+            kw in q for kw in ("phương tiện", "xe", "biển số", "bien so", "plate", "lượt xe", "khuôn mặt", "khuon mat", "face")
         ):
             return f"Có {n} sự kiện bất thường{when}."
-
-        # 5. Người / Khuôn mặt
-        if any(kw in q for kw in ("người", "khuôn mặt", "face", "nhân sự")):
-            return f"Có {n} lượt người/khuôn mặt ghi nhận{when}."
 
         return f"Kết quả: {n}."
 

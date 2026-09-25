@@ -54,6 +54,7 @@ def get_connection(dbname: str):
 
     import psycopg2
 
+    tz = (settings.db_timezone or "Asia/Ho_Chi_Minh").strip().strip("'\"")
     conn = psycopg2.connect(
         host=settings.db_host,
         port=settings.db_port,
@@ -61,11 +62,13 @@ def get_connection(dbname: str):
         password=settings.db_password,
         dbname=dbname,
         connect_timeout=5,
+        options=f"-c timezone={tz}",
     )
     try:
         conn.set_session(readonly=True, autocommit=True)
         with conn.cursor() as cur:
             cur.execute(f"SET statement_timeout = {int(settings.db_query_timeout_s * 1000)};")
+            cur.execute("SET timezone = %s;", (tz,))
         yield conn
     finally:
         conn.close()

@@ -405,11 +405,13 @@ def test_out_of_scope_still_runs_store_extract():
     inp = Agent_Input(question="Thời tiết hôm nay thế nào?", user_id="u_oos")
     events = list(run_agent_stream(inp, session_id="oos-sess"))
     node_ids = [e.get("node_id") for e in events if e.get("node_id")]
-    assert "out_of_scope" in node_ids
+    assert "respond_inline" in node_ids
+    assert "guardrail_output" in node_ids
     assert "store_extract" in node_ids
     assert "respond" in node_ids
-    assert node_ids.index("respond") > node_ids.index("out_of_scope")
-    assert node_ids.index("store_extract") > node_ids.index("respond")
+    assert node_ids.index("respond") > node_ids.index("respond_inline")
+    assert node_ids.index("guardrail_output") > node_ids.index("respond")
+    assert node_ids.index("store_extract") > node_ids.index("guardrail_output")
 
 
 def test_api_chat_propagates_user_id_and_stores_memory():

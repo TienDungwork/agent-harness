@@ -171,18 +171,40 @@ def _offline_plan_chart(rows: list[dict[str, Any]], question: str) -> ChartSpec:
     )
 
 
-def plan_chart(rows: list[dict[str, Any]], question: str) -> ChartSpec:
+def plan_chart(
+    rows: list[dict[str, Any]],
+    question: str,
+    chart_type: str | None = None,
+) -> ChartSpec:
     """Xác định ChartSpec từ danh sách dòng kết quả và câu hỏi.
 
-    Khi offline (`use_offline_tools()`): trích xuất cặp cột danh mục + số liệu theo heuristic.
-    Khi online: gọi `invoke_structured` để LLM lựa chọn ChartSpec tối ưu, tự động fallback nếu lỗi.
+    - Nếu `chart_type` đã được xác định trước (từ bước classify), thực thi thuần túy
+      bằng cách chọn cột từ `rows` mà KHÔNG gọi LLM (tốc độ ~0.005s).
+    - Nếu `chart_type` chưa có:
+        + Khi offline (`use_offline_tools()`): chọn cột và nhận diện chart_type theo heuristic.
+        + Khi online: gọi `invoke_structured` để LLM lựa chọn ChartSpec.
     """
     if not rows:
+        c_type = normalize_chart_type(chart_type) if chart_type else _detect_chart_type(question)
         return ChartSpec(
-            chart_type=_detect_chart_type(question),
+            chart_type=c_type,
             x_column="",
             y_column="",
             title_vi=(question or "").strip() or "Biểu đồ",
+        )
+
+    # Fast Path: chart_type đã được quyết định từ trước (ở classify) -> Chỉ trích xuất cột từ data rows
+    if chart_type:
+        cat_col, num_col = _pick_columns(rows)
+        cleaned_q = (question or "").strip()
+        title_vi = cleaned_q if cleaned_q and len(cleaned_q) <= 80 else (
+            f"Thống kê {num_col} theo {cat_col}" if num_col and cat_col else "Biểu đồ thống kê"
+        )
+        return ChartSpec(
+            chart_type=normalize_chart_type(chart_type),
+            x_column=cat_col,
+            y_column=num_col,
+            title_vi=title_vi,
         )
 
     if use_offline_tools():
@@ -207,6 +229,7 @@ def plan_chart(rows: list[dict[str, Any]], question: str) -> ChartSpec:
         return _offline_plan_chart(rows, question)
     except Exception:
         return _offline_plan_chart(rows, question)
+
 
 
 def render_chart(rows: list[dict[str, Any]], spec: ChartSpec) -> str:

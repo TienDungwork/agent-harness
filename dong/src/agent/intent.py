@@ -25,6 +25,13 @@ STAT_EVENT_DOMAIN_KEYWORDS = (
     "cảnh báo khói",
     "vi phạm",
     "vi pham",
+    "vùng cấm",
+    "vung cam",
+    "giám sát vùng cấm",
+    "giam sat vung cam",
+    "virtual fence",
+    "xâm nhập",
+    "xam nhap",
 )
 
 
@@ -38,6 +45,7 @@ def is_stat_event_domain(text: str) -> bool:
     )
 
 
+from src.chart.render import should_render_chart, _detect_chart_type
 from src.guardrails import CHAT_GREETING_KEYWORDS, is_chat_greeting
 
 is_chat_like = is_chat_greeting
@@ -47,6 +55,8 @@ def _offline_classify(text: str) -> IntentResult:
     """Heuristic offline cho intent khi test hoặc không có LLM."""
     low = text.lower()
     cleaned = text.strip()
+    has_chart = should_render_chart(cleaned)
+    chart_t = _detect_chart_type(cleaned) if has_chart else None
 
     # 0. Greetings / Chat
     if is_chat_greeting(cleaned):
@@ -54,6 +64,8 @@ def _offline_classify(text: str) -> IntentResult:
             intent="chat",
             reason="Offline heuristic: chào hỏi, giao tiếp cơ bản",
             answer="Chào bạn, tôi là trợ lý ảo AIOC. Bạn cần tôi giúp gì về hệ thống camera và sự kiện?",
+            chart_requested=False,
+            chart_type=None,
         )
         
     # 0.1 Clarify for vague empty-ish
@@ -61,21 +73,34 @@ def _offline_classify(text: str) -> IntentResult:
         return IntentResult(
             intent="clarify",
             reason="Offline heuristic: câu quá ngắn hoặc rỗng",
-            answer="Bạn có thể nói rõ hơn yêu cầu của mình được không?"
+            answer="Bạn có thể nói rõ hơn yêu cầu của mình được không?",
+            chart_requested=False,
+            chart_type=None,
         )
 
     # 1. Out of scope
     if any(k in low for k in ("thời tiết", "bóng đá", "tổng thống", "chính trị", "giá vàng", "nấu ăn", "viết một bài thơ", "bài thơ", "cổ phiếu")):
-        return IntentResult(intent="out_of_scope", reason="Offline heuristic: câu hỏi ngoài phạm vi")
+        return IntentResult(
+            intent="out_of_scope",
+            reason="Offline heuristic: câu hỏi ngoài phạm vi",
+            chart_requested=False,
+            chart_type=None,
+        )
 
     # 2. Câu hỏi vẽ sơ đồ / so sánh khái niệm với câu hỏi thống kê (vd: 018, 024) -> how_to / docs
     if ("vẽ sơ đồ" in low or "sơ đồ" in low) and ("khác gì so với" in low or "phân biệt" in low):
-        return IntentResult(intent="how_to", reason="Offline heuristic: sơ đồ và phân biệt khái niệm (docs)")
+        return IntentResult(
+            intent="how_to",
+            reason="Offline heuristic: sơ đồ và phân biệt khái niệm (docs)",
+            chart_requested=False,
+            chart_type=None,
+        )
 
     # 3. Stat/event keywords (leo trèo, cháy, khói, mực nước, đám đông, phát hiện, cảnh báo + time) -> query_data
     # Kể cả khi có AIOC
     has_event_stat = any(k in low for k in (
-        "leo trèo", "cháy", "khói", "mực nước", "đám đông", "ẩu đả", "vụ ẩu đả"
+        "leo trèo", "cháy", "khói", "mực nước", "đám đông", "ẩu đả", "vụ ẩu đả",
+        "vùng cấm", "giám sát vùng cấm", "xâm nhập"
     ))
     has_alert_detection_time = any(k in low for k in ("phát hiện", "cảnh báo")) and any(
         t in low for t in ("hôm nay", "ngày", "tuần", "tháng", "khoảng", "từ", "đến")
@@ -85,28 +110,58 @@ def _offline_classify(text: str) -> IntentResult:
     ))
 
     if has_event_stat or has_alert_detection_time:
-        return IntentResult(intent="query_data", reason="Offline heuristic: truy vấn sự kiện/thống kê")
+        return IntentResult(
+            intent="query_data",
+            reason="Offline heuristic: truy vấn sự kiện/thống kê",
+            chart_requested=has_chart,
+            chart_type=chart_t,
+        )
 
     if has_general_stat and not any(k in low for k in ("làm sao", "cách", "hướng dẫn", "vẽ sơ đồ", "sơ đồ", "thêm camera", "quản lý camera")):
-        return IntentResult(intent="query_data", reason="Offline heuristic: truy vấn số liệu")
+        return IntentResult(
+            intent="query_data",
+            reason="Offline heuristic: truy vấn số liệu",
+            chart_requested=has_chart,
+            chart_type=chart_t,
+        )
 
     # 4. Pure AIOC howto/diagram (vẽ sơ đồ, trạng thái trực tuyến, thêm camera) without stat -> how_to
     if any(k in low for k in (
         "vẽ sơ đồ", "sơ đồ", "trạng thái trực tuyến", "trực tuyến", "ngoại tuyến", "bảo trì",
         "thêm camera", "quản lý camera", "làm sao", "cách", "hướng dẫn", "cài đặt", "sử dụng", "xem lại", "đăng nhập", "đăng xuất"
     )):
-        return IntentResult(intent="how_to", reason="Offline heuristic: câu hỏi hướng dẫn cách dùng / sơ đồ")
+        return IntentResult(
+            intent="how_to",
+            reason="Offline heuristic: câu hỏi hướng dẫn cách dùng / sơ đồ",
+            chart_requested=False,
+            chart_type=None,
+        )
 
     # 5. Troubleshoot
     if any(k in low for k in ("tại sao", "lỗi", "mất kết nối", "sự cố", "không lên", "hỏng")):
-        return IntentResult(intent="troubleshoot", reason="Offline heuristic: câu hỏi sự cố/lỗi")
+        return IntentResult(
+            intent="troubleshoot",
+            reason="Offline heuristic: câu hỏi sự cố/lỗi",
+            chart_requested=False,
+            chart_type=None,
+        )
 
     # 6. Concept
     if any(k in low for k in ("là gì", "khái niệm", "định nghĩa", "ý nghĩa")):
-        return IntentResult(intent="concept", reason="Offline heuristic: câu hỏi khái niệm")
+        return IntentResult(
+            intent="concept",
+            reason="Offline heuristic: câu hỏi khái niệm",
+            chart_requested=False,
+            chart_type=None,
+        )
 
     # 7. Default
-    return IntentResult(intent="query_data", reason="Offline heuristic: mặc định truy vấn số liệu")
+    return IntentResult(
+        intent="query_data",
+        reason="Offline heuristic: mặc định truy vấn số liệu",
+        chart_requested=has_chart,
+        chart_type=chart_t,
+    )
 
 
 _NEEDS_PIPELINE = frozenset(
@@ -193,19 +248,33 @@ def classify_intent_safe(question: str | RewrittenQuestion) -> IntentResult:
             return sanitize_intent_result(IntentResult(
                 intent="query_data",
                 reason="Override: biểu đồ/sơ đồ thống kê dữ liệu VMS",
+                chart_requested=True,
+                chart_type=_detect_chart_type(cleaned),
             ))
         # Override 1: nếu LLM trả clarify cho câu hỏi rõ ràng là how_to → sửa lại
         if result.intent == "clarify" and _is_how_to_override(cleaned):
             return sanitize_intent_result(IntentResult(
                 intent="how_to",
                 reason="Override: câu hỏi rõ ràng là how_to (vẽ sơ đồ / AIOC / devices)",
+                chart_requested=False,
+                chart_type=None,
             ))
         # Override 2: nếu LLM trả query_data cho câu hỏi vẽ sơ đồ AIOC / so sánh khái niệm
         if result.intent == "query_data" and ("vẽ sơ đồ" in low or "sơ đồ" in low) and any(k in low for k in ("devices", "aioc", "phân biệt", "khác gì")):
             return sanitize_intent_result(IntentResult(
                 intent="how_to",
                 reason="Override: câu hỏi sơ đồ phân biệt khái niệm / AIOC",
+                chart_requested=False,
+                chart_type=None,
             ))
+        # chart_requested theo heuristic — LLM hay bật nhầm câu đếm/tra cứu/theo giờ
+        if should_render_chart(cleaned):
+            result.chart_requested = True
+            if not result.chart_type:
+                result.chart_type = _detect_chart_type(cleaned)
+        else:
+            result.chart_requested = False
+            result.chart_type = None
         return result
     except Exception:
         return sanitize_intent_result(_offline_classify(cleaned))

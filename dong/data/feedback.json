@@ -1,615 +1,72 @@
 [
   {
-    "id": "fb_20260924_032803_725bdc",
-    "timestamp": "2026-09-24T03:28:03.631152+00:00",
-    "session_id": "live_test",
-    "user_id": "admin",
+    "id": "fb_20260925_100328_6d640f",
+    "timestamp": "2026-09-25T10:03:28.586494+00:00",
+    "session_id": "2ee92545-857a-41df-84bb-639edd897846",
+    "user_id": "ca217147-8235-4276-a5ad-95d7c12af920",
     "rating": "positive",
     "feedback_reason": null,
     "attachment_path": null,
-    "question": "Hiện có bao nhiêu camera đang hoạt động?",
-    "answer": "10 camera đang hoạt động",
-    "agent_trace": null
-  },
-  {
-    "id": "fb_20260924_032833_8ec8bc",
-    "timestamp": "2026-09-24T03:28:33.069289+00:00",
-    "session_id": "live_test",
-    "user_id": "admin",
-    "rating": "negative",
-    "feedback_reason": "Thiếu 4 camera vùng cấm và cháy khói",
-    "attachment_path": "data/feedback/attachments/fb_20260924_032833_8ec8bc.png",
-    "question": "Kể tên camera",
-    "answer": "6 camera",
-    "agent_trace": {
-      "sql": "SELECT * FROM plate_event"
-    }
-  },
-  {
-    "id": "fb_20260924_033553_84c81b",
-    "timestamp": "2026-09-24T03:35:53.611162+00:00",
-    "session_id": "live_test_custom",
-    "user_id": "admin",
-    "rating": "negative",
-    "feedback_reason": "Chưa đúng 10 camera",
-    "attachment_path": "data/feedback/attachments/fb_20260924_033553_84c81b_snapshot_issue.png",
-    "question": "Kể tên camera",
-    "answer": "6 camera",
-    "agent_trace": null
-  },
-  {
-    "id": "fb_20260924_034702_287ed7",
-    "timestamp": "2026-09-24T03:47:02.538861+00:00",
-    "session_id": "test_sess_ui",
-    "user_id": "test_user",
-    "rating": "positive",
-    "feedback_reason": null,
-    "attachment_path": null,
-    "question": "Hôm nay có bao nhiêu cam?",
-    "answer": "Có 10 camera",
-    "agent_trace": {
-      "nodes": []
-    }
-  },
-  {
-    "id": "fb_20260924_034733_385e05",
-    "timestamp": "2026-09-24T03:47:33.390131+00:00",
-    "session_id": "test_sess_ui",
-    "user_id": "test_user",
-    "rating": "negative",
-    "feedback_reason": "Thiếu 4 camera",
-    "attachment_path": "data/feedback/attachments/fb_20260924_034733_385e05_ui_test.png",
-    "question": "Hôm nay có bao nhiêu cam?",
-    "answer": "Có 6 camera",
+    "question": "hôm nay ngày bao nhiêu",
+    "answer": "Hôm nay là ngày 25 tháng 09 năm 2026. Chuyên môn của tôi là hỗ trợ thống kê dữ liệu giám sát camera VMS KCN Hưng Phú. Bạn có thể hỏi về lượng xe hôm nay, kiểm tra cảnh báo an ninh hoặc hướng dẫn sử dụng AIOC được không?",
     "agent_trace": {
       "nodes": [
         {
-          "node_id": "classify"
-        }
-      ]
-    }
-  },
-  {
-    "id": "fb_20260924_071243_cd7383",
-    "timestamp": "2026-09-24T07:12:43.233351+00:00",
-    "session_id": "7a3db0e8-ad5b-4152-8379-8a1b3d9d4df1",
-    "user_id": "448f05fc-b6f8-4c2e-a7b3-eec13c1e7271",
-    "rating": "positive",
-    "feedback_reason": null,
-    "attachment_path": null,
-    "question": "Chào bạn",
-    "answer": "Chào bạn! Bạn cần hỗ trợ gì về hệ thống VMS/KCN Hưng Phú?",
-    "agent_trace": {
-      "nodes": [
+          "node_id": "guardrail_input",
+          "status": "running",
+          "input": null,
+          "output": null,
+          "meta": null,
+          "duration_ms": null
+        },
+        {
+          "node_id": "guardrail_input",
+          "status": "done",
+          "input": {
+            "question": "hôm nay ngày bao nhiêu"
+          },
+          "output": {
+            "question": "hôm nay ngày bao nhiêu",
+            "pii_redacted": false,
+            "ok": true
+          },
+          "meta": {
+            "user_id": "ca217147-8235-4276-a5ad-95d7c12af920",
+            "session_id": "2ee92545-857a-41df-84bb-639edd897846",
+            "duration_ms": 0.6
+          },
+          "duration_ms": 0.6
+        },
         {
           "node_id": "recall",
-          "status": "running"
+          "status": "running",
+          "input": null,
+          "output": null,
+          "meta": null,
+          "duration_ms": null
         },
         {
           "node_id": "recall",
           "status": "done",
           "input": {
-            "user_id": "448f05fc-b6f8-4c2e-a7b3-eec13c1e7271",
-            "question": "Chào bạn"
+            "user_id": "ca217147-8235-4276-a5ad-95d7c12af920",
+            "question": "hôm nay ngày bao nhiêu"
           },
           "output": {
-            "recalled_memories": []
+            "recalled_memories": [],
+            "disabled": true
           },
           "meta": {
-            "user_id": "448f05fc-b6f8-4c2e-a7b3-eec13c1e7271",
-            "session_id": "7a3db0e8-ad5b-4152-8379-8a1b3d9d4df1",
+            "user_id": "ca217147-8235-4276-a5ad-95d7c12af920",
+            "session_id": "2ee92545-857a-41df-84bb-639edd897846",
             "recalled_count": 0,
-            "duration_ms": 1
-          },
-          "duration_ms": 1
-        },
-        {
-          "node_id": "rewrite",
-          "status": "running"
-        },
-        {
-          "node_id": "rewrite",
-          "status": "done",
-          "input": {
-            "question": "Chào bạn"
-          },
-          "output": {
-            "rewritten": {
-              "text": "Chào bạn",
-              "filters": [],
-              "time_range": null,
-              "intent_hint": "chat"
-            }
-          },
-          "meta": {
-            "llm_used": false,
-            "user_id": "448f05fc-b6f8-4c2e-a7b3-eec13c1e7271",
-            "session_id": "7a3db0e8-ad5b-4152-8379-8a1b3d9d4df1",
-            "skipped": true,
-            "duration_ms": 1
-          },
-          "duration_ms": 1
-        },
-        {
-          "node_id": "classify",
-          "status": "running"
-        },
-        {
-          "node_id": "classify",
-          "status": "done",
-          "input": {
-            "rewritten_text": "Chào bạn",
-            "rewritten": {
-              "text": "Chào bạn",
-              "filters": [],
-              "time_range": null,
-              "intent_hint": "chat"
-            }
-          },
-          "output": {
-            "intent": "chat",
-            "reason": "Câu hỏi chào hỏi, không cần số liệu hay thao tác hệ thống.",
-            "answer": "Chào bạn! Bạn cần hỗ trợ gì về hệ thống VMS/KCN Hưng Phú?"
-          },
-          "meta": {
-            "llm_used": true,
-            "user_id": "448f05fc-b6f8-4c2e-a7b3-eec13c1e7271",
-            "session_id": "7a3db0e8-ad5b-4152-8379-8a1b3d9d4df1",
-            "duration_ms": 836.4
-          },
-          "duration_ms": 836.4
-        },
-        {
-          "node_id": "respond_inline",
-          "status": "running"
-        },
-        {
-          "node_id": "respond_inline",
-          "status": "done",
-          "input": {
-            "question": "Chào bạn",
-            "intent": "chat"
-          },
-          "output": {
-            "answer": "Chào bạn! Bạn cần hỗ trợ gì về hệ thống VMS/KCN Hưng Phú?"
-          },
-          "meta": {
-            "user_id": "448f05fc-b6f8-4c2e-a7b3-eec13c1e7271",
-            "session_id": "7a3db0e8-ad5b-4152-8379-8a1b3d9d4df1",
-            "duration_ms": 0.5
-          },
-          "duration_ms": 0.5
-        }
-      ],
-      "detail": {
-        "tool": "",
-        "columns": [],
-        "row_count": 0,
-        "agent_detail": "chat"
-      }
-    }
-  },
-  {
-    "id": "fb_20260924_071313_053cd6",
-    "timestamp": "2026-09-24T07:13:13.994498+00:00",
-    "session_id": "7a3db0e8-ad5b-4152-8379-8a1b3d9d4df1",
-    "user_id": "448f05fc-b6f8-4c2e-a7b3-eec13c1e7271",
-    "rating": "positive",
-    "feedback_reason": null,
-    "attachment_path": null,
-    "question": "Chào bạn",
-    "answer": "Chào bạn! Bạn cần hỗ trợ gì về hệ thống VMS/KCN Hưng Phú?",
-    "agent_trace": {
-      "nodes": [
-        {
-          "node_id": "recall",
-          "status": "running"
-        },
-        {
-          "node_id": "recall",
-          "status": "done",
-          "input": {
-            "user_id": "448f05fc-b6f8-4c2e-a7b3-eec13c1e7271",
-            "question": "Chào bạn"
-          },
-          "output": {
-            "recalled_memories": []
-          },
-          "meta": {
-            "user_id": "448f05fc-b6f8-4c2e-a7b3-eec13c1e7271",
-            "session_id": "7a3db0e8-ad5b-4152-8379-8a1b3d9d4df1",
-            "recalled_count": 0,
-            "duration_ms": 1
-          },
-          "duration_ms": 1
-        },
-        {
-          "node_id": "rewrite",
-          "status": "running"
-        },
-        {
-          "node_id": "rewrite",
-          "status": "done",
-          "input": {
-            "question": "Chào bạn"
-          },
-          "output": {
-            "rewritten": {
-              "text": "Chào bạn",
-              "filters": [],
-              "time_range": null,
-              "intent_hint": "chat"
-            }
-          },
-          "meta": {
-            "llm_used": false,
-            "user_id": "448f05fc-b6f8-4c2e-a7b3-eec13c1e7271",
-            "session_id": "7a3db0e8-ad5b-4152-8379-8a1b3d9d4df1",
-            "skipped": true,
-            "duration_ms": 1
-          },
-          "duration_ms": 1
-        },
-        {
-          "node_id": "classify",
-          "status": "running"
-        },
-        {
-          "node_id": "classify",
-          "status": "done",
-          "input": {
-            "rewritten_text": "Chào bạn",
-            "rewritten": {
-              "text": "Chào bạn",
-              "filters": [],
-              "time_range": null,
-              "intent_hint": "chat"
-            }
-          },
-          "output": {
-            "intent": "chat",
-            "reason": "Câu hỏi chào hỏi, không cần số liệu hay thao tác hệ thống.",
-            "answer": "Chào bạn! Bạn cần hỗ trợ gì về hệ thống VMS/KCN Hưng Phú?"
-          },
-          "meta": {
-            "llm_used": true,
-            "user_id": "448f05fc-b6f8-4c2e-a7b3-eec13c1e7271",
-            "session_id": "7a3db0e8-ad5b-4152-8379-8a1b3d9d4df1",
-            "duration_ms": 836.4
-          },
-          "duration_ms": 836.4
-        },
-        {
-          "node_id": "respond_inline",
-          "status": "running"
-        },
-        {
-          "node_id": "respond_inline",
-          "status": "done",
-          "input": {
-            "question": "Chào bạn",
-            "intent": "chat"
-          },
-          "output": {
-            "answer": "Chào bạn! Bạn cần hỗ trợ gì về hệ thống VMS/KCN Hưng Phú?"
-          },
-          "meta": {
-            "user_id": "448f05fc-b6f8-4c2e-a7b3-eec13c1e7271",
-            "session_id": "7a3db0e8-ad5b-4152-8379-8a1b3d9d4df1",
-            "duration_ms": 0.5
-          },
-          "duration_ms": 0.5
-        }
-      ],
-      "detail": {
-        "tool": "",
-        "columns": [],
-        "row_count": 0,
-        "agent_detail": "chat"
-      }
-    }
-  },
-  {
-    "id": "fb_20260924_071411_791719",
-    "timestamp": "2026-09-24T07:14:11.703448+00:00",
-    "session_id": "7a3db0e8-ad5b-4152-8379-8a1b3d9d4df1",
-    "user_id": "448f05fc-b6f8-4c2e-a7b3-eec13c1e7271",
-    "rating": "positive",
-    "feedback_reason": null,
-    "attachment_path": null,
-    "question": "Chào bạn",
-    "answer": "Chào bạn! Bạn cần hỗ trợ gì về hệ thống VMS/KCN Hưng Phú?",
-    "agent_trace": {
-      "nodes": [
-        {
-          "node_id": "recall",
-          "status": "running"
-        },
-        {
-          "node_id": "recall",
-          "status": "done",
-          "input": {
-            "user_id": "448f05fc-b6f8-4c2e-a7b3-eec13c1e7271",
-            "question": "Chào bạn"
-          },
-          "output": {
-            "recalled_memories": []
-          },
-          "meta": {
-            "user_id": "448f05fc-b6f8-4c2e-a7b3-eec13c1e7271",
-            "session_id": "7a3db0e8-ad5b-4152-8379-8a1b3d9d4df1",
-            "recalled_count": 0,
-            "duration_ms": 1
-          },
-          "duration_ms": 1
-        },
-        {
-          "node_id": "rewrite",
-          "status": "running"
-        },
-        {
-          "node_id": "rewrite",
-          "status": "done",
-          "input": {
-            "question": "Chào bạn"
-          },
-          "output": {
-            "rewritten": {
-              "text": "Chào bạn",
-              "filters": [],
-              "time_range": null,
-              "intent_hint": "chat"
-            }
-          },
-          "meta": {
-            "llm_used": false,
-            "user_id": "448f05fc-b6f8-4c2e-a7b3-eec13c1e7271",
-            "session_id": "7a3db0e8-ad5b-4152-8379-8a1b3d9d4df1",
-            "skipped": true,
-            "duration_ms": 1
-          },
-          "duration_ms": 1
-        },
-        {
-          "node_id": "classify",
-          "status": "running"
-        },
-        {
-          "node_id": "classify",
-          "status": "done",
-          "input": {
-            "rewritten_text": "Chào bạn",
-            "rewritten": {
-              "text": "Chào bạn",
-              "filters": [],
-              "time_range": null,
-              "intent_hint": "chat"
-            }
-          },
-          "output": {
-            "intent": "chat",
-            "reason": "Câu hỏi chào hỏi, không cần số liệu hay thao tác hệ thống.",
-            "answer": "Chào bạn! Bạn cần hỗ trợ gì về hệ thống VMS/KCN Hưng Phú?"
-          },
-          "meta": {
-            "llm_used": true,
-            "user_id": "448f05fc-b6f8-4c2e-a7b3-eec13c1e7271",
-            "session_id": "7a3db0e8-ad5b-4152-8379-8a1b3d9d4df1",
-            "duration_ms": 836.4
-          },
-          "duration_ms": 836.4
-        },
-        {
-          "node_id": "respond_inline",
-          "status": "running"
-        },
-        {
-          "node_id": "respond_inline",
-          "status": "done",
-          "input": {
-            "question": "Chào bạn",
-            "intent": "chat"
-          },
-          "output": {
-            "answer": "Chào bạn! Bạn cần hỗ trợ gì về hệ thống VMS/KCN Hưng Phú?"
-          },
-          "meta": {
-            "user_id": "448f05fc-b6f8-4c2e-a7b3-eec13c1e7271",
-            "session_id": "7a3db0e8-ad5b-4152-8379-8a1b3d9d4df1",
-            "duration_ms": 0.5
-          },
-          "duration_ms": 0.5
-        }
-      ],
-      "detail": {
-        "tool": "",
-        "columns": [],
-        "row_count": 0,
-        "agent_detail": "chat"
-      }
-    }
-  },
-  {
-    "id": "fb_20260924_080838_c4db87",
-    "timestamp": "2026-09-24T08:08:38.259927+00:00",
-    "session_id": "s_test",
-    "user_id": "u_test",
-    "rating": "positive",
-    "feedback_reason": null,
-    "attachment_path": null,
-    "question": "Test feedback sau khi chmod",
-    "answer": "Trả lời test",
-    "agent_trace": null
-  },
-  {
-    "id": "fb_20260924_080857_9133c5",
-    "timestamp": "2026-09-24T08:08:57.807609+00:00",
-    "session_id": "s_test_3001",
-    "user_id": "u_test",
-    "rating": "positive",
-    "feedback_reason": null,
-    "attachment_path": null,
-    "question": "Test qua Nginx 3001",
-    "answer": "Trả lời test",
-    "agent_trace": null
-  },
-  {
-    "id": "fb_20260924_081406_9aa1c7",
-    "timestamp": "2026-09-24T08:14:06.569973+00:00",
-    "session_id": "s_fallback",
-    "user_id": "u_test",
-    "rating": "positive",
-    "feedback_reason": null,
-    "attachment_path": null,
-    "question": "Test sau khi cap nhat fallback",
-    "answer": "Tra loi",
-    "agent_trace": null
-  },
-  {
-    "id": "fb_20260924_082411_3fcdfc",
-    "timestamp": "2026-09-24T08:24:11.982167+00:00",
-    "session_id": "37aac5fd-c80e-4d25-a383-3a537ed636c9",
-    "user_id": "448f05fc-b6f8-4c2e-a7b3-eec13c1e7271",
-    "rating": "negative",
-    "feedback_reason": "Số liệu đang bị sai và đang bị lặp",
-    "attachment_path": "data/feedback/attachments/fb_20260924_082411_3fcdfc_Screenshot_2026-09-24_152326.png",
-    "question": "Trong khoảng từ 23/09/2026 đến 24/09/2026, phương tiện hay vùng cấm xảy ra nhiều hơn?",
-    "answer": "Có 1.667 vehicle events và 1.667 forbidden area events.",
-    "agent_trace": {
-      "nodes": [
-        {
-          "node_id": "recall",
-          "status": "running",
-          "input": null,
-          "output": null,
-          "meta": null,
-          "duration_ms": null
-        },
-        {
-          "node_id": "recall",
-          "status": "done",
-          "input": {
-            "user_id": "448f05fc-b6f8-4c2e-a7b3-eec13c1e7271",
-            "question": "Trong khoảng từ 23/09/2026 đến 24/09/2026, phương tiện hay vùng cấm xảy ra nhiều hơn?"
-          },
-          "output": {
-            "recalled_memories": [
-              "Người dùng quan tâm đến hệ thống giám sát phương tiện",
-              "Therefore, the three points are: \"người dùng quan tâm đến hệ thống giám sát phương tiện\", \"hệ thống giám sát phương tiện, biển số xe, camera, thiết bị\", \"module PLATE cần được bật\".",
-              "So the three points would be: role (người dùng quan tâm đến hệ thống giám sát phương tiện), entities (hệ thống giám sát phương tiện, biển số xe, camera, thiết bị), and module PLATE được bật."
-            ]
-          },
-          "meta": {
-            "user_id": "448f05fc-b6f8-4c2e-a7b3-eec13c1e7271",
-            "session_id": "37aac5fd-c80e-4d25-a383-3a537ed636c9",
-            "recalled_count": 3,
-            "duration_ms": 4.3
-          },
-          "duration_ms": 4.3
-        },
-        {
-          "node_id": "rewrite",
-          "status": "running",
-          "input": null,
-          "output": null,
-          "meta": null,
-          "duration_ms": null
-        },
-        {
-          "node_id": "rewrite",
-          "status": "done",
-          "input": {
-            "question": "Trong khoảng từ 23/09/2026 đến 24/09/2026, phương tiện hay vùng cấm xảy ra nhiều hơn?"
-          },
-          "output": {
-            "rewritten": {
-              "text": "Trong khoảng từ 23/09/2026 đến 24/09/2026, phương tiện hay vùng cấm xảy ra nhiều hơn?",
-              "filters": [
-                "time_range=2026-09-23_2026-09-24"
-              ],
-              "time_range": "2026-09-23_2026-09-24",
-              "intent_hint": "query_data"
-            }
-          },
-          "meta": {
-            "llm_used": false,
-            "user_id": "448f05fc-b6f8-4c2e-a7b3-eec13c1e7271",
-            "session_id": "37aac5fd-c80e-4d25-a383-3a537ed636c9",
-            "duration_ms": 0.4
-          },
-          "duration_ms": 0.4
-        },
-        {
-          "node_id": "classify",
-          "status": "running",
-          "input": null,
-          "output": null,
-          "meta": null,
-          "duration_ms": null
-        },
-        {
-          "node_id": "classify",
-          "status": "done",
-          "input": {
-            "rewritten_text": "Trong khoảng từ 23/09/2026 đến 24/09/2026, phương tiện hay vùng cấm xảy ra nhiều hơn?",
-            "rewritten": {
-              "text": "Trong khoảng từ 23/09/2026 đến 24/09/2026, phương tiện hay vùng cấm xảy ra nhiều hơn?",
-              "filters": [
-                "time_range=2026-09-23_2026-09-24"
-              ],
-              "time_range": "2026-09-23_2026-09-24",
-              "intent_hint": "query_data"
-            }
-          },
-          "output": {
-            "intent": "query_data",
-            "reason": "Câu hỏi yêu cầu so sánh số lượng sự kiện vi phạm trong khoảng thời gian cụ thể",
-            "answer": ""
-          },
-          "meta": {
-            "llm_used": true,
-            "user_id": "448f05fc-b6f8-4c2e-a7b3-eec13c1e7271",
-            "session_id": "37aac5fd-c80e-4d25-a383-3a537ed636c9",
-            "duration_ms": 574.4
-          },
-          "duration_ms": 574.4
-        },
-        {
-          "node_id": "retrieve_schema",
-          "status": "running",
-          "input": null,
-          "output": null,
-          "meta": null,
-          "duration_ms": null
-        },
-        {
-          "node_id": "retrieve_schema",
-          "status": "done",
-          "input": {
-            "intent": "query_data",
-            "question": "Trong khoảng từ 23/09/2026 đến 24/09/2026, phương tiện hay vùng cấm xảy ra nhiều hơn?"
-          },
-          "output": {
-            "schema_excerpt": "Table: plate_event (Database: its)\nMô tả: Lượt xe ra/vào KCN, nhận diện biển số (ALPR), loại xe, hướng di chuyển.\nCột thời gian: event_time\nCột:\n  - event_time (timestamp): Thời điểm xe qua camera\n  - camera_code (varchar): Mã camera\n  - camera_name (varchar): Tên camera vị trí cổng\n  - direction (varchar): Hướng di chuyển (IN: vào, OUT: ra) [giá trị mẫu: IN, OUT]\n  - vehicle_type (varchar): Loại phương tiện (chỉ 4 loại, không có xe 4/7 chỗ) [giá trị mẫu: BUS, CAR, MOTORCYCLE, TRUCK]\n  - manufacturer (varchar): Hãng xe ô tô (Toyota, Honda, ...)\n  - license_plate_text (varchar): Biển số xe đầy đủ\n  - normalized_license_plate (varchar): Biển số xe viết liền viết hoa\n  - organization_id (int): Mã tổ chức / KCN\n\nTable: zone_event (Database: virtual_fence)\nMô tả: Sự kiện xâm nhập khu vực hàng rào ảo / vùng cấm bảo vệ.\nCột thời gian: event_time\nCột:\n  - event_time (timestamp): Thời điểm phát hiện xâm nhập\n  - zone_name_cached (varchar): Tên khu vực / hàng rào ảo cảnh báo\n  - camera_name (varchar): Tên camera quan sát\n  - organization_id (int): Mã tổ chức / KCN",
-            "selected_tables": [
-              "plate_event",
-              "zone_event"
-            ]
-          },
-          "meta": {
-            "user_id": "448f05fc-b6f8-4c2e-a7b3-eec13c1e7271",
-            "session_id": "37aac5fd-c80e-4d25-a383-3a537ed636c9",
-            "schema_length": 1070,
-            "selected_tables": [
-              "plate_event",
-              "zone_event"
-            ],
+            "disabled": true,
             "duration_ms": 1.1
           },
           "duration_ms": 1.1
         },
         {
-          "node_id": "generate_sql",
+          "node_id": "rewrite",
           "status": "running",
           "input": null,
           "output": null,
@@ -617,258 +74,382 @@
           "duration_ms": null
         },
         {
-          "node_id": "generate_sql",
+          "node_id": "rewrite",
           "status": "done",
           "input": {
-            "question": "Trong khoảng từ 23/09/2026 đến 24/09/2026, phương tiện hay vùng cấm xảy ra nhiều hơn?",
-            "schema_excerpt_len": 1070
+            "question": "hôm nay ngày bao nhiêu"
           },
           "output": {
-            "sql": "SELECT \n  COUNT(CASE WHEN table_name = 'plate_event' THEN 1 END) AS vehicle_events, \n  COUNT(CASE WHEN table_name = 'zone_event' THEN 1 END) AS forbidden_area_events \nFROM \n  (SELECT 'plate_event' AS table_name, event_time FROM plate_event WHERE event_time::date BETWEEN '2026-09-23' AND '2026-09-24' AND organization_id = 103\n   UNION ALL\n   SELECT 'zone_event' AS table_name, event_time FROM zone_event WHERE event_time::date BETWEEN '2026-09-23' AND '2026-09-24' AND organization_id = 103) AS combined_events"
-          },
-          "meta": {
-            "user_id": "448f05fc-b6f8-4c2e-a7b3-eec13c1e7271",
-            "session_id": "37aac5fd-c80e-4d25-a383-3a537ed636c9",
-            "max_tokens": 384,
-            "duration_ms": 2141.9
-          },
-          "duration_ms": 2141.9
-        },
-        {
-          "node_id": "validate_sql",
-          "status": "running",
-          "input": null,
-          "output": null,
-          "meta": null,
-          "duration_ms": null
-        },
-        {
-          "node_id": "validate_sql",
-          "status": "done",
-          "input": {
-            "sql": "SELECT \n  COUNT(CASE WHEN table_name = 'plate_event' THEN 1 END) AS vehicle_events, \n  COUNT(CASE WHEN table_name = 'zone_event' THEN 1 END) AS forbidden_area_events \nFROM \n  (SELECT 'plate_event' AS table_name, event_time FROM plate_event WHERE event_time::date BETWEEN '2026-09-23' AND '2026-09-24' AND organization_id = 103\n   UNION ALL\n   SELECT 'zone_event' AS table_name, event_time FROM zone_event WHERE event_time::date BETWEEN '2026-09-23' AND '2026-09-24' AND organization_id = 103) AS combined_events"
-          },
-          "output": {
-            "ok": false,
-            "reason": "Không thể truy vấn đồng thời bảng từ nhiều database khác nhau trong cùng một câu SQL ('plate_event' (db its), 'zone_event' (db virtual_fence)). Hãy chỉ truy vấn trên một bảng/database duy nhất."
-          },
-          "meta": {
-            "user_id": "448f05fc-b6f8-4c2e-a7b3-eec13c1e7271",
-            "session_id": "37aac5fd-c80e-4d25-a383-3a537ed636c9",
-            "ok": false,
-            "duration_ms": 0.9
-          },
-          "duration_ms": 0.9
-        },
-        {
-          "node_id": "repair_sql",
-          "status": "running",
-          "input": null,
-          "output": null,
-          "meta": null,
-          "duration_ms": null
-        },
-        {
-          "node_id": "repair_sql",
-          "status": "done",
-          "input": {
-            "sql": "SELECT \n  COUNT(CASE WHEN table_name = 'plate_event' THEN 1 END) AS vehicle_events, \n  COUNT(CASE WHEN table_name = 'zone_event' THEN 1 END) AS forbidden_area_events \nFROM \n  (SELECT 'plate_event' AS table_name, event_time FROM plate_event WHERE event_time::date BETWEEN '2026-09-23' AND '2026-09-24' AND organization_id = 103\n   UNION ALL\n   SELECT 'zone_event' AS table_name, event_time FROM zone_event WHERE event_time::date BETWEEN '2026-09-23' AND '2026-09-24' AND organization_id = 103) AS combined_events",
-            "repair_count": 0
-          },
-          "output": {
-            "sql": "SELECT \n  COUNT(*) AS vehicle_events, \n  COUNT(zone_name_cached) AS forbidden_area_events \nFROM \n  (SELECT event_time, 'plate_event' AS table_name FROM plate_event WHERE event_time::date BETWEEN '2026-09-23' AND '2026-09-24' AND organization_id = 103\n   UNION ALL\n   SELECT event_time, 'zone_event' AS table_name FROM zone_event WHERE event_time::date BETWEEN '2026-09-23' AND '2026-09-24' AND organization_id = 103) AS combined_events",
-            "repair_count": 1
-          },
-          "meta": {
-            "user_id": "448f05fc-b6f8-4c2e-a7b3-eec13c1e7271",
-            "session_id": "37aac5fd-c80e-4d25-a383-3a537ed636c9",
-            "max_tokens": 384,
-            "duration_ms": 1908.6
-          },
-          "duration_ms": 1908.6
-        },
-        {
-          "node_id": "validate_sql",
-          "status": "running",
-          "input": null,
-          "output": null,
-          "meta": null,
-          "duration_ms": null
-        },
-        {
-          "node_id": "validate_sql",
-          "status": "done",
-          "input": {
-            "sql": "SELECT \n  COUNT(*) AS vehicle_events, \n  COUNT(zone_name_cached) AS forbidden_area_events \nFROM \n  (SELECT event_time, 'plate_event' AS table_name FROM plate_event WHERE event_time::date BETWEEN '2026-09-23' AND '2026-09-24' AND organization_id = 103\n   UNION ALL\n   SELECT event_time, 'zone_event' AS table_name FROM zone_event WHERE event_time::date BETWEEN '2026-09-23' AND '2026-09-24' AND organization_id = 103) AS combined_events"
-          },
-          "output": {
-            "ok": false,
-            "reason": "Không thể truy vấn đồng thời bảng từ nhiều database khác nhau trong cùng một câu SQL ('plate_event' (db its), 'zone_event' (db virtual_fence)). Hãy chỉ truy vấn trên một bảng/database duy nhất."
-          },
-          "meta": {
-            "user_id": "448f05fc-b6f8-4c2e-a7b3-eec13c1e7271",
-            "session_id": "37aac5fd-c80e-4d25-a383-3a537ed636c9",
-            "ok": false,
-            "duration_ms": 1.8
-          },
-          "duration_ms": 1.8
-        },
-        {
-          "node_id": "repair_sql",
-          "status": "running",
-          "input": null,
-          "output": null,
-          "meta": null,
-          "duration_ms": null
-        },
-        {
-          "node_id": "repair_sql",
-          "status": "done",
-          "input": {
-            "sql": "SELECT \n  COUNT(*) AS vehicle_events, \n  COUNT(zone_name_cached) AS forbidden_area_events \nFROM \n  (SELECT event_time, 'plate_event' AS table_name FROM plate_event WHERE event_time::date BETWEEN '2026-09-23' AND '2026-09-24' AND organization_id = 103\n   UNION ALL\n   SELECT event_time, 'zone_event' AS table_name FROM zone_event WHERE event_time::date BETWEEN '2026-09-23' AND '2026-09-24' AND organization_id = 103) AS combined_events",
-            "repair_count": 1
-          },
-          "output": {
-            "sql": "SELECT \n  COUNT(*) AS vehicle_events, \n  COUNT(zone_name_cached) AS forbidden_area_events \nFROM \n  zone_event \nWHERE \n  event_time::date BETWEEN '2026-09-23' AND '2026-09-24' \n  AND organization_id = 103",
-            "repair_count": 2
-          },
-          "meta": {
-            "user_id": "448f05fc-b6f8-4c2e-a7b3-eec13c1e7271",
-            "session_id": "37aac5fd-c80e-4d25-a383-3a537ed636c9",
-            "max_tokens": 384,
-            "duration_ms": 1131.8
-          },
-          "duration_ms": 1131.8
-        },
-        {
-          "node_id": "validate_sql",
-          "status": "running",
-          "input": null,
-          "output": null,
-          "meta": null,
-          "duration_ms": null
-        },
-        {
-          "node_id": "validate_sql",
-          "status": "done",
-          "input": {
-            "sql": "SELECT \n  COUNT(*) AS vehicle_events, \n  COUNT(zone_name_cached) AS forbidden_area_events \nFROM \n  zone_event \nWHERE \n  event_time::date BETWEEN '2026-09-23' AND '2026-09-24' \n  AND organization_id = 103"
-          },
-          "output": {
-            "ok": true,
-            "reason": ""
-          },
-          "meta": {
-            "user_id": "448f05fc-b6f8-4c2e-a7b3-eec13c1e7271",
-            "session_id": "37aac5fd-c80e-4d25-a383-3a537ed636c9",
-            "ok": true,
-            "duration_ms": 1.8
-          },
-          "duration_ms": 1.8
-        },
-        {
-          "node_id": "execute_sql",
-          "status": "running",
-          "input": null,
-          "output": null,
-          "meta": null,
-          "duration_ms": null
-        },
-        {
-          "node_id": "execute_sql",
-          "status": "done",
-          "input": {
-            "sql": "SELECT \n  COUNT(*) AS vehicle_events, \n  COUNT(zone_name_cached) AS forbidden_area_events \nFROM \n  zone_event \nWHERE \n  event_time::date BETWEEN '2026-09-23' AND '2026-09-24' \n  AND organization_id = 103",
-            "params": []
-          },
-          "output": {
-            "rows": [
-              {
-                "vehicle_events": 1667,
-                "forbidden_area_events": 1667
-              }
-            ],
-            "columns": [
-              "vehicle_events",
-              "forbidden_area_events"
-            ],
-            "row_count": 1
-          },
-          "meta": {
-            "user_id": "448f05fc-b6f8-4c2e-a7b3-eec13c1e7271",
-            "session_id": "37aac5fd-c80e-4d25-a383-3a537ed636c9",
-            "ok": true,
-            "duration_ms": 37.3
-          },
-          "duration_ms": 37.3
-        },
-        {
-          "node_id": "respond",
-          "status": "running",
-          "input": null,
-          "output": null,
-          "meta": null,
-          "duration_ms": null
-        },
-        {
-          "node_id": "respond",
-          "status": "done",
-          "input": {
-            "question": "Trong khoảng từ 23/09/2026 đến 24/09/2026, phương tiện hay vùng cấm xảy ra nhiều hơn?",
-            "columns": [
-              "vehicle_events",
-              "forbidden_area_events"
-            ],
-            "rows": [
-              {
-                "vehicle_events": 1667,
-                "forbidden_area_events": 1667
-              }
-            ],
-            "row_count": 1,
-            "recalled_memories": [
-              "Người dùng quan tâm đến hệ thống giám sát phương tiện",
-              "Therefore, the three points are: \"người dùng quan tâm đến hệ thống giám sát phương tiện\", \"hệ thống giám sát phương tiện, biển số xe, camera, thiết bị\", \"module PLATE cần được bật\".",
-              "So the three points would be: role (người dùng quan tâm đến hệ thống giám sát phương tiện), entities (hệ thống giám sát phương tiện, biển số xe, camera, thiết bị), and module PLATE được bật."
-            ],
-            "error": ""
-          },
-          "output": {
-            "answer_vi": "Có 1.667 vehicle events và 1.667 forbidden area events.",
-            "answer_source": "template_simple",
-            "stat_answer": {
-              "answer_vi": "Có 1.667 vehicle events và 1.667 forbidden area events.",
-              "highlights": [],
-              "chart_requested": false
-            },
-            "query": {
-              "tool": "sql_builder",
-              "columns": [
-                "vehicle_events",
-                "forbidden_area_events"
+            "rewritten": {
+              "text": "hôm nay ngày bao nhiêu",
+              "sub_questions": [
+                "hôm nay ngày bao nhiêu"
               ],
-              "rows": [
-                [
-                  1667,
-                  1667
-                ]
-              ],
-              "row_count": 1,
-              "error": "",
-              "reply_vi": "Có 1.667 vehicle events và 1.667 forbidden area events."
+              "filters": [],
+              "time_range": null,
+              "intent_hint": null
             }
           },
           "meta": {
             "llm_used": false,
-            "user_id": "448f05fc-b6f8-4c2e-a7b3-eec13c1e7271",
-            "session_id": "37aac5fd-c80e-4d25-a383-3a537ed636c9",
-            "duration_ms": 3.3
+            "user_id": "ca217147-8235-4276-a5ad-95d7c12af920",
+            "session_id": "2ee92545-857a-41df-84bb-639edd897846",
+            "sub_question_count": 1,
+            "skipped": true,
+            "duration_ms": 0.6
           },
-          "duration_ms": 3.3
+          "duration_ms": 0.6
+        },
+        {
+          "node_id": "classify",
+          "status": "running",
+          "input": null,
+          "output": null,
+          "meta": null,
+          "duration_ms": null
+        },
+        {
+          "node_id": "classify",
+          "status": "done",
+          "input": {
+            "rewritten_text": "hôm nay ngày bao nhiêu",
+            "rewritten": {
+              "text": "hôm nay ngày bao nhiêu",
+              "sub_questions": [
+                "hôm nay ngày bao nhiêu"
+              ],
+              "filters": [],
+              "time_range": null,
+              "intent_hint": null
+            }
+          },
+          "output": {
+            "intent": "out_of_scope",
+            "reason": "Hỏi thời tiết, không liên quan đến VMS/KCN",
+            "answer": "",
+            "chart_requested": false,
+            "chart_type": null
+          },
+          "meta": {
+            "llm_used": true,
+            "user_id": "ca217147-8235-4276-a5ad-95d7c12af920",
+            "session_id": "2ee92545-857a-41df-84bb-639edd897846",
+            "chart_requested": false,
+            "chart_type": null,
+            "duration_ms": 820.2
+          },
+          "duration_ms": 820.2
+        },
+        {
+          "node_id": "respond_inline",
+          "status": "running",
+          "input": null,
+          "output": null,
+          "meta": null,
+          "duration_ms": null
+        },
+        {
+          "node_id": "respond_inline",
+          "status": "done",
+          "input": {
+            "question": "hôm nay ngày bao nhiêu",
+            "intent": "out_of_scope"
+          },
+          "output": {
+            "answer": "Hôm nay là ngày 25 tháng 09 năm 2026. Chuyên môn của tôi là hỗ trợ thống kê dữ liệu giám sát camera VMS KCN Hưng Phú. Bạn có thể hỏi về lượng xe hôm nay, kiểm tra cảnh báo an ninh hoặc hướng dẫn sử dụng AIOC được không?",
+            "respond_mode": "out_of_scope"
+          },
+          "meta": {
+            "user_id": "ca217147-8235-4276-a5ad-95d7c12af920",
+            "session_id": "2ee92545-857a-41df-84bb-639edd897846",
+            "duration_ms": 1121.5
+          },
+          "duration_ms": 1121.5
+        },
+        {
+          "node_id": "respond",
+          "status": "running",
+          "input": null,
+          "output": null,
+          "meta": null,
+          "duration_ms": null
+        },
+        {
+          "node_id": "respond",
+          "status": "done",
+          "input": {
+            "question": "hôm nay ngày bao nhiêu",
+            "rewritten_question": "hôm nay ngày bao nhiêu",
+            "respond_mode": "out_of_scope"
+          },
+          "output": {
+            "answer_vi": "Hôm nay là ngày 25 tháng 09 năm 2026. Chuyên môn của tôi là hỗ trợ thống kê dữ liệu giám sát camera VMS KCN Hưng Phú. Bạn có thể hỏi về lượng xe hôm nay, kiểm tra cảnh báo an ninh hoặc hướng dẫn sử dụng AIOC được không?",
+            "answer_source": "out_of_scope"
+          },
+          "meta": {
+            "llm_used": false,
+            "user_id": "ca217147-8235-4276-a5ad-95d7c12af920",
+            "session_id": "2ee92545-857a-41df-84bb-639edd897846",
+            "duration_ms": 1
+          },
+          "duration_ms": 1
+        },
+        {
+          "node_id": "guardrail_output",
+          "status": "running",
+          "input": null,
+          "output": null,
+          "meta": null,
+          "duration_ms": null
+        },
+        {
+          "node_id": "guardrail_output",
+          "status": "done",
+          "input": {
+            "question": "hôm nay ngày bao nhiêu",
+            "answer_len": 219
+          },
+          "output": {
+            "valid": true,
+            "issues": [],
+            "answer": "Hôm nay là ngày 25 tháng 09 năm 2026. Chuyên môn của tôi là hỗ trợ thống kê dữ liệu giám sát camera VMS KCN Hưng Phú. Bạn có thể hỏi về lượng xe hôm nay, kiểm tra cảnh báo an ninh hoặc hướng dẫn sử dụng AIOC được không?"
+          },
+          "meta": {
+            "user_id": "ca217147-8235-4276-a5ad-95d7c12af920",
+            "session_id": "2ee92545-857a-41df-84bb-639edd897846",
+            "duration_ms": 10.9
+          },
+          "duration_ms": 10.9
         }
       ],
-      "detail": "query_data",
-      "sql": "SELECT \n  COUNT(*) AS vehicle_events, \n  COUNT(zone_name_cached) AS forbidden_area_events \nFROM \n  zone_event \nWHERE \n  event_time::date BETWEEN '2026-09-23' AND '2026-09-24' \n  AND organization_id = 103"
+      "detail": "out_of_scope"
+    }
+  },
+  {
+    "id": "fb_20260925_100344_4eacd3",
+    "timestamp": "2026-09-25T10:03:44.128664+00:00",
+    "session_id": "2ee92545-857a-41df-84bb-639edd897846",
+    "user_id": "ca217147-8235-4276-a5ad-95d7c12af920",
+    "rating": "positive",
+    "feedback_reason": null,
+    "attachment_path": null,
+    "question": "chào bạn",
+    "answer": "Chào bạn! Bạn cần hỗ trợ gì về VMS KCN Hưng Phú ạ?",
+    "agent_trace": {
+      "nodes": [
+        {
+          "node_id": "guardrail_input",
+          "status": "running",
+          "input": null,
+          "output": null,
+          "meta": null,
+          "duration_ms": null
+        },
+        {
+          "node_id": "guardrail_input",
+          "status": "done",
+          "input": {
+            "question": "chào bạn"
+          },
+          "output": {
+            "question": "chào bạn",
+            "pii_redacted": false,
+            "ok": true
+          },
+          "meta": {
+            "user_id": "ca217147-8235-4276-a5ad-95d7c12af920",
+            "session_id": "2ee92545-857a-41df-84bb-639edd897846",
+            "duration_ms": 0.4
+          },
+          "duration_ms": 0.4
+        },
+        {
+          "node_id": "recall",
+          "status": "running",
+          "input": null,
+          "output": null,
+          "meta": null,
+          "duration_ms": null
+        },
+        {
+          "node_id": "recall",
+          "status": "done",
+          "input": {
+            "user_id": "ca217147-8235-4276-a5ad-95d7c12af920",
+            "question": "chào bạn"
+          },
+          "output": {
+            "recalled_memories": [],
+            "disabled": true
+          },
+          "meta": {
+            "user_id": "ca217147-8235-4276-a5ad-95d7c12af920",
+            "session_id": "2ee92545-857a-41df-84bb-639edd897846",
+            "recalled_count": 0,
+            "disabled": true,
+            "duration_ms": 0.3
+          },
+          "duration_ms": 0.3
+        },
+        {
+          "node_id": "rewrite",
+          "status": "running",
+          "input": null,
+          "output": null,
+          "meta": null,
+          "duration_ms": null
+        },
+        {
+          "node_id": "rewrite",
+          "status": "done",
+          "input": {
+            "question": "chào bạn"
+          },
+          "output": {
+            "rewritten": {
+              "text": "chào bạn",
+              "sub_questions": [
+                "chào bạn"
+              ],
+              "filters": [],
+              "time_range": null,
+              "intent_hint": "chat"
+            }
+          },
+          "meta": {
+            "llm_used": false,
+            "user_id": "ca217147-8235-4276-a5ad-95d7c12af920",
+            "session_id": "2ee92545-857a-41df-84bb-639edd897846",
+            "sub_question_count": 1,
+            "skipped": true,
+            "duration_ms": 0.3
+          },
+          "duration_ms": 0.3
+        },
+        {
+          "node_id": "classify",
+          "status": "running",
+          "input": null,
+          "output": null,
+          "meta": null,
+          "duration_ms": null
+        },
+        {
+          "node_id": "classify",
+          "status": "done",
+          "input": {
+            "rewritten_text": "chào bạn",
+            "rewritten": {
+              "text": "chào bạn",
+              "sub_questions": [
+                "chào bạn"
+              ],
+              "filters": [],
+              "time_range": null,
+              "intent_hint": "chat"
+            }
+          },
+          "output": {
+            "intent": "chat",
+            "reason": "Chào hỏi",
+            "answer": "Chào bạn! Bạn cần hỗ trợ gì về VMS KCN Hưng Phú ạ?",
+            "chart_requested": false,
+            "chart_type": null
+          },
+          "meta": {
+            "llm_used": true,
+            "user_id": "ca217147-8235-4276-a5ad-95d7c12af920",
+            "session_id": "2ee92545-857a-41df-84bb-639edd897846",
+            "chart_requested": false,
+            "chart_type": null,
+            "duration_ms": 1608.6
+          },
+          "duration_ms": 1608.6
+        },
+        {
+          "node_id": "respond_inline",
+          "status": "running",
+          "input": null,
+          "output": null,
+          "meta": null,
+          "duration_ms": null
+        },
+        {
+          "node_id": "respond_inline",
+          "status": "done",
+          "input": {
+            "question": "chào bạn",
+            "intent": "chat"
+          },
+          "output": {
+            "answer": "Chào bạn! Bạn cần hỗ trợ gì về VMS KCN Hưng Phú ạ?",
+            "respond_mode": "inline"
+          },
+          "meta": {
+            "user_id": "ca217147-8235-4276-a5ad-95d7c12af920",
+            "session_id": "2ee92545-857a-41df-84bb-639edd897846",
+            "duration_ms": 2.8
+          },
+          "duration_ms": 2.8
+        },
+        {
+          "node_id": "respond",
+          "status": "running",
+          "input": null,
+          "output": null,
+          "meta": null,
+          "duration_ms": null
+        },
+        {
+          "node_id": "respond",
+          "status": "done",
+          "input": {
+            "question": "chào bạn",
+            "rewritten_question": "chào bạn",
+            "respond_mode": "inline",
+            "intent": "chat"
+          },
+          "output": {
+            "answer_vi": "Chào bạn! Bạn cần hỗ trợ gì về VMS KCN Hưng Phú ạ?",
+            "answer_source": "inline"
+          },
+          "meta": {
+            "llm_used": false,
+            "user_id": "ca217147-8235-4276-a5ad-95d7c12af920",
+            "session_id": "2ee92545-857a-41df-84bb-639edd897846",
+            "duration_ms": 0.3
+          },
+          "duration_ms": 0.3
+        },
+        {
+          "node_id": "guardrail_output",
+          "status": "running",
+          "input": null,
+          "output": null,
+          "meta": null,
+          "duration_ms": null
+        },
+        {
+          "node_id": "guardrail_output",
+          "status": "done",
+          "input": {
+            "question": "chào bạn",
+            "answer_len": 50
+          },
+          "output": {
+            "valid": true,
+            "issues": [],
+            "answer": "Chào bạn! Bạn cần hỗ trợ gì về VMS KCN Hưng Phú ạ?"
+          },
+          "meta": {
+            "user_id": "ca217147-8235-4276-a5ad-95d7c12af920",
+            "session_id": "2ee92545-857a-41df-84bb-639edd897846",
+            "duration_ms": 0.6
+          },
+          "duration_ms": 0.6
+        }
+      ],
+      "detail": "chat"
     }
   }
 ]

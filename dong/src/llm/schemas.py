@@ -15,10 +15,35 @@ class RewrittenQuestion(BaseModel):
     intent_hint: str | None = None
 
 
+def normalize_chart_type(raw: Any) -> Literal["bar", "pie", "line"]:
+    """Normalize raw chart type into 'bar' | 'pie' | 'line'. Defaults to 'bar' if invalid."""
+    if not raw or not isinstance(raw, str):
+        return "bar"
+    val = raw.strip().lower()
+    if val in ("bar", "pie", "line"):
+        return val  # type: ignore[return-value]
+    if any(k in val for k in ("pie", "tròn", "tron", "bánh", "banh", "cơ cấu", "co cau", "tỷ lệ", "ty le", "phần trăm")):
+        return "pie"
+    if any(k in val for k in ("line", "đường", "duong", "thời gian", "thoi gian", "xu hướng", "xu huong", "ngày", "ngay", "tháng", "thang", "giờ", "gio")):
+        return "line"
+    if any(k in val for k in ("bar", "cột", "cot")):
+        return "bar"
+    return "bar"
+
+
 class IntentResult(BaseModel):
     intent: Literal["query_data", "how_to", "troubleshoot", "concept", "out_of_scope", "chat", "clarify"]
     reason: str
     answer: str = ""
+    chart_requested: bool = False
+    chart_type: Literal["bar", "pie", "line"] | None = None
+
+    @field_validator("chart_type", mode="before")
+    @classmethod
+    def _validate_chart_type(cls, v: Any) -> str | None:
+        if not v:
+            return None
+        return normalize_chart_type(v)
 
 
 class QueryPlan(BaseModel):
@@ -40,22 +65,6 @@ class StatAnswer(BaseModel):
     answer_vi: str
     highlights: list[str] = Field(default_factory=list)
     chart_requested: bool = False
-
-
-def normalize_chart_type(raw: Any) -> Literal["bar", "pie", "line"]:
-    """Normalize raw chart type into 'bar' | 'pie' | 'line'. Defaults to 'bar' if invalid."""
-    if not raw or not isinstance(raw, str):
-        return "bar"
-    val = raw.strip().lower()
-    if val in ("bar", "pie", "line"):
-        return val  # type: ignore[return-value]
-    if any(k in val for k in ("pie", "tròn", "tron", "bánh", "banh", "cơ cấu", "co cau", "tỷ lệ", "ty le", "phần trăm")):
-        return "pie"
-    if any(k in val for k in ("line", "đường", "duong", "thời gian", "thoi gian", "xu hướng", "xu huong", "ngày", "ngay", "tháng", "thang", "giờ", "gio")):
-        return "line"
-    if any(k in val for k in ("bar", "cột", "cot")):
-        return "bar"
-    return "bar"
 
 
 class ChartSpec(BaseModel):

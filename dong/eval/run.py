@@ -237,12 +237,13 @@ def write_golden_30(
         "",
         "## Bảng tổng hợp kết quả",
         "",
-        "| id | slice | pass/fail | latency_ms | tool | note | judge |",
-        "| --- | --- | --- | ---: | --- | --- | --- |",
+        "| id | slice | pass/fail | latency_ms | câu hỏi | câu trả lời | tool | note | judge |",
+        "| --- | --- | --- | ---: | --- | --- | --- | --- | --- |",
     ])
     for row in results:
         lines.append(
             f"| {row.case_id} | {row.slice_type} | {row.status} | {row.latency_ms} | "
+            f"{_escape_md_cell(row.question)} | {_escape_md_cell(row.answer)} | "
             f"{_escape_md_cell(row.tool)} | {_escape_md_cell(row.note)} | {_escape_md_cell(row.judge)} |"
         )
 

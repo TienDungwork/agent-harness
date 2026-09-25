@@ -74,11 +74,11 @@ def test_api_chat_prompt_injection_blocked():
 
 
 def test_api_chat_out_of_scope_handled():
-    """Kiểm tra POST /api/chat từ chối câu hỏi ngoài phạm vi."""
+    """Kiểm tra POST /api/chat xử lý câu hỏi ngoài phạm vi bằng câu trả lời định hướng VMS."""
     res = client.post("/api/chat", json={"question": "Dự báo thời tiết ngày mai thế nào?"})
     assert res.status_code == 200
     data = res.json()
-    assert data["answer"] == OUT_OF_SCOPE_REPLY
+    assert any(kw in data["answer"].lower() for kw in ("kcn hưng phú", "vms", "ngoài phạm vi"))
     assert data["row_count"] == 0
 
 

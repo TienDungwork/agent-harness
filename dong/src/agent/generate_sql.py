@@ -50,25 +50,59 @@ def extract_sql(text: str) -> str:
 def generate_sql_node(state: dict) -> dict:
     """Generate SQL from question + schema using LLM or offline fallback.
 
-    Returns ``{sql, error, events}``.
+    Returns ``{sql, error, events}``; multi-hop batch thêm ``sql_batch``.
     """
+    from src.agent.sql_batch import build_sql_batch, query_text_for_state
 
     question = state.get("question", "")
-    rewritten = state.get("rewritten")
     schema_excerpt = state.get("schema_excerpt", "")
     user_id = state.get("user_id") or "default"
     session_id = state.get("session_id") or "default"
+    batch_subs: list[str] = list(state.get("orchestrator_batch_sub_questions") or [])
+    q_text = query_text_for_state(state)
 
-    # Prefer rewritten.text
-    if rewritten is not None:
-        if hasattr(rewritten, "text"):
-            q_text = rewritten.text or question
-        elif isinstance(rewritten, dict):
-            q_text = rewritten.get("text") or question
+    if len(batch_subs) >= 2:
+        if use_offline_tools():
+            sql_batch = build_sql_batch(batch_subs)
         else:
-            q_text = question
-    else:
-        q_text = question
+            system_prompt = registry().render("sql_agent")
+            user_parts: list[str] = []
+            rewritten = state.get("rewritten")
+            time_range = None
+            if rewritten is not None:
+                if hasattr(rewritten, "time_range"):
+                    time_range = rewritten.time_range
+                elif isinstance(rewritten, dict):
+                    time_range = rewritten.get("time_range")
+            tr_hint = format_time_range_for_prompt(time_range)
+            if tr_hint:
+                user_parts.append(tr_hint)
+            org_hint = format_org_scope_for_prompt()
+            if org_hint:
+                user_parts.append(org_hint)
+            if schema_excerpt:
+                user_parts.append(f"Schema excerpt:\n{schema_excerpt}")
+            numbered = "\n".join(f"{i + 1}. {sq}" for i, sq in enumerate(batch_subs))
+            user_parts.append(
+                f"Các câu hỏi con (mỗi câu một SQL SELECT riêng, trả về đúng {len(batch_subs)} khối ```sql ... ``` theo thứ tự):\n{numbered}"
+            )
+            if settings.llm_backend == "self_hosted" or "qwen" in settings.model_name.lower():
+                user_parts.insert(0, "/nothink")
+            user_prompt = "\n\n".join(user_parts)
+            raw = invoke_text(system_prompt, user_prompt, max_tokens=settings.sql_generate_max_tokens, substep="generate_sql")
+            sql_batch = build_sql_batch(batch_subs, raw_llm=raw)
+        first_sql = sql_batch[0]["sql"] if sql_batch else ""
+        return {
+            "sql": first_sql,
+            "sql_batch": sql_batch,
+            "error": "",
+            "events": [node_event(
+                "generate_sql",
+                input={"batch_sub_questions": batch_subs, "schema_excerpt_len": len(schema_excerpt)},
+                output={"sql_batch": sql_batch, "batch_size": len(sql_batch)},
+                meta={"user_id": user_id, "session_id": session_id, "batch": True},
+            )],
+        }
 
     # ── Offline path ──────────────────────────────────────────────────────
     if use_offline_tools():
@@ -102,6 +136,7 @@ def generate_sql_node(state: dict) -> dict:
 
     # ── Online path ───────────────────────────────────────────────────────
     system_prompt = registry().render("sql_agent")
+    rewritten = state.get("rewritten")
 
     with trace_substep("build_prompt", kind="tool", input={"question": q_text}) as sub:
         user_parts: list[str] = []

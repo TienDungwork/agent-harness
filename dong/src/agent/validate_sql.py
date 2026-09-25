@@ -25,9 +25,27 @@ def validate_sql_node(state: dict) -> dict:
 
     Returns ``{"sql_validation": {...}, "events": [...]}``.
     """
+    from src.agent.sql_batch import validate_sql_batch
+
     sql = state.get("sql") or ""
     user_id = state.get("user_id") or "default"
     session_id = state.get("session_id") or "default"
+    sql_batch = state.get("sql_batch") or []
+
+    if len(sql_batch) >= 2:
+        val_dict = validate_sql_batch(sql_batch)
+        out: dict = {
+            "sql_validation": val_dict,
+            "events": [node_event(
+                "validate_sql",
+                input={"sql_batch": sql_batch},
+                output=val_dict,
+                meta={"user_id": user_id, "session_id": session_id, "ok": val_dict.get("ok"), "batch": True},
+            )],
+        }
+        if not val_dict.get("ok") and not state.get("error"):
+            out["error"] = val_dict.get("reason") or "batch_validation_failed"
+        return out
 
     val = _trace_validate_sql(sql)
     val_dict = val.to_dict()
@@ -64,6 +82,26 @@ def repair_sql_node(state: dict) -> dict:
     rewritten = state.get("rewritten")
     schema_excerpt = state.get("schema_excerpt", "")
     old_sql = state.get("sql") or ""
+    sql_batch = state.get("sql_batch") or []
+
+    if len(sql_batch) >= 2:
+        from src.agent.sql_batch import build_sql_batch
+
+        subs = [item.get("sub_question", "") for item in sql_batch]
+        new_batch = build_sql_batch(subs)
+        new_repair_count = repair_count + 1
+        return {
+            "sql_batch": new_batch,
+            "sql": new_batch[0]["sql"] if new_batch else old_sql,
+            "repair_count": new_repair_count,
+            "error": "",
+            "events": [node_event(
+                "repair_sql",
+                input={"sql_batch": sql_batch, "repair_count": repair_count},
+                output={"sql_batch": new_batch, "repair_count": new_repair_count, "batch": True},
+                meta={"user_id": user_id, "session_id": session_id},
+            )],
+        }
 
     if rewritten is not None:
         if hasattr(rewritten, "text"):

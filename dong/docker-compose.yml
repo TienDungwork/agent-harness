@@ -57,6 +57,7 @@ services:
       LANGFUSE_SECRET_KEY: ${LANGFUSE_SECRET_KEY:-}
       # Langfuse stack riêng (langfuse/) — không dùng LANGFUSE_HOST từ .env (localhost)
       LANGFUSE_HOST: http://host.docker.internal:3000
+      DB_TIMEZONE: ${DB_TIMEZONE:-Asia/Ho_Chi_Minh}
     extra_hosts:
       - "host.docker.internal:host-gateway"
     healthcheck:

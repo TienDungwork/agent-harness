@@ -43,14 +43,10 @@ _cache = _ttl_cache
 from src.config import settings
 from src.agent.graph import Agent_Input, run_agent
 from src.guardrails import (
-    OUT_OF_SCOPE_REPLY,
     GuardrailViolation,
     check_input,
-    check_output,
-    in_scope,
     redact_pii,
     rejection_detail,
-    _is_tool_empty,
 )
 from src.monitoring.tracing import trace_answer
 from src.llm.schemas import FeedbackRequest
@@ -439,16 +435,6 @@ def chat(req: ChatRequest) -> ChatResponse:
             "user_id": req.user_id,
         },
     ) as t:
-        check_input(req.question)
-        if not in_scope(req.question):
-            t["output"] = {"status": "out_of_scope", "answer": OUT_OF_SCOPE_REPLY}
-            return ChatResponse(
-                question=req.question,
-                answer=OUT_OF_SCOPE_REPLY,
-                detail={"status": "out_of_scope"},
-                row_count=0,
-            )
-
         question = redact_pii(req.question)
 
         try:
@@ -492,25 +478,22 @@ def chat(req: ChatRequest) -> ChatResponse:
                 rewritten = rewrite_question_safe(question)
             cache_q = rewritten.text if (rewritten and rewritten.text) else question
             out = run_agent(
-                Agent_Input(question=question, rewritten=rewritten, user_id=req.user_id),
+                Agent_Input(question=req.question.strip(), rewritten=rewritten, user_id=req.user_id),
                 parent_span=t.get("_span"),
                 session_id=req.session_id,
                 user_id=req.user_id,
             )
+        except GuardrailViolation:
+            raise
         except Exception as exc:
             friendly_msg = _format_error_message(exc)
             raise HTTPException(status_code=503, detail=friendly_msg) from exc
 
         query = out.query
-        evidence = [question] + (
-            [f"{c}={v}" for row in query.rows for c, v in zip(query.columns, row)] if query else []
-        )
-        tool_empty = _is_tool_empty(query)
-        result = check_output(out.answer, evidence, tool_empty=tool_empty)
 
         cache_data = {
             "question": out.question,
-            "answer": result.answer,
+            "answer": out.answer,
             "tool": query.tool if query else "",
             "columns": query.columns if query else [],
             "rows": query.rows if query else [],
@@ -532,7 +515,7 @@ def chat(req: ChatRequest) -> ChatResponse:
 
         response = ChatResponse(
             question=out.question,
-            answer=result.answer,
+            answer=out.answer,
             tool=query.tool if query else "",
             detail=detail_payload,
             row_count=query.row_count if query else 0,
@@ -558,11 +541,6 @@ def ask(req: AskRequest) -> AskResponse:
             "user_id": getattr(req, "user_id", "default"),
         },
     ) as t:
-        check_input(req.question)
-        if not in_scope(req.question):
-            t["output"] = {"status": "out_of_scope", "answer": OUT_OF_SCOPE_REPLY}
-            return AskResponse(question=req.question, answer=OUT_OF_SCOPE_REPLY)
-
         question = redact_pii(req.question)
 
         try:
@@ -599,24 +577,18 @@ def ask(req: AskRequest) -> AskResponse:
             else:
                 rewritten = rewrite_question_safe(question)
             cache_q = rewritten.text if (rewritten and rewritten.text) else question
-            out = run_agent(Agent_Input(question=question, rewritten=rewritten), parent_span=t.get("_span"))
+            out = run_agent(Agent_Input(question=req.question.strip(), rewritten=rewritten), parent_span=t.get("_span"))
+        except GuardrailViolation:
+            raise
         except Exception as exc:
             friendly_msg = _format_error_message(exc)
             raise HTTPException(status_code=503, detail=friendly_msg) from exc
 
         query = out.query
-        evidence = [question] + (
-            [f"row_count={query.row_count}", getattr(query, "reply_vi", "")]
-            + [f"{c}={v}" for row in query.rows for c, v in zip(query.columns, row)]
-            if query
-            else []
-        )
-        tool_empty = _is_tool_empty(query)
-        result = check_output(out.answer, evidence, tool_empty=tool_empty)
 
         cache_data = {
             "question": out.question,
-            "answer": result.answer,
+            "answer": out.answer,
             "tool": query.tool if query else "",
             "columns": query.columns if query else [],
             "rows": query.rows if query else [],
@@ -631,7 +603,7 @@ def ask(req: AskRequest) -> AskResponse:
 
         response = AskResponse(
             question=out.question,
-            answer=result.answer,
+            answer=out.answer,
             tool=query.tool if query else "",
             columns=query.columns if query else [],
             rows=query.rows if query else [],
@@ -711,22 +683,6 @@ def stream_agent(req: ChatRequest) -> StreamingResponse:
                 "user_id": req.user_id,
             },
         ) as t:
-            if not in_scope(req.question):
-                t["output"] = {"status": "out_of_scope", "answer": OUT_OF_SCOPE_REPLY}
-                _persist_session_turn(
-                    session_id=req.session_id.strip(),
-                    user_id=req.user_id.strip(),
-                    question=req.question,
-                    answer=OUT_OF_SCOPE_REPLY,
-                    detail={"status": "out_of_scope"},
-                )
-                yield f'data: {json.dumps({"node_id": "guardrail", "status": "done", "input": req.question, "output": OUT_OF_SCOPE_REPLY}, ensure_ascii=False)}\n\n'
-                if req.stream_tokens:
-                    for delta in _split_into_chunks(OUT_OF_SCOPE_REPLY):
-                        yield f'data: {json.dumps({"node_id": "__answer__", "status": "chunk", "delta": delta}, ensure_ascii=False)}\n\n'
-                yield f'data: {json.dumps({"node_id": "__answer__", "status": "done", "output": OUT_OF_SCOPE_REPLY, "detail": {"status": "out_of_scope"}}, ensure_ascii=False)}\n\n'
-                return
-
             question = redact_pii(req.question)
 
             try:
@@ -804,24 +760,21 @@ def stream_agent(req: ChatRequest) -> StreamingResponse:
                 stream_trace_nodes: list[dict[str, Any]] = []
 
                 for event in run_agent_stream(
-                    Agent_Input(question=question, rewritten=rewritten, user_id=req.user_id, stream_tokens=req.stream_tokens),
+                    Agent_Input(
+                        question=req.question.strip(),
+                        rewritten=rewritten,
+                        user_id=req.user_id,
+                        stream_tokens=req.stream_tokens,
+                    ),
                     **stream_kwargs,
                 ):
                     if "__final_result__" in event:
                         out = event["__final_result__"]
                         query = getattr(out, "query", None)
-                        evidence = [question] + (
-                            [f"row_count={getattr(query, 'row_count', 0)}", getattr(query, "reply_vi", "")]
-                            + [f"{c}={v}" for row in getattr(query, "rows", []) for c, v in zip(getattr(query, "columns", []), row)]
-                            if query
-                            else []
-                        )
-                        tool_empty = _is_tool_empty(query)
-                        result = check_output(out.answer, evidence, tool_empty=tool_empty)
 
                         cache_data = {
                             "question": out.question,
-                            "answer": result.answer,
+                            "answer": out.answer,
                             "tool": getattr(query, "tool", "") if query else "",
                             "columns": getattr(query, "columns", []) if query else [],
                             "rows": getattr(query, "rows", []) if query else [],
@@ -849,7 +802,7 @@ def stream_agent(req: ChatRequest) -> StreamingResponse:
 
                         t["output"] = {
                             "status": "ok",
-                            "answer": result.answer,
+                            "answer": out.answer,
                             "tool": getattr(query, "tool", "") if query else "",
                             "row_count": getattr(query, "row_count", 0) if query else 0,
                         }
@@ -866,7 +819,7 @@ def stream_agent(req: ChatRequest) -> StreamingResponse:
                             session_id=req.session_id.strip(),
                             user_id=req.user_id.strip(),
                             question=out.question or question,
-                            answer=result.answer,
+                            answer=out.answer,
                             detail=detail_payload,
                             chart=chart_payload,
                             agent_trace=agent_trace,
@@ -875,7 +828,7 @@ def stream_agent(req: ChatRequest) -> StreamingResponse:
                         ans_event = {
                             "node_id": "__answer__",
                             "status": "done",
-                            "output": result.answer,
+                            "output": out.answer,
                             "detail": detail_payload,
                         }
                         yield f"data: {json.dumps(ans_event, ensure_ascii=False)}\n\n"

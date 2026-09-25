@@ -69,6 +69,7 @@ class Settings(BaseSettings):
     db_name_fire: str = Field(default="firesmoke", alias="DB_NAME_FIRE")
     db_name_anomaly: str = Field(default="anomaly", alias="DB_NAME_ANOMALY")
     db_organization_id: int = Field(default=0, alias="DB_ORGANIZATION_ID")
+    db_timezone: str = Field(default="Asia/Ho_Chi_Minh", alias="DB_TIMEZONE")
     db_query_timeout_s: float = Field(default=5.0, alias="DB_QUERY_TIMEOUT_S")
     db_max_rows: int = Field(default=200, alias="DB_MAX_ROWS")
 

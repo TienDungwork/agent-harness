@@ -1,38 +1,37 @@
 # eval/datasets/agent_stat/v2.yaml
 #
-# Golden dataset cho agent_ATIN — v2.1: vẫn 8 domain VMS + thêm 2 năng lực
-# sản phẩm: (A) hỏi đáp cách dùng web AIOC Cloud Cam
-# https://aioc.atin.vn/devices (Quản Lý Camera), (B) vẽ sơ đồ / diagram
-# hướng dẫn. GIỮ NGUYÊN 30 case và tỉ lệ slice gốc (LLM Evaluation
-# Pipelines — Golden Set): 18 lookup / 6 comparison-multihop /
-# 3 out_of_scope / 3 injection.
+# Golden dataset cho agent dong — v2.3: Chuẩn hóa bám sát 100% mục đích sản
+# phẩm KCN Hưng Phú (v8).
+# - 8 domain dữ liệu VMS qua Text-to-SQL (ITS, Zone, Face, Fight, Crowd, Intrusion, Fire, Water).
+# - AC-1 & AC-2: Master Data 10 Camera AIOC (6 phương tiện, 2 vùng cấm, 2 cháy khói).
+# - Nghiệp vụ xe tải đặc trưng cho khu công nghiệp.
+# - Hướng dẫn vận hành AIOC Cloud Cam (https://aioc.atin.vn/devices).
+# - Guardrails chống injection và từ chối ngoài phạm vi.
 #
-# Phân bổ lookup (18) sau khi chèn AIOC + sơ đồ (giảm case VMS trùng lặp,
-# ưu tiên giữ case chống hồi quy / phân biệt domain):
-#   PLATE 3 | ZONE 2 | FACE 1 | FIGHT 1 | CROWD 1 | INTRUSION 1 | FIRE 1 |
-#   WATER 1 | AIOC_HOWTO 4 | DIAGRAM 3  = 18
-# Comparison (6): giữ 3 case v1 chống hồi quy (#019–#021) + 1 chéo VMS
-# (#022) + 1 AIOC↔VMS (#023) + 1 sơ đồ+#devices (#024).
-# out_of_scope (3) + injection (3): giữ nguyên tinh thần v1 (không gọi tool
-# VMS / bị chặn guardrail).
+# GIỮ NGUYÊN cấu trúc chuẩn 30 case và tỉ lệ slice (LLM Evaluation Pipelines):
+#   18 lookup / 6 comparison-multihop / 3 out_of_scope / 3 injection.
 #
-# Tool AIOC howto / vẽ sơ đồ CHƯA có trong code — case AIOC/DIAGRAM chỉ
-# assert nội dung (must_include), chưa must_include_tool tên tool mới.
-# Case VMS vẫn dùng tool đã có (Phase 3/5).
+# Phân bổ lookup (18):
+#   PLATE 3 (vào, biển số, hãng) | ZONE 2 (xâm nhập theo giờ, danh sách) |
+#   FACE 1 | FIGHT 1 | CROWD 1 | INTRUSION 1 | FIRE 1 | WATER 1 |
+#   AIOC_HOWTO 4 (#012-#015) |
+#   CAMERA_MASTER_DATA 2 (AC-1 #016, AC-2 #017) | TRUCK_FLOW 1 (#018) = 18
 #
-# Nguồn how-to AIOC: trang /devices yêu cầu đăng nhập Cloud Cam; menu
-# Cấu hình & Thiết bị → Quản Lý Camera (thêm/sửa/xóa camera, luồng chính–
-# phụ, hierarchy, trạng thái). Không bịa nhãn nút chưa verify trên UI live.
+# Comparison (6):
+#   - #019: Xe máy vs ô tô (chống mất loại xe)
+#   - #020: Giới hạn phân loại số chỗ ngồi (_SEAT_LIMIT_NOTE)
+#   - #021: Truy vết biển số + Xâm nhập vùng cấm (multi-hop)
+#   - #022: So sánh ẩu đả vs đám đông (same DB comparison)
+#   - #023: Kết hợp how-to AIOC + kiểm tra cháy khói VMS
+#   - #024: Phân biệt thao tác AIOC devices vs thống kê sự kiện VMS
 #
-# Nguồn số liệu VMS: verify org 106 qua tools/DB (xem lịch sử change-log
-# 2026-09-17/18). Số liệu đổi theo ngày → ưu tiên must_include_tool /
-# must_include ngắn, tránh expected cứng.
+# out_of_scope (3) + injection (3): Từ chối ngoài phạm vi và chặn injection đa ngôn ngữ / SQL.
 
 dataset: agent_stat
-version: "2.2"
+version: "2.3"
 created: 2026-09-17
-updated: 2026-09-21
-changelog: "v2.2: Cập nhật assertions cho v5 (QueryPlan-era), dùng sql_builder/query_data/docs thay cho các ReAct tools cũ."
+updated: 2026-09-25
+changelog: "v2.3: Chuẩn hóa bám sát 100% mục đích sản phẩm KCN Hưng Phú (v8). Thay các case vẽ sơ đồ bằng 2 case Master Data 10 Camera AIOC (AC-1 đếm 10 cam, AC-2 liệt kê 10 cam) và 1 case xe tải KCN; bổ sung assertion docs cho nhóm AIOC how-to (#012-#015); tinh chỉnh câu hỏi #024."
 
 cases:
   # ── LOOKUP (18 case) ──────────────────────────────────────────────────
@@ -68,7 +67,7 @@ cases:
 
   - id: agent_stat_v2_005
     question: "Danh sách khu vực và camera hợp lệ hiện có là gì?"
-    expected: "Liệt kê theo module qua list_khu_vuc (PLATE/ZONE/FACE/FIRE/ANOMALY)."
+    expected: "Liệt kê 10 camera đang hoạt động (ONLINE) phân theo 3 phân hệ hoặc các khu vực camera hợp lệ."
     slice: { type: lookup, difficulty: easy, multihop: false, out_of_scope: false }
     must_include_tool: ["sql_builder"]
 
@@ -112,25 +111,28 @@ cases:
     slice: { type: lookup, difficulty: hard, multihop: false, out_of_scope: false }
     must_include_tool: ["sql_builder"]
 
-  # -- AIOC howto (4) — https://aioc.atin.vn/devices — chưa có tool riêng --
+  # -- AIOC howto (4) — https://aioc.atin.vn/devices --
   - id: agent_stat_v2_012
     question: "Làm sao đăng nhập Cloud Cam để vào trang quản lý camera https://aioc.atin.vn/devices?"
-    expected: "Hướng dẫn đăng nhập (tài khoản/mật khẩu) rồi mở /devices; không gọi tool thống kê VMS."
+    expected: "Hướng dẫn đăng nhập (tài khoản/mật khẩu) rồi mở /devices; định tuyến qua docs, không gọi SQL/DB."
     slice: { type: lookup, difficulty: easy, multihop: false, out_of_scope: false }
+    must_include_tool: ["docs"]
     must_include: ["aioc.atin.vn"]
     must_not_include_tool: ["sql_builder", "query_data"]
 
   - id: agent_stat_v2_013
     question: "Trên AIOC, vào đâu để quản lý camera / thiết bị (Quản Lý Camera)?"
-    expected: "Chỉ đường menu Cấu hình & Thiết bị → Quản Lý Camera, URL /devices."
+    expected: "Chỉ đường menu Cấu hình & Thiết bị → Quản Lý Camera, URL /devices qua docs."
     slice: { type: lookup, difficulty: easy, multihop: false, out_of_scope: false }
+    must_include_tool: ["docs"]
     must_include: ["devices"]
     must_not_include_tool: ["sql_builder", "query_data"]
 
   - id: agent_stat_v2_014
     question: "Các bước thêm camera mới trên trang Quản Lý Camera của AIOC là gì?"
-    expected: "Mô tả quy trình thêm camera (mã, tên, zone, luồng chính); nhắc trang devices; không bịa số liệu VMS."
+    expected: "Mô tả quy trình thêm camera (mã, tên, zone, luồng chính) qua docs; không bịa số liệu VMS."
     slice: { type: lookup, difficulty: medium, multihop: false, out_of_scope: false }
+    must_include_tool: ["docs"]
     must_include: ["camera"]
     must_not_include_tool: ["sql_builder", "query_data"]
 
@@ -138,30 +140,33 @@ cases:
     question: "Trên AIOC devices, trạng thái camera Trực Tuyến / Ngoại Tuyến / Bảo Trì nghĩa là gì và đổi ở đâu?"
     expected: "Giải thích 3 trạng thái và thao tác đổi trên Quản Lý Camera; không query DB thống kê."
     slice: { type: lookup, difficulty: medium, multihop: false, out_of_scope: false }
+    must_include_tool: ["docs"]
     must_include: ["trực tuyến"]
     must_not_include_tool: ["sql_builder", "query_data"]
 
-  # -- DIAGRAM / vẽ sơ đồ (3) --
+  # -- CAMERA MASTER DATA (AC-1, AC-2) & TRUCK (3) --
   - id: agent_stat_v2_016
-    question: "Vẽ sơ đồ các bước mở trang Quản Lý Camera từ đăng nhập tới https://aioc.atin.vn/devices."
-    expected: "Có sơ đồ (mermaid/ascii/bullet có thứ tự) + nhắc URL devices; không gọi SQL/thống kê."
-    slice: { type: lookup, difficulty: medium, multihop: false, out_of_scope: false }
-    must_include: ["aioc.atin.vn"]
-    must_not_include_tool: ["sql_builder", "query_data"]
+    question: "Hiện có bao nhiêu camera đang hoạt động?"
+    expected: "AC-1: Đếm chuẩn xác 10 camera đang hoạt động (ONLINE), thuộc 3 phân hệ (6 phương tiện, 2 vùng cấm, 2 cháy khói) từ AIOC Master Registry."
+    slice: { type: lookup, difficulty: easy, multihop: false, out_of_scope: false }
+    must_include_tool: ["sql_builder"]
+    must_include: ["10 camera"]
+    must_include_columns_any: ["camera_code", "camera_name"]
 
   - id: agent_stat_v2_017
-    question: "Vẽ sơ đồ quy trình thêm một camera mới trên AIOC (từ mở form đến tạo xong)."
-    expected: "Sơ đồ/flowchart các bước thêm camera; không bịa dữ liệu lượt xe."
-    slice: { type: lookup, difficulty: medium, multihop: false, out_of_scope: false }
-    must_include: ["camera"]
-    must_not_include_tool: ["sql_builder", "query_data"]
+    question: "Kể tên các camera trong hệ thống"
+    expected: "AC-2: Liệt kê đủ 10 camera đang hoạt động (ONLINE), bao gồm cả các camera chuyên dụng: CVN_CONG_BOH, CVNTT, CVN_KHO_TANG2_BOH, CVN_P_CAP_PHAT_DONG_PHUC và camera giao thông."
+    slice: { type: lookup, difficulty: easy, multihop: false, out_of_scope: false }
+    must_include_tool: ["sql_builder"]
+    must_include: ["CVN_CONG_BOH", "congchinh1"]
+    must_include_columns_any: ["camera_code", "camera_name"]
 
   - id: agent_stat_v2_018
-    question: "Vẽ sơ đồ phân biệt: hỏi thống kê sự kiện VMS (Postgres) với hỏi hướng dẫn dùng trang devices trên AIOC."
-    expected: "Sơ đồ 2 nhánh (thống kê DB vs howto UI); nêu rõ không lẫn hai việc."
-    slice: { type: lookup, difficulty: hard, multihop: false, out_of_scope: false }
-    must_include: ["devices"]
-    must_not_include_tool: ["sql_builder"]
+    question: "Hôm nay có bao nhiêu lượt xe tải ra vào?"
+    expected: "Thống kê số lượt riêng loại xe tải (TRUCK) ra vào KCN hôm nay."
+    slice: { type: lookup, difficulty: easy, multihop: false, out_of_scope: false }
+    must_include_tool: ["sql_builder"]
+    must_include_columns_any: ["so_luot", "count", "direction", "vehicle_type"]
 
   # ── COMPARISON / MULTIHOP (6 case) ───────────────────────────────────
 
@@ -176,6 +181,7 @@ cases:
     question: "Biểu đồ thống kê hôm nay có bao nhiêu lượt ra vào, phân loại xe máy/tải/5,7,9,16,29,40 chỗ?"
     expected: "Phải nêu giới hạn không có thông tin số chỗ ngồi (_SEAT_LIMIT_NOTE)."
     slice: { type: comparison, difficulty: hard, multihop: true, out_of_scope: false }
+    must_include_tool: ["sql_builder"]
     must_include: ["không có thông tin số chỗ ngồi"]
 
   - id: agent_stat_v2_021
@@ -199,8 +205,8 @@ cases:
     must_include: ["camera"]
 
   - id: agent_stat_v2_024
-    question: "Vẽ sơ đồ các bước thêm camera trên AIOC devices, và cho biết khác gì so với câu hỏi thống kê số lượt xe hôm nay?"
-    expected: "Có sơ đồ howto devices + phân biệt rõ với thống kê VMS (count_vehicle_flow); không nhầm hai việc."
+    question: "Hướng dẫn các bước thêm camera trên AIOC devices, và cho biết khác gì so với câu hỏi thống kê số lượt xe hôm nay?"
+    expected: "Hướng dẫn thao tác devices + phân biệt rõ với thống kê VMS (count_vehicle_flow); không nhầm hai việc."
     slice: { type: comparison, difficulty: hard, multihop: true, out_of_scope: false }
     must_include: ["devices"]
     must_not_include_tool: ["sql_builder"]

@@ -30,6 +30,141 @@
         </button>
       </div>
 
+      <!-- Mục Câu hỏi mẫu (Accordion từ v2.yaml) -->
+      <div class="sample-questions-accordion" id="sample-questions-accordion">
+        <button type="button" class="sample-accordion-header" id="sample-accordion-header" aria-expanded="false" title="Nhấn để xem các câu hỏi mẫu từ bộ đề v2.yaml">
+          <div class="sample-header-title">
+            <svg class="sample-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M12 2a7 7 0 0 1 7 7c0 2.38-1.19 4.47-3 5.74V17a2 2 0 0 1-2 2h-4a2 2 0 0 1-2-2v-2.26C6.19 13.47 5 11.38 5 9a7 7 0 0 1 7-7z"/>
+              <path d="M9 21h6"/>
+            </svg>
+            <span>Câu hỏi mẫu</span>
+            <span class="sample-count-badge">v2.yaml</span>
+          </div>
+          <svg class="sample-chevron-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <polyline points="6 9 12 15 18 9"/>
+          </svg>
+        </button>
+
+        <div class="sample-accordion-body" id="sample-accordion-body">
+          <!-- Nhóm 1: Lưu lượng & Phương tiện -->
+          <div class="sample-group">
+            <div class="sample-group-title">
+              <span class="sample-group-icon">🚗</span> Lưu lượng & Biển số
+            </div>
+            <div class="sample-group-items">
+              <button type="button" class="sample-question-btn" data-query="Hôm nay có bao nhiêu lượt xe vào?" title="Hôm nay có bao nhiêu lượt xe vào? (v2_001)">
+                <span class="sample-question-bullet">•</span>
+                <span class="sample-question-text">Hôm nay có bao nhiêu lượt xe vào?</span>
+                <span class="sample-send-arrow">↗</span>
+              </button>
+              <button type="button" class="sample-question-btn" data-query="Truy vết lịch sử di chuyển của biển số 15K40139." title="Truy vết lịch sử di chuyển của biển số 15K40139. (v2_002)">
+                <span class="sample-question-bullet">•</span>
+                <span class="sample-question-text">Truy vết lịch sử biển số 15K40139</span>
+                <span class="sample-send-arrow">↗</span>
+              </button>
+              <button type="button" class="sample-question-btn" data-query="Số liệu ô tô theo hãng xe hôm nay như thế nào?" title="Số liệu ô tô theo hãng xe hôm nay như thế nào? (v2_003)">
+                <span class="sample-question-bullet">•</span>
+                <span class="sample-question-text">Số liệu ô tô theo hãng xe hôm nay</span>
+                <span class="sample-send-arrow">↗</span>
+              </button>
+            </div>
+          </div>
+
+          <!-- Nhóm 2: Vùng cấm & An ninh -->
+          <div class="sample-group">
+            <div class="sample-group-title">
+              <span class="sample-group-icon">🚨</span> Vùng cấm & Bất thường
+            </div>
+            <div class="sample-group-items">
+              <button type="button" class="sample-question-btn" data-query="Khung giờ nào có nhiều lượt xâm nhập khu vực nhất hôm nay?" title="Khung giờ nào có nhiều lượt xâm nhập khu vực nhất hôm nay? (v2_004)">
+                <span class="sample-question-bullet">•</span>
+                <span class="sample-question-text">Khung giờ xâm nhập nhiều nhất?</span>
+                <span class="sample-send-arrow">↗</span>
+              </button>
+              <button type="button" class="sample-question-btn" data-query="Trong khoảng từ 04/09/2026 đến 16/09/2026 có bao nhiêu vụ ẩu đả?" title="Trong khoảng từ 04/09/2026 đến 16/09/2026 có bao nhiêu vụ ẩu đả? (v2_007)">
+                <span class="sample-question-bullet">•</span>
+                <span class="sample-question-text">Số vụ ẩu đả (04/09 - 16/09/2026)</span>
+                <span class="sample-send-arrow">↗</span>
+              </button>
+              <button type="button" class="sample-question-btn" data-query="Hôm nay có phát hiện leo trèo không?" title="Hôm nay có phát hiện leo trèo không? (v2_009)">
+                <span class="sample-question-bullet">•</span>
+                <span class="sample-question-text">Hôm nay có phát hiện leo trèo không?</span>
+                <span class="sample-send-arrow">↗</span>
+              </button>
+              <button type="button" class="sample-question-btn" data-query="Hôm nay có cảnh báo cháy hoặc khói không?" title="Hôm nay có cảnh báo cháy hoặc khói không? (v2_010)">
+                <span class="sample-question-bullet">•</span>
+                <span class="sample-question-text">Cảnh báo cháy hoặc khói hôm nay</span>
+                <span class="sample-send-arrow">↗</span>
+              </button>
+              <button type="button" class="sample-question-btn" data-query="Trong khoảng từ 07/09/2026 đến 14/09/2026 có bao nhiêu lượt nhận diện khuôn mặt?" title="Trong khoảng từ 07/09/2026 đến 14/09/2026 có bao nhiêu lượt nhận diện khuôn mặt? (v2_006)">
+                <span class="sample-question-bullet">•</span>
+                <span class="sample-question-text">Nhận diện khuôn mặt (07/09 - 14/09)</span>
+                <span class="sample-send-arrow">↗</span>
+              </button>
+              <button type="button" class="sample-question-btn" data-query="Hôm nay mực nước có vượt ngưỡng cảnh báo không?" title="Hôm nay mực nước có vượt ngưỡng cảnh báo không? (v2_011)">
+                <span class="sample-question-bullet">•</span>
+                <span class="sample-question-text">Mực nước có vượt ngưỡng hôm nay?</span>
+                <span class="sample-send-arrow">↗</span>
+              </button>
+            </div>
+          </div>
+
+          <!-- Nhóm 3: Biểu đồ & So sánh -->
+          <div class="sample-group">
+            <div class="sample-group-title">
+              <span class="sample-group-icon">📊</span> Biểu đồ & So sánh
+            </div>
+            <div class="sample-group-items">
+              <button type="button" class="sample-question-btn" data-query="Biểu đồ hôm nay có bao nhiêu lượt xe ra và vào, phân loại theo xe máy, ô tô?" title="Biểu đồ hôm nay có bao nhiêu lượt xe ra và vào, phân loại theo xe máy, ô tô? (v2_019)">
+                <span class="sample-question-bullet">•</span>
+                <span class="sample-question-text">Biểu đồ xe ra/vào theo xe máy, ô tô</span>
+                <span class="sample-send-arrow">↗</span>
+              </button>
+              <button type="button" class="sample-question-btn" data-query="Trong khoảng từ 04/09/2026 đến 16/09/2026, ẩu đả hay đám đông xảy ra nhiều hơn?" title="Trong khoảng từ 04/09/2026 đến 16/09/2026, ẩu đả hay đám đông xảy ra nhiều hơn? (v2_022)">
+                <span class="sample-question-bullet">•</span>
+                <span class="sample-question-text">So sánh ẩu đả vs đám đông</span>
+                <span class="sample-send-arrow">↗</span>
+              </button>
+              <button type="button" class="sample-question-btn" data-query="Xe biển số 15K40139 hôm nay có đi qua khu vực xâm nhập nào không, và khung giờ xâm nhập nhiều nhất hôm nay là mấy giờ?" title="Xe biển số 15K40139 hôm nay có đi qua khu vực xâm nhập nào không, và khung giờ xâm nhập nhiều nhất hôm nay là mấy giờ? (v2_021)">
+                <span class="sample-question-bullet">•</span>
+                <span class="sample-question-text">Xe 15K40139 & giờ xâm nhập cao nhất</span>
+                <span class="sample-send-arrow">↗</span>
+              </button>
+            </div>
+          </div>
+
+          <!-- Nhóm 4: AIOC Howto & Sơ đồ -->
+          <div class="sample-group">
+            <div class="sample-group-title">
+              <span class="sample-group-icon">⚙️</span> AIOC & Sơ đồ
+            </div>
+            <div class="sample-group-items">
+              <button type="button" class="sample-question-btn" data-query="Làm sao đăng nhập Cloud Cam để vào trang quản lý camera https://aioc.atin.vn/devices?" title="Làm sao đăng nhập Cloud Cam để vào trang quản lý camera https://aioc.atin.vn/devices? (v2_012)">
+                <span class="sample-question-bullet">•</span>
+                <span class="sample-question-text">Cách đăng nhập vào Quản lý camera</span>
+                <span class="sample-send-arrow">↗</span>
+              </button>
+              <button type="button" class="sample-question-btn" data-query="Các bước thêm camera mới trên trang Quản Lý Camera của AIOC là gì?" title="Các bước thêm camera mới trên trang Quản Lý Camera của AIOC là gì? (v2_014)">
+                <span class="sample-question-bullet">•</span>
+                <span class="sample-question-text">Các bước thêm camera mới trên AIOC</span>
+                <span class="sample-send-arrow">↗</span>
+              </button>
+              <button type="button" class="sample-question-btn" data-query="Vẽ sơ đồ quy trình thêm một camera mới trên AIOC (từ mở form đến tạo xong)." title="Vẽ sơ đồ quy trình thêm một camera mới trên AIOC (v2_017)">
+                <span class="sample-question-bullet">•</span>
+                <span class="sample-question-text">Sơ đồ quy trình thêm camera mới</span>
+                <span class="sample-send-arrow">↗</span>
+              </button>
+              <button type="button" class="sample-question-btn" data-query="Vẽ sơ đồ phân biệt: hỏi thống kê sự kiện VMS (Postgres) với hỏi hướng dẫn dùng trang devices trên AIOC." title="Vẽ sơ đồ phân biệt: hỏi thống kê sự kiện VMS (Postgres) với hỏi hướng dẫn dùng trang devices trên AIOC. (v2_018)">
+                <span class="sample-question-bullet">•</span>
+                <span class="sample-question-text">Sơ đồ phân biệt VMS DB vs AIOC Howto</span>
+                <span class="sample-send-arrow">↗</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+
       <div class="sidebar-section-title">Phiên chat</div>
       <div class="session-list" id="session-list"></div>
 

@@ -16,11 +16,32 @@ def execute_sql_node(state: dict[str, Any]) -> dict[str, Any]:
     """Re-validate SQL query and execute on read-only Postgres database.
 
     Returns ``{"rows": list, "columns": list, "error": str, "events": list}``.
+    Batch multi-hop: ``sql_batch_results`` — một entry mỗi sub-question.
     """
-    sql = (state.get("sql") or "").strip()
-    params = state.get("params") or []
+    from src.agent.sql_batch import execute_sql_batch
+
+    sql_batch = state.get("sql_batch") or []
     user_id = state.get("user_id") or "default"
     session_id = state.get("session_id") or "default"
+
+    if len(sql_batch) >= 2:
+        batch_results = execute_sql_batch(sql_batch)
+        last = batch_results[-1] if batch_results else {}
+        return {
+            "sql_batch_results": batch_results,
+            "rows": last.get("rows") or [],
+            "columns": last.get("columns") or [],
+            "error": "",
+            "events": [node_event(
+                "execute_sql",
+                input={"sql_batch": sql_batch, "batch_size": len(sql_batch)},
+                output={"sql_batch_results": batch_results, "batch_size": len(batch_results)},
+                meta={"user_id": user_id, "session_id": session_id, "batch": True, "ok": True},
+            )],
+        }
+
+    sql = (state.get("sql") or "").strip()
+    params = state.get("params") or []
 
     with trace_substep("apply_org_scope", kind="tool", input={"sql": sql}) as sub:
         sql = apply_organization_scope(sql)

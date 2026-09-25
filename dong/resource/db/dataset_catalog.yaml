@@ -77,34 +77,28 @@ cases:
     description: "Ý nghĩa và cách đổi trạng thái camera trên AIOC"
 
   agent_stat_v2_016:
-    domain: docs
-    doc_id: aioc.diagram_login_devices
-    route: "/devices"
+    domain: query_data
+    table: camera_registry
     keywords:
-      - "sơ đồ"
-      - "đăng nhập"
-      - "aioc.atin.vn"
-    description: "Sơ đồ từ đăng nhập đến Quản Lý Camera"
+      - "bao nhiêu camera"
+      - "camera đang hoạt động"
+    description: "AC-1: Đếm 10 camera Master Data Registry"
 
   agent_stat_v2_017:
-    domain: docs
-    doc_id: aioc.diagram_add_camera
-    route: "/devices"
+    domain: query_data
+    table: camera_registry
     keywords:
-      - "sơ đồ"
-      - "quy trình"
-      - "thêm camera"
-    description: "Sơ đồ quy trình thêm camera mới trên AIOC"
+      - "kể tên camera"
+      - "danh sách camera"
+    description: "AC-2: Liệt kê 10 camera Master Data Registry"
 
   agent_stat_v2_018:
-    domain: docs
-    doc_id: aioc.vms_vs_devices
-    route: "/devices"
+    domain: query_data
+    table: plate_event
     keywords:
-      - "phân biệt"
-      - "thống kê"
-      - "devices"
-    description: "Sơ đồ phân biệt thống kê VMS vs hướng dẫn AIOC devices"
+      - "xe tải"
+      - "truck"
+    description: "Lưu lượng xe tải ra vào KCN"
 
   agent_stat_v2_023:
     is_multi: true
@@ -125,8 +119,8 @@ cases:
     domain: docs
     doc_id: aioc.vms_vs_devices
     keywords:
-      - "sơ đồ"
+      - "hướng dẫn"
       - "thêm camera"
       - "khác gì so với"
       - "thống kê"
-    description: "Sơ đồ thêm camera và phân biệt thống kê VMS vs hướng dẫn AIOC devices"
+    description: "Hướng dẫn thêm camera và phân biệt thống kê VMS vs hướng dẫn AIOC devices"

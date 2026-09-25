@@ -88,6 +88,8 @@ def test_out_of_scope_detection(out_of_scope_text: str):
         "Có cảnh báo cháy khói nào tại khu B không?",
         "Thống kê các sự kiện đám đông hoặc ẩu đả trong tuần này",
         "Mực nước tại cống xả khu C hiện tại có ngập úng không?",
+        "hôm nay có bao nhiêu event giám sát vùng cấm",
+        "hôm nay có bao nhiêu event vùng cấm?",
     ],
 )
 def test_in_scope_vms_domains(in_scope_text: str):
@@ -376,9 +378,13 @@ _TOXIC_Q = "Fuck you"
 
 @pytest.fixture(autouse=True)
 def clean_sessions():
+    from src.memory.ttl_cache import clear_ttl_cache
+
     clear_sessions_store()
+    clear_ttl_cache()
     yield
     clear_sessions_store()
+    clear_ttl_cache()
 
 
 def _stream_body(question: str, session_id: str, user_id: str = "user_guardrail") -> str:
@@ -425,8 +431,8 @@ def test_api_chat_out_of_scope_vietnamese():
         json={"question": _OOS_Q, "session_id": "s1", "user_id": "u1"},
     )
     assert res.status_code == 200
-    assert res.json()["answer"] == OUT_OF_SCOPE_REPLY
-    assert "ngoài phạm vi" in OUT_OF_SCOPE_REPLY.lower()
+    ans = res.json()["answer"].lower()
+    assert any(kw in ans for kw in ("kcn hưng phú", "vms", "ngoài phạm vi"))
 
 
 def test_api_agent_stream_injection_with_session_fields():
@@ -457,7 +463,12 @@ def test_api_agent_stream_out_of_scope_sse_vietnamese():
                 events.append(json.loads(payload))
 
     answer_ev = next(ev for ev in events if ev.get("node_id") == "__answer__")
-    assert answer_ev["output"] == OUT_OF_SCOPE_REPLY
-    assert "ngoài phạm vi" in answer_ev["output"].lower()
-    assert answer_ev.get("detail", {}).get("status") == "out_of_scope"
+    ans_out = answer_ev["output"].lower()
+    assert any(kw in ans_out for kw in ("kcn hưng phú", "vms", "ngoài phạm vi"))
+    assert answer_ev.get("detail", {}).get("agent_detail") == "out_of_scope"
+    node_ids = [ev.get("node_id") for ev in events if ev.get("node_id")]
+    assert "guardrail_input" in node_ids
+    assert "classify" in node_ids
+    assert "respond_inline" in node_ids
+    assert "guardrail_output" in node_ids
 
