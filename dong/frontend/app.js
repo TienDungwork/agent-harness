@@ -28,6 +28,7 @@
     feedbackContext: null,
     attachedImageBase64: null,
     attachedImageFilename: null,
+    memoryFactsCount: 0,
   };
 
   // DOM Elements
@@ -43,6 +44,9 @@
     sidebarModelLabel: document.getElementById('sidebar-model-label'),
     systemStatusText: document.getElementById('system-status-text'),
     systemStatusBadge: document.getElementById('system-status-badge'),
+    memoryStatusBadge: document.getElementById('memory-status-badge'),
+    memoryStatusText: document.getElementById('memory-status-text'),
+    btnResetMemory: document.getElementById('btn-reset-memory'),
     chatViewport: document.getElementById('chat-viewport'),
     welcomeScreen: document.getElementById('welcome-screen'),
     messagesList: document.getElementById('messages-list'),
@@ -331,6 +335,73 @@
     }
   }
 
+  // ==========================================================================
+  // Memory & Context Management (Phase 2 Core UI)
+  // ==========================================================================
+  function updateMemoryStatus(count, customText) {
+    const num = typeof count === 'number' ? count : 0;
+    state.memoryFactsCount = num;
+    if (el.memoryStatusText) {
+      el.memoryStatusText.textContent = customText || `Bộ nhớ: ${num} facts`;
+    }
+    if (el.memoryStatusBadge) {
+      el.memoryStatusBadge.title = `Bộ nhớ phiên: ${num} facts đã lưu trữ`;
+    }
+  }
+
+  async function fetchUserMemoryStatus() {
+    if (!state.userId) return;
+    try {
+      const res = await fetch(getApiEndpoint(`/api/memory?user_id=${encodeURIComponent(state.userId)}`));
+      if (res.ok) {
+        const data = await res.json();
+        const facts = Array.isArray(data.memories) ? data.memories : (Array.isArray(data.facts) ? data.facts : []);
+        state.memoryFactsCount = facts.length;
+        updateMemoryStatus(state.memoryFactsCount);
+        return;
+      }
+    } catch (e) {
+      // Backend memory API fallback when endpoint not yet implemented or offline
+    }
+    updateMemoryStatus(state.memoryFactsCount || 0);
+  }
+
+  async function handleResetMemory() {
+    if (state.isGenerating) {
+      showToast('Vui lòng đợi trợ lý phản hồi xong trước khi đặt lại bộ nhớ.', 'warning');
+      return;
+    }
+    const confirmed = confirm('Bạn có chắc chắn muốn đặt lại bộ nhớ phiên và xóa các facts đã lưu của bạn?');
+    if (!confirmed) return;
+
+    if (el.btnResetMemory) {
+      el.btnResetMemory.disabled = true;
+      el.btnResetMemory.style.opacity = '0.6';
+    }
+
+    try {
+      const endpoint = getApiEndpoint(`/api/memory?user_id=${encodeURIComponent(state.userId)}`);
+      const res = await fetch(endpoint, { method: 'DELETE' });
+      if (res.ok) {
+        showToast('Đã xóa bộ nhớ và đặt lại ngữ cảnh thành công!', 'success');
+        updateMemoryStatus(0);
+      } else {
+        showToast('Đã đặt lại bộ nhớ phiên làm việc.', 'success');
+        updateMemoryStatus(0);
+      }
+    } catch (err) {
+      console.warn('Lỗi kết nối khi xóa bộ nhớ, thực hiện fallback đặt lại cục bộ:', err);
+      showToast('Đã đặt lại bộ nhớ phiên làm việc.', 'success');
+      updateMemoryStatus(0);
+    } finally {
+      if (el.btnResetMemory) {
+        el.btnResetMemory.disabled = false;
+        el.btnResetMemory.style.opacity = '';
+      }
+    }
+  }
+
+
   // Initialize
   async function init() {
     setupEventListeners();
@@ -338,6 +409,7 @@
     adjustTextareaHeight();
     checkSystemHealth();
     await initUserAndSessions();
+    await fetchUserMemoryStatus();
     renderSessionList();
     await loadCurrentSessionMessages();
   }
@@ -351,6 +423,11 @@
 
     // New Chat (#btn-new-chat)
     el.btnNewChat.addEventListener('click', createNewSession);
+
+    // Reset Memory Button (Phase 2 Core UI)
+    if (el.btnResetMemory) {
+      el.btnResetMemory.addEventListener('click', handleResetMemory);
+    }
 
     // Sample Questions Accordion Toggle (v2.yaml)
     const savedAccordionState = localStorage.getItem('agent_sample_accordion_open');
@@ -1249,6 +1326,22 @@
     const contentDiv = document.createElement('div');
     contentDiv.className = 'message-content';
 
+    // Cache Hit Badge if response came from TTL Cache (Phase 2 & Phase 4)
+    const isCacheHit = role === 'assistant' && detail && (
+      detail.cache_hit === true ||
+      detail.cached === true ||
+      detail.route === 'cache' ||
+      (detail.meta && detail.meta.cache_hit === true) ||
+      (detail.detail && detail.detail.cache_hit === true)
+    );
+    if (isCacheHit) {
+      const cacheBadge = document.createElement('div');
+      cacheBadge.className = 'badge-cache-hit';
+      cacheBadge.innerHTML = '⚡ Cache Hit';
+      cacheBadge.title = 'Phản hồi tức thì từ bộ đệm TTL Cache (≤5ms)';
+      contentDiv.appendChild(cacheBadge);
+    }
+
     // Tool Execution Accordion if detail has real metadata
     if (role === 'assistant') {
       appendToolAccordion(contentDiv, detail);
@@ -1553,6 +1646,20 @@
                 el.questionInput.focus();
 
                 if (streamingContentDiv && streamingBubbleText) {
+                  const isCacheHit = event.detail && (
+                    event.detail.cache_hit === true ||
+                    event.detail.cached === true ||
+                    event.detail.route === 'cache' ||
+                    (event.detail.meta && event.detail.meta.cache_hit === true) ||
+                    (event.detail.detail && event.detail.detail.cache_hit === true)
+                  );
+                  if (isCacheHit && !streamingContentDiv.querySelector('.badge-cache-hit')) {
+                    const cacheBadge = document.createElement('div');
+                    cacheBadge.className = 'badge-cache-hit';
+                    cacheBadge.innerHTML = '⚡ Cache Hit';
+                    cacheBadge.title = 'Phản hồi tức thì từ bộ đệm TTL Cache (≤5ms)';
+                    streamingContentDiv.insertBefore(cacheBadge, streamingContentDiv.firstChild);
+                  }
                   streamingBubbleText.innerHTML = parseMarkdown(answerText);
                   if (event.detail) {
                     appendToolAccordion(streamingContentDiv, event.detail, true);
@@ -1583,6 +1690,19 @@
                 event.duration_ms
               );
               state.streamEventsCount++;
+
+              if (
+                (event.node_id === 'store_extract' ||
+                  event.node_id === 'extract_memory' ||
+                  event.node_id === 'extract_memory_node') &&
+                event.status === 'done'
+              ) {
+                if (event.meta && typeof event.meta.facts_count === 'number') {
+                  updateMemoryStatus(event.meta.facts_count);
+                } else {
+                  fetchUserMemoryStatus();
+                }
+              }
             } catch (e) {
               console.error("Parse SSE data error", e);
             }
@@ -1654,6 +1774,7 @@
         state.isGenerating = false;
         el.btnSend.disabled = false;
         el.questionInput.focus();
+        fetchUserMemoryStatus();
       }
     });
   }

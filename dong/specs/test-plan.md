@@ -1,7 +1,7 @@
-# Test Plan — agent dong v8
+# Test Plan — agent dong v9: Unified Memory & Context Engineering System (Postgres-backed)
 
-**Trạng thái:** Spec only — chuẩn bị thực hiện.  
-**Mục tiêu:** Kiểm thử toàn diện 3 tính năng mới: Chuẩn hóa 10 camera từ Master Registry, Hệ thống Human Feedback (Like/Dislike + Lý do + Ảnh) và Chunk Streaming câu trả lời.
+**Trạng thái:** Spec only — Chuẩn bị thực hiện.  
+**Mục tiêu:** Kiểm thử toàn diện hệ thống Memory 3 tầng (Short-Term, Long-Term, TTL Cache) lưu trữ trên PostgreSQL và Context Engineering Engine (`context.py`), đảm bảo tính bền vững, cách ly dữ liệu, quản lý cửa sổ ngữ cảnh tối ưu và không làm đứt gãy các luồng nghiệp vụ hiện tại.
 
 ---
 
@@ -9,64 +9,109 @@
 
 | Nhóm tính năng | Mục tiêu kiểm thử | Phương thức |
 |----------------|-------------------|-------------|
-| **Camera Count (10 Cams)** | Đảm bảo hệ thống trả lời đủ 10 camera (không bị nhầm sang 6 camera giao thông). | Unit test pytest + Live test |
-| **Human Feedback API** | API `POST /api/feedback` xử lý đúng payload, lưu file JSON và file ảnh an toàn. | Unit test pytest |
-| **Human Feedback UI** | Giao diện nút 👍/👎, modal dislike nhập lý do, upload ảnh và gửi phản hồi. | Manual Browser test |
-| **Response Streaming** | SSE stream token/chunk mượt mà, bubble chat hiển thị gõ chữ trực tiếp. | Manual Browser test |
-| **Hồi quy hệ thống** | Không làm ảnh hưởng các luồng v7: Text-to-SQL, Chart.js, Guardrails, Memory. | Pytest toàn bộ suite |
+| **PostgreSQL Long-Term Storage** | Lưu trữ và truy vấn facts người dùng vào bảng `user_memories` trong PostgreSQL. Dữ liệu không bị mất khi restart server. | Unit test + DB check |
+| **User Data Isolation** | Tuyệt đối không rò rỉ facts giữa các `user_id` khác nhau. | Unit test tự động |
+| **In-Memory Fallback** | Khi ngắt kết nối PostgreSQL hoặc cấu hình DB rỗng, hệ thống tự động fallback in-memory, không crash. | Unit test tự động |
+| **Context Engineering Engine** | Kiểm thử 5 kỹ thuật: Sliding Window, 40-60% Compaction rule, Summarization hội thoại cũ, Tool output compression, và Re-injecting instructions. | Unit test tự động |
+| **Short-Term Checkpointer** | Khởi tạo checkpointer bền vững trên PostgreSQL (fallback `MemorySaver` khi chạy local/test). | Unit test tự động |
+| **TTL Response Cache** | Cache Hit phản hồi nhanh < 10ms; hết hạn TTL tự động miss; thread-safe khi nhiều request đồng thời. | Unit test tự động |
+| **Smart Fact Extraction** | Nhận diện chính xác tên, vai trò, sở thích; lọc bỏ không lưu số liệu giao thông/realtime tạm bợ. | Unit test tự động |
+| **End-to-End Regression** | Đảm bảo 100% các tính năng cũ (Text-to-SQL, 10 camera, Human Feedback, Streaming) tiếp tục hoạt động trơn tru. | Chạy toàn bộ pytest suite |
 
 ---
 
 ## 2. Kế hoạch kiểm thử tự động (Unit Tests)
 
-### Test Suite 1: Camera Registry & Multi-domain Count
-- **File**: `tests/test_product_sql_agent.py`
+### Test Suite 1: Context Engineering Engine (`tests/test_product_memory_context.py`)
 - **Các ca kiểm thử**:
-  1. `test_query_total_camera_count_returns_10_cams`:
-     - Input: *"Hiện có bao nhiêu camera đang hoạt động?"*
-     - Kỳ vọng: Câu trả lời chứa số "10", không chứa "6", liệt kê hoặc phân loại theo 3 phân hệ.
-  2. `test_query_camera_list_contains_all_10_cameras`:
-     - Input: *"Kể tên các camera trong hệ thống"*
-     - Kỳ vọng: Kết quả chứa cả các camera ngoài ITS như `CVN_CONG_BOH`, `CVNTT`, `CVN_KHO_TANG2_BOH`, `CVN_P_CAP_PHAT_DONG_PHUC`.
+  1. `test_sliding_window_preserves_system_and_recent`:
+     - Tạo danh sách 25 message (gồm 1 system message ở đầu và 24 turn qua lại).
+     - Gọi `sliding_window(messages, max_messages=10)`.
+     - Kỳ vọng: Trả về danh sách gồm 11 message (1 system message gốc + 10 message gần nhất), không bị lặp system message.
+  2. `test_estimate_tokens_and_context_usage`:
+     - Gọi `estimate_tokens` trên danh sách message mẫu.
+     - Kiểm tra `context_usage` với `window_tokens=4000`.
+     - Kỳ vọng: Giá trị trả về nằm trong khoảng [0.0, 1.0].
+  3. `test_should_compact_activates_at_40_percent`:
+     - Giả lập danh sách message chiếm 20% dung lượng window -> `should_compact` trả về `False`.
+     - Giả lập danh sách message chiếm 45% dung lượng window (vượt ngưỡng 40%) -> `should_compact` trả về `True`.
+  4. `test_summarize_old_messages_creates_summary_message`:
+     - Tạo danh sách 15 message.
+     - Gọi `summarize_old_messages(messages, keep_recent=4)`.
+     - Kỳ vọng: Kết quả trả về 5 message gồm 1 system message mang tiền tố `[Tóm tắt hội thoại trước]: ...` và 4 message mới nhất.
+  5. `test_compress_tool_result_skips_short_output`:
+     - Kết quả tool ngắn (< 300 token * 4 ký tự): hàm `compress_tool_result` trả về nguyên bản chuỗi gốc mà không gọi LLM nén.
+  6. `test_compress_tool_result_compresses_long_output`:
+     - Kết quả tool dài (chuỗi bảng số liệu > 2000 ký tự): hàm `compress_tool_result` kích hoạt LLM nén và trả về đoạn trích xuất cô đọng.
+  7. `test_reinject_instructions_appends_to_end`:
+     - Gọi `reinject_instructions(messages, "Quy tắc an toàn VMS KCN")`.
+     - Kỳ vọng: Tin nhắn cuối cùng trong danh sách trả về là system message mang tiền tố `[Nhắc lại chỉ dẫn]: ...`.
+  8. `test_latest_human_query_scans_backwards`:
+     - Quét ngược qua chuỗi tin nhắn có xen kẽ tool call và tool result.
+     - Kỳ vọng: Trả về chính xác nội dung câu hỏi gần nhất của người dùng (`role in ('human', 'user')`).
+  9. `test_detect_repetition_detects_infinite_loop`:
+     - Giả lập 4 tool call liên tiếp giống hệt nhau (`window=4`).
+     - Kỳ vọng: Trả về `True` kích hoạt cảnh báo `REPETITION_WARNING` ngắt vòng lặp vô tận.
+  10. `test_create_compaction_diff_persists_to_state`:
+      - Gọi `create_compaction_diff(messages, keep_recent=4)`.
+      - Kỳ vọng: Trả về diff gồm danh sách `RemoveMessage(id)` cho các message cũ và 1 `SystemMessage` mang tiền tố `[Tóm tắt hội thoại trước]: ...` để mutate trực tiếp vào LangGraph state.
+  11. `test_should_compact_route_conditional_edge`:
+      - Kiểm tra routing của conditional edge: vượt 40% window trả về `"compact"`, ngược lại trả về `"continue"`.
 
-### Test Suite 2: Human Feedback Endpoint
-- **File**: `tests/test_product_observability_errors.py` (hoặc test file mới `tests/test_product_feedback.py`)
+### Test Suite 2: Long-Term Memory & PostgreSQL Persistence (`tests/test_product_memory_postgres.py`)
 - **Các ca kiểm thử**:
-  1. `test_feedback_positive_saved_successfully`:
-     - Gửi request `POST /api/feedback` với `rating="positive"`, `session_id`, `question`, `answer`, `agent_trace`.
-     - Kiểm tra status code `200`.
-     - Đọc database SQLite `data/feedback.db` (và file `data/feedback.json`), xác nhận bản ghi tồn tại với đầy đủ các trường.
-  2. `test_feedback_negative_with_reason_and_image`:
-     - Gửi request `POST /api/feedback` với `rating="negative"`, `feedback_reason="Sai số lượng camera"`, ảnh base64 mẫu.
-     - Kiểm tra status code `200`.
-     - Xác nhận file ảnh được lưu vào `data/feedback/attachments/` và SQLite/JSON ghi nhận đúng đường dẫn ảnh cùng lý do.
-  3. `test_feedback_validation_error`:
-     - Gửi request thiếu `rating` hoặc `question`.
-     - Kiểm tra API trả về status `422 Unprocessable Entity` hoặc `400 Bad Request`.
+  1. `test_init_memory_db_creates_table_safely`:
+     - Chạy hàm `init_memory_db()`.
+     - Xác nhận bảng `user_memories` và index được tạo thành công nếu có DB, hoặc log warning an toàn nếu không có DB.
+  2. `test_save_and_recall_long_term_postgres`:
+     - Gọi `save_to_long_term("user_123", "Tôi thích giám sát camera cổng số 1")`.
+     - Gọi `recall_long_term("user_123", "hôm nay xem camera cổng 1 nhé")`.
+     - Kỳ vọng: Kết quả trả về danh sách chứa fact đã lưu.
+  3. `test_user_isolation_strictly_enforced`:
+     - Lưu fact cho `user_A`: *"Tôi tên là Nguyễn Văn An"*.
+     - Lưu fact cho `user_B`: *"Tôi tên là Trần Thị Bình"*.
+     - Gọi `recall_long_term("user_A", "tôi tên là gì")` -> Chỉ thấy fact của `user_A`, tuyệt đối không có `user_B`.
+  4. `test_fallback_to_in_memory_when_db_down`:
+     - Giả lập lỗi kết nối PostgreSQL (mock exception).
+     - Gọi `save_to_long_term` và `recall_long_term`.
+     - Kỳ vọng: Không ném ngoại lệ; dữ liệu được lưu tạm và đọc ra từ in-memory fallback store.
+  5. `test_clear_long_term_by_user`:
+     - Gọi `clear_long_term("user_123")`.
+     - Xác nhận fact của `user_123` bị xóa, facts của user khác vẫn giữ nguyên.
+
+### Test Suite 3: TTL Cache & Expiration (`tests/test_product_memory_cache.py`)
+- **Các ca kiểm thử**:
+  1. `test_ttl_cache_hit_and_miss`:
+     - Set cache cho key `q_hash`.
+     - Lấy lại khi chưa hết hạn -> Cache Hit (trả về data nguyên vẹn).
+     - Query key khác -> Cache Miss (trả về `None`).
+  2. `test_ttl_cache_expires_after_ttl`:
+     - Set cache với `ttl=1` giây.
+     - Đợi 1.1 giây.
+     - Gọi `get_ttl_cached` -> Kỳ vọng trả về `None` và tự xóa key hết hạn khỏi bộ nhớ.
+  3. `test_make_cache_key_normalization`:
+     - Hai chuỗi khác hoa thường hoặc khoảng trắng đầu cuối (ví dụ: `"  Lưu lượng xe? "` và `"lưu lượng xe?"`) phải sinh ra cùng một `make_cache_key`.
+
+### Test Suite 4: Smart Extraction & Realtime Filtering
+- **File**: `tests/test_product_memory_cache.py`
+- **Các ca kiểm thử**:
+  1. `test_heuristic_extract_name_and_role`:
+     - Input: *"Chào bạn, tôi tên là Hùng, tôi phụ trách an ninh KCN Hưng Phú"*.
+     - Kỳ vọng: Trích xuất được fact tên và vai trò.
+  2. `test_extraction_ignores_realtime_traffic_stats`:
+     - Input: *"Hôm nay có 150 lượt xe tải vào cổng"* và câu trả lời thống kê.
+     - Với `detail="query_data"`, hàm `extract_memories` không được lưu số liệu thống kê realtime vào long-term memory.
 
 ---
 
 ## 3. Kịch bản kiểm thử thủ công (Manual / Smoke Checklist)
 
-| STT | Thao tác trên giao diện | Kỳ vọng đạt được |
-|:---:|-------------------------|------------------|
-| 1 | Nhập câu hỏi: *"Hiện có bao nhiêu camera đang hoạt động?"* | Trợ lý trả lời chính xác: **10 camera đang hoạt động** (phân loại 6 xe, 2 vùng cấm, 2 cháy khói). Không trả lời 6 camera. |
-| 2 | Nhập câu hỏi: *"Kể tên các camera"* | Trợ lý liệt kê đủ danh sách 10 camera (bao gồm cả camera vùng cấm và cháy khói). |
-| 3 | Quan sát quá trình hiển thị câu trả lời | Chữ xuất hiện dần dần theo luồng stream (hiệu ứng gõ chữ), không bị khựng lại rồi hiện một khối. |
-| 4 | Bấm vào nút Like (👍) dưới câu trả lời | Nút Like sáng lên / đổi màu, hiển thị toast ngắn: "Cảm ơn bạn đã đánh giá!". Kiểm tra SQLite `data/feedback.db` (và file `data/feedback.json`) có bản ghi mới. |
-| 5 | Bấm vào nút Dislike (👎) dưới câu trả lời | Hiển thị modal/hộp thoại góp ý: có ô nhập lý do, nút tải ảnh và nút xác nhận. |
-| 6 | Nhập lý do: *"Dữ liệu chưa cập nhật đủ"* + đính kèm 1 ảnh chụp màn hình → Bấm "Lưu phản hồi" | Modal đóng lại, hiện thông báo thành công. Mở SQLite `data/feedback.db` / file `data/feedback.json` kiểm tra: có trường `rating: "negative"`, trường `feedback_reason`, đường dẫn file ảnh đính kèm, và `agent_trace` chi tiết. |
-| 7 | Mở file `data/feedback.db` (bằng sqlite3) hoặc `data/feedback.json` | Đảm bảo định dạng chuẩn UTF-8, các trường thông tin rõ ràng để AI / Kỹ sư đọc hiểu ngay ngữ cảnh để sửa lỗi. |
-
----
-
-## 4. Tiêu chí Pass / Fail
-
-- **PASS**:
-  - `pytest -q` pass 100% không có lỗi.
-  - Cả 7 bước kiểm thử thủ công trên trình duyệt đều hoạt động chính xác như mô tả.
-  - SQLite `data/feedback.db` và file `data/feedback.json` lưu trữ đầy đủ, an toàn, không bị ghi đè hay mất dữ liệu khi lưu nhiều lần.
-- **FAIL**:
-  - Trợ lý vẫn trả lời 6 camera khi hỏi tổng số camera.
-  - Bấm Like/Dislike không lưu được vào SQLite/JSON hoặc thiếu `agent_trace`.
-  - Câu trả lời vẫn hiển thị kiểu giật cục một lần thay vì stream.
+| STT | Thao tác trên giao diện Web | Kỳ vọng quan sát được |
+|:---:|------------------------------|------------------------|
+| 1 | Mở web chat (`http://localhost:8080`), gửi: *"Chào bạn, tôi tên là Tuấn, tôi phụ trách giám sát an ninh ca đêm"* | Trợ lý phản hồi chào lịch sự, ghi nhận danh tính. Server trích xuất và lưu fact vào PostgreSQL (`user_memories`). |
+| 2 | Gửi câu hỏi tiếp theo trong cùng phiên: *"Khu vực tôi phụ trách là gì?"* | Trợ lý nhớ và trả lời: *"Bạn phụ trách giám sát an ninh ca đêm"*. (Kiểm tra Short-Term & Long-Term memory hoạt động). |
+| 3 | Mở tab ẩn danh mới hoặc bấm tạo phiên mới với cùng `user_id`: *"Tôi là ai?"* | Trợ lý vẫn trả lời đúng: *"Bạn là Tuấn, phụ trách an ninh ca đêm"* (chứng minh Long-Term memory đã được lưu bền vững vào PostgreSQL và nạp lại thành công). |
+| 4 | Trò chuyện liên tục qua hơn 10 câu hỏi nghiệp vụ | Trợ lý phản hồi nhanh, không bị lag hoặc đơ do tràn context; các chỉ dẫn quy tắc an toàn VMS vẫn được tuân thủ nghiêm ngặt (chứng minh Sliding Window & Instruction Re-injection hoạt động tốt). |
+| 5 | Gửi câu hỏi thống kê: *"Hôm nay có bao nhiêu lượt xe vào KCN?"* | Trợ lý truy vấn SQL và trả về số liệu chính xác kèm biểu đồ. Nếu bảng dữ liệu dài, kết quả được nén súc tích trước khi tổng hợp câu trả lời. |
+| 6 | Gửi lại ngay lập tức câu hỏi y hệt: *"Hôm nay có bao nhiêu lượt xe vào KCN?"* | Trợ lý trả về kết quả gần như ngay lập tức (< 50ms) do TTL Cache Hit, không thấy log query SQL hay gọi lại LLM trên console. |
+| 7 | Tạm dừng database PostgreSQL hoặc đổi cấu hình `DB_HOST=invalid` rồi gửi câu hỏi chat | Ứng dụng vẫn hoạt động bình thường, ghi nhận log warning nhẹ và tự động chuyển sang in-memory fallback mà không báo lỗi 500 ra giao diện. |

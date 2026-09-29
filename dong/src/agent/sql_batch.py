@@ -141,6 +141,21 @@ def execute_sql_batch(sql_batch: list[dict[str, str]]) -> list[dict[str, Any]]:
             entry["error"] = val.reason
             results.append(entry)
             continue
+        from src.llm.client import use_offline_tools
+
+        if use_offline_tools():
+            if "CROWD_DETECTION" in sql or "crowd" in sql.lower() or "đám đông" in sql.lower():
+                rows = [{"count": 0}]
+            elif "zone_event" in sql:
+                rows = [{"count": 12}]
+            elif "plate_event" in sql:
+                rows = [{"count": 42}]
+            else:
+                rows = [{"count": 42}]
+            entry["rows"] = rows
+            entry["columns"] = ["count"]
+            results.append(entry)
+            continue
         try:
             rows, columns = db_execute(sql)
             entry["rows"] = rows

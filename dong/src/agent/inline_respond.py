@@ -35,15 +35,25 @@ def get_system_time_vietnam() -> str:
     return f"{day_name}, ngày {now.strftime('%d/%m/%Y, %H:%M:%S')} (Giờ Việt Nam)"
 
 
-def generate_inline_response(question: str, intent: str = "chat") -> str:
+def generate_inline_response(
+    question: str,
+    intent: str = "chat",
+    memories: list[str] | None = None,
+) -> str:
     """Tạo phản hồi thân thiện, trả lời ngắn gọn và chủ động gợi ý về VMS KCN Hưng Phú."""
     q_clean = (question or "").strip()
     current_time = get_system_time_vietnam()
+    mem_lines = "\n".join(f"- {m}" for m in (memories or []))
 
     # 1. Chế độ offline hoặc fallback
     if use_offline_tools():
         q_low = q_clean.lower()
         if intent == "chat":
+            if memories and any(k in q_low for k in ("tôi là ai", "tên tôi", "tôi tên", "biết gì về tôi", "vai trò của tôi")):
+                return (
+                    f"Theo thông tin tôi ghi nhận về bạn:\n{mem_lines}\n"
+                    "Tôi có thể hỗ trợ gì cho bạn về hệ thống camera và dữ liệu KCN Hưng Phú hôm nay?"
+                )
             return (
                 "Chào bạn! Tôi là trợ lý AI giám sát camera VMS KCN Hưng Phú. "
                 "Tôi có thể hỗ trợ bạn tra cứu lượt xe ra/vào hôm nay, kiểm tra các sự kiện an ninh "
@@ -67,6 +77,8 @@ def generate_inline_response(question: str, intent: str = "chat") -> str:
     try:
         system_prompt = registry().render("respond_inline", current_time=current_time)
         user_prompt = f"Ý định người dùng: {intent}\nCâu hỏi: {q_clean}"
+        if mem_lines:
+            user_prompt = f"Thông tin đã biết về user:\n{mem_lines}\n\n{user_prompt}"
         if settings.llm_backend == "self_hosted" or "qwen" in settings.model_name.lower():
             user_prompt = f"/nothink\n{user_prompt}"
 

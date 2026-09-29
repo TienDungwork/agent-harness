@@ -396,6 +396,16 @@ CHAT_GREETING_KEYWORDS = frozenset(
         "giup gi",
         "hỗ trợ gì",
         "ho tro gi",
+        "tôi là ai",
+        "toi la ai",
+        "tôi tên gì",
+        "tôi tên là gì",
+        "toi ten gi",
+        "toi ten la gi",
+        "tôi phụ trách gì",
+        "toi phu trach gi",
+        "bạn biết gì về tôi",
+        "ban biet gi ve toi",
     }
 )
 

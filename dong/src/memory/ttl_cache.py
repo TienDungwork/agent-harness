@@ -1,12 +1,20 @@
-"""TTL Cache for responses — 300s memory cache before graph execution."""
+"""TTL Cache for responses — 300s in-memory cache before graph execution (v9).
 
+Hệ thống cache phản hồi siêu tốc (<5ms) bảo vệ tài nguyên LLM & DB:
+1. make_cache_key(question, route): Chuẩn hóa câu hỏi (strip, lowercase) và băm SHA-256.
+2. get_ttl_cached(key): Truy xuất cache thread-safe; tự động loại bỏ entry khi hết hạn TTL.
+3. set_ttl_cached(key, data, ttl=300): Lưu phản hồi vào cache thread-safe với thời gian sống (TTL).
+4. clear_ttl_cache(): Xóa toàn bộ entry cache phục vụ kiểm thử và làm mới hệ thống.
+5. cleanup_expired(): Chủ động quét và dọn sạch các entry đã hết hạn.
+6. get_cache_size(): Kiểm tra số lượng entry hiện hành trong cache.
+"""
 from __future__ import annotations
 
 import hashlib
 import logging
 import threading
 import time
-from typing import Any
+from typing import Any, Optional
 
 logger = logging.getLogger(__name__)
 
@@ -44,7 +52,7 @@ def make_cache_key(question: str, route: str = "") -> str:
     return q_hash
 
 
-def get_ttl_cached(key: str) -> dict | None:
+def get_ttl_cached(key: str) -> Optional[dict]:
     """Retrieve cached payload if valid and within TTL duration.
 
     Respects settings.memory_ttl_seconds (default 300) and settings.cache_enabled / ttl_cache_enabled.
@@ -104,5 +112,29 @@ def set_ttl_cached(key: str, data: dict, ttl: int | None = None) -> None:
 
 def clear_ttl_cache() -> None:
     """Clear all entries in TTL cache (primarily for testing)."""
+    try:
+        with _ttl_lock:
+            _ttl_cache.clear()
+    except Exception:
+        try:
+            _ttl_cache.clear()
+        except Exception:
+            pass
+
+
+def get_cache_size() -> int:
+    """Trả về số lượng entry hiện có trong cache."""
     with _ttl_lock:
-        _ttl_cache.clear()
+        return len(_ttl_cache)
+
+
+def cleanup_expired() -> int:
+    """Quét và giải phóng các entry đã hết hạn, trả về số lượng entry đã xóa."""
+    now = time.time()
+    removed = 0
+    with _ttl_lock:
+        for k, entry in list(_ttl_cache.items()):
+            if not isinstance(entry, dict) or now >= entry.get("expire_at", 0):
+                _ttl_cache.pop(k, None)
+                removed += 1
+    return removed

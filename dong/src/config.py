@@ -57,6 +57,9 @@ class Settings(BaseSettings):
     memory_enabled: bool = Field(default=True, alias="MEMORY_ENABLED")
     memory_short_term_enabled: bool = Field(default=True, alias="MEMORY_SHORT_TERM_ENABLED")
     memory_long_term_enabled: bool = Field(default=True, alias="MEMORY_LONG_TERM_ENABLED")
+    memory_max_messages: int = Field(default=20, alias="MEMORY_MAX_MESSAGES")
+    memory_compact_threshold: float = Field(default=0.40, alias="MEMORY_COMPACT_THRESHOLD")
+    memory_context_window_tokens: int = Field(default=4000, alias="MEMORY_CONTEXT_WINDOW_TOKENS")
 
     # ── Database Nguồn Thống Kê (Postgres, Read-Only) ─────────────────────────
     db_host: str = Field(default="", alias="DB_HOST")

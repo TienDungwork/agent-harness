@@ -711,6 +711,18 @@ html, body {
   }
 }
 
+@media (max-width: 640px) {
+  .topbar {
+    padding: 0.75rem 1rem;
+  }
+  .btn-reset-memory span {
+    display: none;
+  }
+  .memory-badge #memory-status-text {
+    display: none;
+  }
+}
+
 .topbar {
   display: flex;
   justify-content: space-between;
@@ -754,6 +766,94 @@ html, body {
 .chat-title .sub-title {
   font-size: 0.75rem;
   color: var(--text-muted);
+}
+
+.topbar-right {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+}
+
+.memory-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: var(--text-secondary);
+  background: var(--bg-surface);
+  padding: 0.3rem 0.75rem;
+  border-radius: var(--radius-pill);
+  border: 1px solid var(--border-light);
+  box-shadow: var(--shadow-sm);
+  transition: all 0.2s ease;
+  user-select: none;
+}
+
+.memory-badge:hover {
+  border-color: var(--accent-amber);
+  color: var(--text-main);
+}
+
+.memory-badge-icon {
+  font-size: 0.85rem;
+  line-height: 1;
+}
+
+.btn-reset-memory {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-family: inherit;
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: var(--text-secondary);
+  background: var(--bg-surface);
+  border: 1px solid var(--border-light);
+  padding: 0.3rem 0.75rem;
+  border-radius: var(--radius-pill);
+  cursor: pointer;
+  box-shadow: var(--shadow-sm);
+  transition: all 0.2s ease;
+  user-select: none;
+}
+
+.btn-reset-memory:hover {
+  background: var(--bg-surface-hover);
+  border-color: var(--accent-warm);
+  color: var(--accent-warm);
+  transform: translateY(-1px);
+  box-shadow: var(--shadow-md);
+}
+
+.btn-reset-memory:active {
+  transform: translateY(0);
+}
+
+.btn-reset-memory svg {
+  transition: transform 0.25s ease;
+}
+
+.btn-reset-memory:hover svg {
+  transform: rotate(-45deg);
+}
+
+.badge-cache-hit {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: #0d9488;
+  background: rgba(13, 148, 136, 0.1);
+  border: 1px solid rgba(13, 148, 136, 0.28);
+  padding: 0.15rem 0.55rem;
+  border-radius: var(--radius-pill);
+  margin-bottom: 0.5rem;
+  width: fit-content;
+  user-select: none;
+  animation: fadeIn 0.2s ease;
 }
 
 .status-badge {
