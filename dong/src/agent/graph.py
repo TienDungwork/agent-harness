@@ -25,7 +25,7 @@ logger = logging.getLogger(__name__)
 from pydantic import BaseModel
 from langgraph.graph import StateGraph, START, END
 from langgraph.graph.message import add_messages
-from langchain_core.messages import HumanMessage
+from langchain_core.messages import AIMessage, HumanMessage
 
 from src.config import settings
 from src.memory.shortterm import get_checkpointer
@@ -292,6 +292,46 @@ def recall_node(state: AgentState) -> dict:
         )],
     }
 
+
+# Alias node naming chuẩn hóa theo specs/implementation-plan.md
+recall_memory_node = recall_node
+
+
+def extract_memory_node(state: AgentState) -> dict:
+    """Node trích xuất fact từ question và answer của state hiện tại và lưu vào PostgreSQL."""
+    from src.config import settings
+    from src.memory.extract import extract_and_store_memory, memory_detail_includes_answer
+
+    if not settings.long_term_memory_enabled:
+        return {"extracted_memories": []}
+
+    uid = state.get("user_id") or "default"
+    sid = state.get("session_id") or "default"
+    q = state.get("question") or state.get("original_question") or ""
+    res = state.get("result")
+    ans = res.answer if res else (state.get("answer") or "")
+    detail = res.detail if res else (state.get("respond_mode") or state.get("intent") or "")
+    include_answer = memory_detail_includes_answer(detail)
+
+    try:
+        extracted = extract_and_store_memory(
+            uid, q, ans if include_answer else "", detail=detail, include_answer=include_answer
+        )
+    except Exception as exc:
+        logger.warning("extract_memory_node failed, degrading safely: %s", exc)
+        extracted = []
+
+    return {
+        "extracted_memories": extracted,
+        "events": [node_event(
+            "store_extract",
+            input={"user_id": uid, "question": q, "include_answer": include_answer},
+            output={"extracted_memories": extracted},
+            meta={"user_id": uid, "session_id": sid, "extracted_count": len(extracted)},
+        )],
+    }
+
+
 def run_store_extract(
     user_id: str,
     session_id: str,
@@ -389,10 +429,30 @@ def rewrite_node(state: AgentState) -> dict:
         rewritten = rewrite_question(q)
     skip_llm = is_chat or not _needs_rewrite_llm(q.strip())
     llm_used = not skip_llm
+
+    # Quản lý ngữ cảnh sliding_window & nén chủ động 40% cho lịch sử hội thoại
+    from src.memory.context import (
+        sliding_window,
+        should_compact,
+        create_compaction_diff,
+    )
+    raw_messages = list(state.get("messages") or [])
+    max_msgs = getattr(settings, "memory_max_messages", 20)
+    if len(raw_messages) > max_msgs:
+        raw_messages = sliding_window(raw_messages, max_messages=max_msgs)
+
+    diff_messages: list[Any] = []
+    window_tokens = getattr(settings, "memory_context_window_tokens", 4000)
+    compact_threshold = getattr(settings, "memory_compact_threshold", 0.40)
+    if raw_messages and should_compact(raw_messages, window_tokens=window_tokens, threshold=compact_threshold):
+        compaction_diff = create_compaction_diff(raw_messages, keep_recent=6)
+        if compaction_diff and "messages" in compaction_diff:
+            diff_messages = compaction_diff["messages"]
+
     return {
         "rewritten": rewritten,
         "question": rewritten.text,
-        "messages": [HumanMessage(q)],
+        "messages": diff_messages + [HumanMessage(q)],
         "events": [node_event(
             "rewrite",
             input={"question": q},
@@ -461,9 +521,15 @@ def respond_inline_node(state: AgentState) -> dict:
     user_id = state.get("user_id") or "default"
     session_id = state.get("session_id") or "default"
 
-    if intent in ("chat", "out_of_scope"):
+    memories = state.get("recalled_memories") or []
+    q_low = q_text.lower()
+    is_identity = any(k in q_low for k in ("tôi là ai", "tên tôi", "tôi tên", "biết gì về tôi", "vai trò của tôi", "tôi phụ trách gì"))
+
+    if is_identity and memories:
+        ans = generate_inline_response(q_text, intent=intent, memories=memories)
+    elif intent in ("chat", "out_of_scope"):
         if not ans:
-            ans = generate_inline_response(q_text, intent=intent)
+            ans = generate_inline_response(q_text, intent=intent, memories=memories)
     elif intent == "clarify" and not ans:
         ans = "Bạn có thể nói rõ hơn yêu cầu của mình được không?"
 
@@ -845,11 +911,22 @@ def _synthesize_orchestrator_answer(question: str, step_results: list[dict], sta
     if not evidence.strip():
         return "Không có kết quả điều phối.", "empty"
 
+    from src.memory.context import compress_tool_result
+    if len(evidence) > 300 * 4:
+        evidence = compress_tool_result(evidence, query=question, max_tokens=300)
+
     if not use_offline_tools():
         try:
+            safety_instruction = (
+                "Tuân thủ nghiêm ngặt quy tắc an toàn VMS KCN Hưng Phú: "
+                "Không suy diễn số liệu ngoài dữ liệu truy vấn."
+            )
+            sys_prompt = registry().render("respond_stat")
+            sys_prompt = f"{sys_prompt}\n\n[Nhắc lại chỉ dẫn]: {safety_instruction}"
+
             with trace_substep("respond_stat", kind="agent", input={"multi_hop": True}):
                 raw = invoke_text(
-                    registry().render("respond_stat"),
+                    sys_prompt,
                     (
                         f"{_memory_context_block(state, for_stat=True, question=question)}"
                         f"Câu hỏi gốc: {question}\n"
@@ -991,6 +1068,8 @@ def retrieve_docs_node(state: AgentState) -> dict:
 
 def answer_from_docs_node(state: AgentState) -> dict:
     from src.knowledge import answer_from_docs
+    from src.memory.context import compress_tool_result
+
     q = state.get("question", "")
     user_id = state.get("user_id") or "default"
     session_id = state.get("session_id") or "default"
@@ -998,8 +1077,15 @@ def answer_from_docs_node(state: AgentState) -> dict:
     card_ids = [str(c.get("id")) for c in cards if isinstance(c, dict) and c.get("id")]
     docs_ans = answer_from_docs(q, cards)
     dumped = docs_ans.model_dump()
+    ans = docs_ans.answer_vi
+
+    # Nén câu trả lời docs hoặc cards nếu vượt ngưỡng 300 tokens
+    if len(ans) > 300 * 4:
+        ans = compress_tool_result(ans, query=q, max_tokens=300)
+        dumped["answer_vi"] = ans
+
     return {
-        "answer": docs_ans.answer_vi,
+        "answer": ans,
         "respond_mode": "docs",
         "docs_answer": dumped,
         "events": [node_event(
@@ -1195,7 +1281,7 @@ def _memory_context_block(state: AgentState, *, for_stat: bool = False, question
             "Chỉ dùng bối cảnh người dùng khi liên quan trực tiếp; "
             "KHÔNG bổ sung số liệu ngoài dữ liệu truy vấn.\n\n"
         )
-    return f"Thông tin đã biết về người dùng:\n{lines}\n\n{stat_rule}"
+    return f"Thông tin đã biết về user:\n{lines}\n\n{stat_rule}"
 
 
 def respond_node(state: AgentState) -> dict:
@@ -1387,12 +1473,25 @@ def respond_node(state: AgentState) -> dict:
             template_ans = f"Kết quả ({len(rows)} dòng):\n" + "\n".join(lines)
             ans = template_ans
 
+            # Nén kết quả bảng SQL nếu vượt ngưỡng 300 tokens
+            from src.memory.context import compress_tool_result
+            if len(template_ans) > 300 * 4:
+                template_ans = compress_tool_result(template_ans, query=q, max_tokens=300)
+                ans = template_ans
+
             if not use_offline_tools():
                 llm_used = True
                 try:
+                    safety_instruction = (
+                        "Tuân thủ nghiêm ngặt quy tắc an toàn VMS KCN Hưng Phú: "
+                        "Không suy diễn số liệu ngoài dữ liệu truy vấn."
+                    )
+                    sys_prompt = registry().render("respond_stat")
+                    sys_prompt = f"{sys_prompt}\n\n[Nhắc lại chỉ dẫn]: {safety_instruction}"
+
                     with trace_substep("respond_stat", kind="agent", input={"row_count": len(rows)}):
                         raw = invoke_text(
-                            registry().render("respond_stat"),
+                            sys_prompt,
                             (
                                 f"{_memory_context_block(state, for_stat=True, question=q)}"
                                 f"Câu hỏi: {q}\nDữ liệu:\n{template_ans}"

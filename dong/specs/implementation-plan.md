@@ -1,6 +1,6 @@
-# Implementation Plan — agent dong v8
+# Implementation Plan — agent dong v9: Unified Memory & Context Engineering System (Postgres-backed)
 
-**Trạng thái:** Spec Approved — Sẵn sàng triển khai tuần tự.  
+**Trạng thái:** 100% Hoàn thành — Toàn bộ 7 Phase của agent dong v9 đã được triển khai, kiểm thử và nghiệm thu thành công.  
 **Nguồn:** `specs/product-spec.md`  
 **Quy tắc:** Thực hiện tuần tự từng dòng `[ ]` một, kiểm tra kỹ lưỡng, sau đó đổi thành `[x]` và cập nhật `specs/change-log.md`. Không implement hàng loạt nhiều bước cùng lúc. Không viết code khi chưa có yêu cầu.
 
@@ -10,158 +10,154 @@
 
 | Phase | Tên Phase | Mục tiêu chính |
 |:-----:|-----------|----------------|
-| **Phase 1** | Project setup | Xác nhận baseline test xanh 100%, cấu hình thư mục lưu trữ feedback |
-| **Phase 2** | Core UI | Cụm nút Like/Dislike, modal góp ý kèm upload ảnh, chuẩn bị khung stream |
-| **Phase 3** | Core backend or data logic | Sửa lỗi 10 camera Master Registry, API `POST /api/feedback`, SSE chunk generator |
-| **Phase 4** | Connect UI to data | Ghép nút feedback với API, ghép SSE delta stream vào bubble chat thời gian thực |
-| **Phase 5** | Validation and error states | Validate payload feedback (size ảnh, định dạng), xử lý lỗi stream & kết nối |
-| **Phase 6** | Local run instructions | Hướng dẫn chạy Docker, kiểm tra file feedback JSON và ảnh đính kèm |
-| **Phase 7** | Demo & Verification | Kiểm thử toàn diện 7 kịch bản thực tế trên browser và chạy full test suite |
+| **Phase 1** | Project setup | Xác nhận baseline test suite (pass 100%), thiết kế schema PostgreSQL `user_memories` và module `db.py` |
+| **Phase 2** | Core UI | Cập nhật giao diện chat: hiển thị huy hiệu thông tin đã nhớ (Memory Badge), trạng thái Cache Hit, và nút Reset Memory |
+| **Phase 3** | Core backend or data logic | Xây dựng các module cốt lõi: `longterm.py` (Postgres persistence), `context.py` (Sliding Window, 40% rule, Tool compression), `shortterm.py`, `ttl_cache.py`, `extract.py` |
+| **Phase 4** | Connect UI to data | Tích hợp memory và context vào luồng LangGraph (`graph.py`), kết nối API reset memory và truyền metadata qua SSE stream |
+| **Phase 5** | Validation and error states | Kiểm thử các trạng thái biên: fallback in-memory khi DB offline, cô lập `user_id`, hết hạn TTL cache và nén ngữ cảnh |
+| **Phase 6** | Local run instructions | Cập nhật file `.env.example`, tài liệu `README.md` với các câu lệnh chạy local và chạy unit test suite |
+| **Phase 7** | ngrok demo setup | Hướng dẫn expose app ra internet bằng ngrok và kịch bản demo kiểm chứng độ bền vững của Memory |
 
 ---
 
 ## Phase 1 — Project setup
 
-- [x] Chạy và xác nhận toàn bộ test suite `pytest -q` hiện tại đạt 100% pass (≥613 tests).
-- [x] Tạo cấu trúc thư mục lưu trữ phản hồi: `data/feedback/attachments/`.
-- [x] Khởi tạo file `data/feedback.json` với mảng rỗng `[]` (nếu chưa tồn tại).
-- [x] Cập nhật `.gitignore` để bỏ qua các file ảnh người dùng tải lên trong `data/feedback/attachments/`.
-- [x] Cập nhật `docker-compose.yml` để mount thư mục `data/` từ host vào container (`- ./data:/app/data`), đảm bảo feedback không bị mất khi restart container.
+- [x] Chạy và xác nhận baseline test suite `PYTHONPATH=. pytest -q` hiện tại đạt 100% pass (≥613 tests).
+- [x] Thiết kế module `src/memory/db.py`: quản lý kết nối PostgreSQL an toàn từ `src/config.py` (`DB_HOST`, `DB_PORT`, `DB_USER`, `DB_PASSWORD`, `DB_NAME_ITS`).
+- [x] Viết hàm `init_memory_db()` tự động tạo bảng `user_memories` và index trong PostgreSQL nếu chưa tồn tại:
+  ```sql
+  CREATE TABLE IF NOT EXISTS user_memories (
+      id SERIAL PRIMARY KEY,
+      user_id VARCHAR(64) NOT NULL,
+      fact TEXT NOT NULL,
+      category VARCHAR(32) DEFAULT 'general',
+      created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+      updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+  );
+  CREATE INDEX IF NOT EXISTS idx_user_memories_uid ON user_memories(user_id);
+  CREATE INDEX IF NOT EXISTS idx_user_memories_uid_created ON user_memories(user_id, created_at DESC);
+  ```
+- [x] Đảm bảo cơ chế an toàn: Nếu `DB_HOST` rỗng hoặc chưa kết nối được DB, `init_memory_db()` chỉ log warning, không chặn luồng khởi động app.
 
-**Done khi:** Baseline test xanh, hạ tầng thư mục lưu trữ `data/feedback` đã sẵn sàng trên cả máy host và Docker container.
+**Done khi:** Baseline test xanh 100%, module `src/memory/db.py` sẵn sàng khởi tạo bảng PostgreSQL với cơ chế an toàn không crash.
 
 ---
 
 ## Phase 2 — Core UI
 
-- [x] **Thanh hành động đánh giá (Message Action Bar)**:
-  - Thêm cụm nút icon 👍 (Hài lòng) và 👎 (Chưa hài lòng) bên dưới mỗi bubble câu trả lời của trợ lý AI trong `frontend/index.html` và `frontend/style.css`.
-  - Thiết kế hover effect mượt mà, hỗ trợ trạng thái đã chọn (active state).
-- [x] **Hộp thoại góp ý (Feedback Modal)**:
-  - Xây dựng modal HTML/CSS cho trường hợp Dislike (👎):
-    - Tiêu đề modal: "Góp ý câu trả lời của trợ lý AI".
-    - Textarea nhập lý do đánh giá sai / chưa hài lòng (placeholder: *"Hãy mô tả chi tiết điểm chưa đúng..."*).
-    - Khu vực đính kèm ảnh: Nút chọn file ảnh (`.png`, `.jpg`, `.jpeg`) và vùng hỗ trợ paste trực tiếp từ clipboard.
-    - Khung preview ảnh thu nhỏ kèm nút xóa ảnh (X) trước khi gửi.
-    - Hai nút thao tác: "Hủy bỏ" và "Xác nhận gửi phản hồi".
-- [x] **Khung hiển thị tin nhắn dạng Stream**:
-  - Chuẩn bị cơ chế DOM trong `frontend/app.js` để bubble chat có thể nhận và nối từng ký tự/từ ngữ liên tục mà không gây giật lag hoặc render lại các thành phần khác.
-- [x] **Toast thông báo**:
-  - Bổ sung toast thông báo trạng thái: "Cảm ơn bạn đã gửi phản hồi!" và "Gửi phản hồi thất bại, vui lòng thử lại!".
+- [x] **Memory & Context Status Bar (Thanh trạng thái bộ nhớ)**:
+  - Thêm khu vực hiển thị thông tin người dùng thu nhỏ trên giao diện chat trong `frontend/index.html` và `frontend/style.css` (ví dụ: hiển thị tên hoặc số lượng facts đã nhớ của phiên hiện tại).
+- [x] **Nút Đặt lại bộ nhớ (Reset Memory)**:
+  - Bổ sung nút icon "Làm mới ngữ cảnh / Xóa bộ nhớ" trên thanh công cụ chat để người dùng có thể chủ động reset facts cá nhân khi cần bắt đầu phiên làm việc mới.
+- [x] **Huy hiệu Cache Hit**:
+  - Chuẩn bị thẻ thông báo nhỏ (badge) bên cạnh bubble câu trả lời khi kết quả được trả về từ TTL Cache (giúp người dùng và kỹ sư nhận biết phản hồi tức thì từ cache).
 
-**Done khi:** Giao diện hoàn chỉnh nút Like/Dislike, Modal góp ý có khung upload/paste ảnh xem trước và khung chat sẵn sàng nhận stream.
+**Done khi:** Giao diện frontend có đầy đủ vị trí hiển thị memory status, nút reset memory và huy hiệu cache hit.
 
 ---
 
 ## Phase 3 — Core backend or data logic
 
-- [x] **Chuẩn hóa dữ liệu 10 Camera (Master Registry)**:
-  - Cập nhật prompt Text-to-SQL `resource/prompts/sql_agent/v1.yaml`: Bổ sung quy tắc khi người dùng hỏi tổng số camera hoặc danh sách camera của hệ thống thì không được chỉ đếm bảng `plate_event` (vì plate_event chỉ có 6 camera giao thông).
-  - Hoàn thiện logic fast-path trong `src/agent/graph.py` (hoặc `src/agent/pre_sql.py`) tra cứu từ `resource/db/camera_registry.yaml` để trả về chính xác **10 camera ONLINE** thuộc cả 3 phân hệ (6 phương tiện, 2 vùng cấm, 2 cháy khói).
-- [x] **Schema & API Human Feedback**:
-  - Định nghĩa Pydantic model `FeedbackRequest` trong `src/llm/schemas.py`:
-    - `session_id`: str, `user_id`: str, `question`: str, `answer`: str
-    - `rating`: Literal["positive", "negative"]
-    - `feedback_reason`: Optional[str]
-    - `image_base64`: Optional[str]
-    - `agent_trace`: Optional[dict[str, Any]]
-  - Xây dựng helper lưu trữ `save_feedback_record(...)` trong backend:
-    - Lưu file ảnh đính kèm (decode base64) vào `data/feedback/attachments/{id}.png`.
-    - Lưu bản ghi vào cơ sở dữ liệu SQLite `data/feedback.db` (bảng `feedback`), tự động migrate từ `data/feedback.json` cũ và đồng bộ xuất JSON để tương thích ngược.
-  - Xây dựng endpoint `POST /api/feedback` trong `src/main.py`.
-- [x] **Cơ chế Token / Chunk Response Streaming**:
-  - Cập nhật luồng `run_agent_stream` trong `src/agent/graph.py` và generator trong `src/main.py`:
-    - Cho phép node phản hồi (`respond`, `respond_inline`, `answer_from_docs`) phát các SSE events dạng `{"node_id": "__answer__", "status": "chunk", "delta": "..."}`.
-    - Phát event kết thúc `{"node_id": "__answer__", "status": "done", "output": "...", "detail": {...}}`.
+- [x] **Long-Term Memory (`src/memory/longterm.py`)**:
+  - Loại bỏ hoàn toàn mã thừa `vector=[0.0]`.
+  - Triển khai `save_to_long_term(user_id, fact, category="general")`: ghi fact vào PostgreSQL.
+  - Triển khai `recall_long_term(user_id, query, k=3)`: truy vấn facts của `user_id` từ PostgreSQL, tính điểm tương đồng từ khóa (token overlap) và trả về top-k fact.
+  - Triển khai `clear_long_term(user_id)`: xóa fact trong PostgreSQL theo `user_id` hoặc xóa toàn bộ.
+  - Triển khai cơ chế Fallback in-memory: tự động lưu và đọc từ RAM (`_FALLBACK_STORE`) khi không có kết nối DB.
+- [x] **Context Engineering Engine (`src/memory/context.py` - theo mẫu `llm-engineer-demo`)**:
+  - `_text_of(m)` và `_role_of(m)`: trích xuất text và role chuẩn từ dict hoặc BaseMessage.
+  - `sliding_window(messages, max_messages=20)`: giữ N message gần nhất, bảo tồn system message gốc.
+  - `estimate_tokens(messages)` & `context_usage(messages, window_tokens)`: đo lường tải context (hỗ trợ tiktoken / 4 ký tự/token).
+  - `should_compact(messages, window_tokens, threshold=0.40)` & `should_compact_route(...)`: kiểm tra điều kiện và tạo conditional edge nén chủ động theo nguyên tắc 40-60%.
+  - `summarize_text(old_messages)` & `summarize_old_messages(messages, keep_recent=6)`: tóm tắt hội thoại cũ thành 3-5 câu mang tiền tố `[Tóm tắt hội thoại trước]: ...`.
+  - `create_compaction_diff(messages, keep_recent=6)`: tạo diff RemoveMessage và SystemMessage nén để persist vào state LangGraph.
+  - `compress_tool_result(raw_result, query, max_tokens=300)`: nén bảng SQL hoặc tài liệu VMS dài trước khi đưa vào context.
+  - `reinject_instructions(messages, instructions)`: tái chèn quy tắc cốt lõi ở cuối prompt chống instruction fade-out (`[Nhắc lại chỉ dẫn]: ...`).
+  - `latest_human_query(messages)` (`_latest_human_query`): quét ngược tìm câu hỏi user/human gần nhất cho tool retrieval / memory recall.
+  - `detect_repetition(messages, window=4)` (`_detect_repetition`): circuit breaker phát hiện và ngắt vòng lặp tool call lặp lại liên tiếp.
+- [x] **Short-Term Checkpointer (`src/memory/shortterm.py`)**:
+  - Triển khai `get_checkpointer()`: cung cấp checkpointer phiên cho LangGraph, hỗ trợ fallback sang `MemorySaver()` trong RAM.
+- [x] **TTL Response Cache (`src/memory/ttl_cache.py`)**:
+  - Triển khai `make_cache_key(question, route)` băm SHA-256 chuẩn hóa.
+  - Triển khai `get_ttl_cached(key)` và `set_ttl_cached(key, data, ttl=300)` thread-safe với `threading.Lock()`.
+  - Triển khai `cleanup_expired()` và `get_cache_size()` dọn dẹp và theo dõi cache.
+- [x] **Fact Extraction (`src/memory/extract.py`)**:
+  - Triển khai `_heuristic_extract(question)` regex tiếng Việt (tên, vai trò, camera phụ trách, lưu ý).
+  - Triển khai `extract_and_store_memory(user_id, question, answer)`: gọi LLM trích xuất fact cuối lượt và lưu vào PostgreSQL.
+  - Triển khai `extract_from_messages(user_id, messages)` quét trực tiếp lịch sử tin nhắn và `memory_detail_includes_answer` lọc số liệu realtime.
 
-**Done khi:** Backend có thể tra cứu đủ 10 camera, API feedback lưu thành công dữ liệu + ảnh, và SSE phát được delta chunks.
+**Done khi:** Toàn bộ 5 module backend trong `src/memory/` hoàn thiện, độc lập, có thể test unit test không phụ thuộc lẫn nhau.
 
 ---
 
 ## Phase 4 — Connect UI to data
 
-- [x] **Kết nối sự kiện Like (👍)**:
-  - Khi click 👍 dưới bubble chat: Lấy `question`, `answer`, `session_id`, `user_id`, `agent_trace` của lượt chat tương ứng → Gửi request `POST /api/feedback` với `rating: "positive"`.
-  - Cập nhật giao diện: Đổi màu nút 👍 sang trạng thái đã like, hiển thị toast cảm ơn ngắn.
-- [x] **Kết nối sự kiện Dislike (👎) & Modal Góp ý**:
-  - Khi click 👎: Mở Feedback Modal, gán ngữ cảnh của tin nhắn tương ứng vào modal state.
-  - Khi người dùng chọn file hoặc dán ảnh: Đọc file sang chuỗi base64 và hiển thị ảnh thumbnail preview.
-  - Khi người dùng nhấn "Xác nhận gửi phản hồi": Gửi `POST /api/feedback` với `rating: "negative"`, kèm `feedback_reason`, `image_base64`, `question`, `answer` và `agent_trace`.
-  - Đóng modal, đổi màu nút 👎 và hiển thị thông báo đã ghi nhận phản hồi.
-- [x] **Kết nối SSE Chunk Stream vào Bubble Chat**:
-  - Trong `frontend/app.js`, lắng nghe event SSE có `node_id: "__answer__"` và `status: "chunk"`:
-    - Nối trực tiếp chuỗi `delta` vào bubble tin nhắn hiện tại theo thời gian thực (hiệu ứng gõ chữ mượt mà).
-  - Khi nhận `status: "done"`: Kết thúc hiệu ứng stream, hiển thị biểu đồ Chart.js (nếu có) và kích hoạt cụm nút Like/Dislike.
+- [x] **Tích hợp vào Luồng Agent Graph (`src/agent/graph.py`)**:
+  - Thêm node `recall_memory_node` ở đầu graph: lấy facts của `user_id` từ PostgreSQL và nạp vào system prompt (`Thông tin đã biết về user:\n- ...`).
+  - Áp dụng `context.sliding_window` và `context.reinject_instructions` trước khi gọi mô hình.
+  - Áp dụng `context.compress_tool_result` nén kết quả bảng SQL hoặc Docs dài trước khi trả về graph state.
+  - Thêm node `extract_memory_node` ở cuối graph: trích xuất thông tin mới và lưu vào PostgreSQL.
+- [x] **Tích hợp TTL Cache vào Router/Orchestrator**:
+  - Kiểm tra TTL Cache trước khi thực thi graph: nếu Cache Hit, trả về ngay câu trả lời kèm cờ `cache_hit: true`.
+  - Nếu Cache Miss: chạy graph, nhận kết quả và lưu vào TTL Cache với hạn 300s.
+- [x] **API Endpoint Quản lý Memory (`src/main.py`)**:
+  - Bổ sung endpoint `DELETE /api/memory?user_id=...` để frontend gọi khi người dùng bấm nút Reset Memory.
+  - Bổ sung endpoint `GET /api/memory?user_id=...` để frontend hiển thị các facts hiện tại của user.
+- [x] **Kết nối Frontend (`frontend/app.js`)**:
+  - Ghép nút Reset Memory gọi API `DELETE /api/memory`.
+  - Hiển thị badge `⚡ Cache Hit` khi payload phản hồi có `cache_hit: true`.
 
-**Done khi:** Người dùng trải nghiệm được câu trả lời gõ chữ dần dần trên UI và bấm Like/Dislike lưu thành công vào file JSON của hệ thống.
+**Done khi:** Giao diện frontend và backend kết nối thông suốt, luồng tương tác thực hiện đầy đủ vòng đời memory.
 
 ---
 
 ## Phase 5 — Validation and error states
 
-- [x] **Validate đầu vào Feedback API (`POST /api/feedback`)**:
-  - Kiểm tra `rating` bắt buộc phải là `"positive"` hoặc `"negative"`.
-  - Kiểm tra giới hạn kích thước ảnh đính kèm (tối đa 5MB) và kiểm tra tính hợp lệ của chuỗi base64.
-  - Xử lý các trường hợp gửi dữ liệu rỗng hoặc sai kiểu, trả về HTTP status code phù hợp (400 / 422).
-- [x] **Xử lý lỗi trên giao diện (Frontend Error Handling)**:
-  - Nếu gửi feedback thất bại (mất mạng / server lỗi): Hiển thị thông báo lỗi rõ ràng trên modal, không làm mất nội dung lý do người dùng vừa nhập.
-  - Chống bấm gửi nhiều lần liên tiếp (disable nút bấm, hiển thị loading spinner khi đang gửi).
-  - Nếu người dùng bấm Dislike nhưng để trống lý do: Vẫn cho phép gửi hoặc hiển thị nhắc nhở nhẹ nhàng.
-- [x] **Xử lý ngắt kết nối Stream SSE**:
-  - Nếu kết nối SSE bị gián đoạn giữa chừng: Hiển thị icon cảnh báo và cho phép người dùng bấm "Thử lại".
-- [x] **Fallback khi thiếu file Master Registry**:
-  - Nếu file `camera_registry.yaml` gặp lỗi cú pháp hoặc bị thiếu: Hệ thống tự động fallback truy vấn SQL union an toàn mà không làm crash server.
+- [x] **Kiểm thử Graceful Degradation (DB Offline)**:
+  - Giả lập ngắt kết nối PostgreSQL (đổi `DB_HOST=invalid`): kiểm tra toàn bộ ứng dụng vẫn phản hồi bình thường nhờ fallback in-memory, log warning nhẹ, không trả về lỗi HTTP 500.
+- [x] **Kiểm thử Cô lập dữ liệu (User Isolation)**:
+  - Tạo 2 phiên chat với 2 `user_id` khác nhau: xác nhận thông tin của User A không bao giờ xuất hiện trong context của User B.
+- [x] **Kiểm thử Ngưỡng nén 40% & Tool Compression**:
+  - Kiểm tra khi ngữ cảnh vượt 40% window, hệ thống tự động sinh `[Tóm tắt hội thoại trước]: ...`.
+  - Kiểm tra bảng SQL dài trên 300 tokens được nén cô đọng trước khi sinh câu trả lời.
+- [x] **Kiểm thử TTL Cache Expiration**:
+  - Kiểm tra câu hỏi thứ 2 trong vòng 300s trả về ngay lập tức (< 5ms); sau 300s tự động hết hạn và gọi lại pipeline thông thường.
 
-**Done khi:** Toàn bộ các trường hợp dữ liệu xấu, file ảnh quá dung lượng, mất kết nối mạng hoặc lỗi server đều được kiểm soát và thông báo thân thiện.
+**Done khi:** Toàn bộ các trạng thái biên, lỗi mất kết nối và logic bảo mật dữ liệu được kiểm thử chặt chẽ, không có lỗi tiềm ẩn.
 
 ---
 
 ## Phase 6 — Local run instructions
 
-- [x] Cập nhật tài liệu hướng dẫn chạy trong `README.md`:
-  - Khởi động hệ thống bằng Docker Compose:
-    ```bash
-    docker compose up -d
+- [x] Cập nhật file `.env.example`:
+  - Khai báo đầy đủ các biến cấu hình cho Memory:
+    ```env
+    # ── Memory & Context Engineering (v9) ───────────────────────────────────
+    MEMORY_ENABLED=true
+    MEMORY_SHORT_TERM_ENABLED=true
+    MEMORY_LONG_TERM_ENABLED=true
+    MEMORY_TTL_SECONDS=300
+    MEMORY_MAX_MESSAGES=20
+    MEMORY_COMPACT_THRESHOLD=0.40
     ```
-  - Hướng dẫn xem dữ liệu feedback được lưu trữ:
+- [x] Cập nhật file `README.md`:
+  - Thêm tài liệu hướng dẫn chi tiết các lệnh chạy local trên máy (không dùng Docker và dùng Docker).
+  - Cung cấp danh sách các lệnh chạy unit test cho gói Memory:
     ```bash
-    # Xem danh sách các phản hồi người dùng đã ghi lại
-    cat data/feedback.json | jq .
-    
-    # Xem danh sách ảnh chụp màn hình đính kèm
-    ls -la data/feedback/attachments/
+    PYTHONPATH=. pytest tests/test_product_memory_context.py tests/test_product_memory_cache.py tests/test_product_memory_postgres.py -v
     ```
-  - Hướng dẫn kiểm tra trạng thái camera registry:
-    ```bash
-    cat resource/db/camera_registry.yaml
-    ```
-- [x] Hướng dẫn chạy bộ kiểm thử tự động cho tính năng mới:
-  ```bash
-  PYTHONPATH=. pytest tests/ -k "camera or feedback"
-  ```
 
-**Done khi:** Tài liệu README rõ ràng, dễ dàng thao tác kiểm tra dữ liệu feedback và chạy container cục bộ.
+**Done khi:** Tài liệu hướng dẫn rõ ràng, bất kỳ developer nào cũng có thể tự cài đặt, chạy và test app trên máy cá nhân.
 
----
+## Phase 7 — ngrok demo setup
 
-## Phase 7 — Demo & Verification
+- [x] Hướng dẫn cài đặt và cấu hình ngrok expose ứng dụng an toàn ra internet:
+  - Hướng dẫn cài đặt ngrok trên Windows, macOS, Linux, thiết lập Authtoken và cấu hình mở tunnel ra internet cho cổng dịch vụ (`8000` cho FastAPI backend hoặc `8080` cho Docker frontend).
+  - Cung cấp script tự động chạy ngrok (`scripts/run_ngrok_demo.sh` và `scripts/run_ngrok_demo.bat`) kèm hỗ trợ truyền cổng linh hoạt và xử lý host header rewrite.
+  - Cập nhật tài liệu hướng dẫn vào `README.md` (Mục 6: Expose Internet qua ngrok).
+- [x] Kịch bản demo kiểm chứng độ bền vững của Memory & Context Engineering v9:
+  - Xây dựng tài liệu hướng dẫn kịch bản demo 7 bước tương tác trực tiếp trên web UI theo chuẩn `specs/test-plan.md` mục 3 (Nhận diện danh tính, Short-Term memory, Long-Term persistence qua reload/tab mới, Sliding Window 10+ turns, Tool result compression, TTL Cache hit < 5ms, và Graceful degradation khi DB offline).
+  - Cung cấp script kiểm chứng tự động toàn bộ 7 bước kịch bản demo `scripts/verify_memory_demo.py` để xác minh 100% độ tin cậy của luồng demo trước khi thuyết trình.
 
-- [x] **Chạy toàn bộ test suite tự động**:
-  - Chạy `pytest -q` đảm bảo 100% test pass.
-- [x] **Kịch bản Demo 1: Kiểm tra số lượng camera (10 Cams)**:
-  - Hỏi: *"Hiện có bao nhiêu camera đang hoạt động?"*
-  - Xác nhận câu trả lời: Báo đủ **10 camera đang hoạt động**, liệt kê theo 3 phân hệ (6 phương tiện, 2 vùng cấm, 2 cháy khói).
-- [x] **Kịch bản Demo 2: Kiểm tra danh sách camera**:
-  - Hỏi: *"Kể tên các camera trong hệ thống"*
-  - Xác nhận danh sách có đủ các camera: `CVN_CONG_BOH`, `CVNTT`, `CVN_KHO_TANG2_BOH`, `CVN_P_CAP_PHAT_DONG_PHUC`, `congchinh1`, `congchinh2`, `congvanle1-4`.
-- [x] **Kịch bản Demo 3: Kiểm tra Stream phản hồi**:
-  - Gửi câu hỏi bất kỳ, quan sát câu trả lời xuất hiện dần dần từng chữ (hiệu ứng typewriter) trên bubble chat.
-- [x] **Kịch bản Demo 4: Đánh giá Tốt (Like 👍)**:
-  - Bấm nút 👍 dưới câu trả lời đúng → Nút đổi màu, hiện toast cảm ơn → Mở file `data/feedback.json` kiểm tra bản ghi có `rating: "positive"`.
-- [x] **Kịch bản Demo 5: Đánh giá Xấu (Dislike 👎) kèm lý do và ảnh**:
-  - Bấm nút 👎 → Modal mở ra → Nhập lý do: *"Số liệu cần chi tiết hơn"* → Chọn 1 file ảnh chụp màn hình → Bấm "Xác nhận gửi phản hồi".
-  - Kiểm tra file ảnh được lưu vào `data/feedback/attachments/`.
-  - Mở `data/feedback.json`: Xác nhận bản ghi có `rating: "negative"`, có `feedback_reason`, `attachment_path` và đầy đủ `agent_trace` (I/O, SQL, latencies).
-- [x] Cập nhật kết quả nghiệm thu cuối cùng vào `specs/change-log.md`.
+**Done khi:** Ứng dụng có thể expose an toàn ra internet qua ngrok và kịch bản demo hoạt động hoàn hảo 100%.
 
-**Done khi:** Toàn bộ 5 kịch bản demo và unit test đều pass hoàn hảo trên môi trường Docker.

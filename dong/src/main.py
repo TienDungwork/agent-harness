@@ -70,8 +70,32 @@ FRONTEND_DIR = Path(__file__).resolve().parent.parent / "frontend"
 _SSE_SCHEMA_EXCERPT_MAX = 16000
 
 
+def _is_identity_query(text: str) -> bool:
+    """Kiểm tra câu hỏi danh tính người dùng để không lưu vào TTL cache chung."""
+    low = (text or "").lower()
+    return any(
+        k in low
+        for k in (
+            "tôi là ai",
+            "toi la ai",
+            "tên tôi",
+            "ten toi",
+            "tôi tên",
+            "toi ten",
+            "tôi phụ trách",
+            "toi phu trach",
+            "biết gì về tôi",
+            "biet gi ve toi",
+            "vai trò của tôi",
+            "vai tro cua toi",
+        )
+    )
+
+
 def _lookup_ttl_cache(question: str) -> dict[str, Any] | None:
     """Tra TTL cache theo câu hỏi gốc (hỗ trợ key có route suffix)."""
+    if _is_identity_query(question):
+        return None
     try:
         return get_ttl_cached(make_cache_key(question))
     except Exception as exc:
@@ -306,6 +330,67 @@ def api_get_session_messages(
     return SessionMessagesResponse(messages=messages)
 
 
+# ==============================================================================
+# Memory API (v9)
+# ==============================================================================
+
+
+class MemoryListResponse(BaseModel):
+    status: str = "ok"
+    user_id: str
+    facts: list[str] = Field(default_factory=list, description="Danh sách sự thật/thông tin cá nhân đã nhớ")
+    memories: list[str] = Field(default_factory=list, description="Alias tương thích ngược cho facts")
+    total: int = 0
+
+
+class MemoryDeleteResponse(BaseModel):
+    status: str = "ok"
+    message: str
+    user_id: str
+    deleted: bool = True
+
+
+@app.get("/api/memory", response_model=MemoryListResponse, tags=["memory"])
+def api_get_user_memory(
+    user_id: str = Query(..., min_length=1, description="ID người dùng"),
+    limit: int = Query(100, ge=1, le=500, description="Số lượng facts tối đa cần lấy"),
+) -> MemoryListResponse:
+    """Lấy danh sách facts dài hạn hiện tại của user_id."""
+    uid = (user_id or "").strip()
+    if not uid:
+        raise HTTPException(status_code=400, detail="user_id is required")
+    from src.memory.longterm import recall_long_term
+
+    facts = recall_long_term(user_id=uid, query="", k=limit)
+    return MemoryListResponse(
+        status="ok",
+        user_id=uid,
+        facts=facts,
+        memories=facts,
+        total=len(facts),
+    )
+
+
+@app.delete("/api/memory", response_model=MemoryDeleteResponse, tags=["memory"])
+def api_delete_user_memory(
+    user_id: str = Query(..., min_length=1, description="ID người dùng"),
+) -> MemoryDeleteResponse:
+    """Xóa toàn bộ bộ nhớ dài hạn của user_id khi người dùng bấm Reset Memory."""
+    uid = (user_id or "").strip()
+    if not uid:
+        raise HTTPException(status_code=400, detail="user_id is required")
+    from src.memory.longterm import clear_long_term
+
+    clear_long_term(user_id=uid)
+    return MemoryDeleteResponse(
+        status="ok",
+        message=f"Đã xóa toàn bộ bộ nhớ của người dùng '{uid}'.",
+        user_id=uid,
+        deleted=True,
+    )
+
+
+
 def _extract_sql_from_trace_nodes(nodes: list[dict[str, Any]]) -> str | None:
     """Lấy SQL cuối cùng từ các node generate_sql / validate_sql / execute_sql."""
     for node in reversed(nodes):
@@ -451,6 +536,13 @@ def chat(req: ChatRequest) -> ChatResponse:
                 "agent_detail": cached.get("agent_detail", ""),
                 "cache_hit": True,
             }
+            _persist_session_turn(
+                session_id=req.session_id.strip(),
+                user_id=req.user_id.strip(),
+                question=req.question,
+                answer=cached["answer"],
+                detail=detail_payload,
+            )
             response = ChatResponse(
                 question=cached.get("question", req.question),
                 answer=cached["answer"],
@@ -501,10 +593,13 @@ def chat(req: ChatRequest) -> ChatResponse:
             "agent_detail": out.detail,
         }
         route = out.detail or getattr(out, "intent", "")
-        try:
-            set_ttl_cached(make_cache_key(cache_q, route=route), cache_data)
-        except Exception as exc:
-            logger.warning("Failed to store TTL cache on chat: %s", exc)
+        if not _is_identity_query(question) and not _is_identity_query(cache_q):
+            try:
+                set_ttl_cached(make_cache_key(question, route=route), cache_data, ttl=settings.memory_ttl_seconds)
+                if cache_q and cache_q != question:
+                    set_ttl_cached(make_cache_key(cache_q, route=route), cache_data, ttl=settings.memory_ttl_seconds)
+            except Exception as exc:
+                logger.warning("Failed to store TTL cache on chat: %s", exc)
 
         detail_payload: dict[str, Any] = {
             "tool": query.tool if query else "",
@@ -512,6 +607,14 @@ def chat(req: ChatRequest) -> ChatResponse:
             "row_count": query.row_count if query else 0,
             "agent_detail": out.detail,
         }
+
+        _persist_session_turn(
+            session_id=req.session_id.strip(),
+            user_id=req.user_id.strip(),
+            question=out.question or req.question,
+            answer=out.answer,
+            detail=detail_payload,
+        )
 
         response = ChatResponse(
             question=out.question,
@@ -596,10 +699,13 @@ def ask(req: AskRequest) -> AskResponse:
             "agent_detail": out.detail,
         }
         route = out.detail or getattr(out, "intent", "")
-        try:
-            set_ttl_cached(make_cache_key(cache_q, route=route), cache_data)
-        except Exception as exc:
-            logger.warning("Failed to store TTL cache on ask: %s", exc)
+        if not _is_identity_query(question) and not _is_identity_query(cache_q):
+            try:
+                set_ttl_cached(make_cache_key(question, route=route), cache_data, ttl=settings.memory_ttl_seconds)
+                if cache_q and cache_q != question:
+                    set_ttl_cached(make_cache_key(cache_q, route=route), cache_data, ttl=settings.memory_ttl_seconds)
+            except Exception as exc:
+                logger.warning("Failed to store TTL cache on ask: %s", exc)
 
         response = AskResponse(
             question=out.question,
@@ -782,10 +888,13 @@ def stream_agent(req: ChatRequest) -> StreamingResponse:
                             "agent_detail": out.detail,
                         }
                         route = getattr(out, "detail", "") or getattr(out, "intent", "")
-                        try:
-                            set_ttl_cached(make_cache_key(cache_q, route=route), cache_data)
-                        except Exception as exc:
-                            logger.warning("Failed to store TTL cache on stream: %s", exc)
+                        if not _is_identity_query(question) and not _is_identity_query(cache_q):
+                            try:
+                                set_ttl_cached(make_cache_key(question, route=route), cache_data, ttl=settings.memory_ttl_seconds)
+                                if cache_q and cache_q != question:
+                                    set_ttl_cached(make_cache_key(cache_q, route=route), cache_data, ttl=settings.memory_ttl_seconds)
+                            except Exception as exc:
+                                logger.warning("Failed to store TTL cache on stream: %s", exc)
 
                         detail_payload: dict[str, Any] = {
                             "tool": getattr(query, "tool", "") if query else "",

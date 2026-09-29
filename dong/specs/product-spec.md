@@ -1,186 +1,121 @@
-# Product Spec — agent dong v8
+# Product Spec — agent dong v9: Unified Memory & Context Engineering System (Postgres-backed)
 
-**Trạng thái:** Spec Approved — Sẵn sàng triển khai theo kế hoạch.  
-**Baseline:** v7 đang chạy ổn định (Docker, Text-to-SQL Postgres read-only, Fast Classify, Chart.js & PNG).  
-**v8 Focus:** Chuẩn hóa dữ liệu 10 camera từ AIOC Master Registry, hệ thống Human Feedback (đánh giá tốt/xấu kèm lý do & đính kèm ảnh lưu vào JSON có trace), và phản hồi câu trả lời dạng stream (token/chunk).
+**Trạng thái:** Spec Approved — Sẵn sàng triển khai tuần tự.  
+**Baseline:** v8 đang chạy ổn định (Text-to-SQL Postgres read-only, 10 Camera Registry, Human Feedback, Chunk Streaming SSE).  
+**Triết lý:** Đơn giản, tinh gọn, tập trung tối đa vào MVP theo chuẩn Spec-Driven Development.
 
 ---
 
 ## 1. App Goal
 
-Xây dựng trợ lý ảo tiếng Việt chuyên sâu cho công tác giám sát và vận hành Camera AI tại KCN Hưng Phú, tập trung vào 3 mục tiêu cốt lõi:
-1. **Dữ liệu thiết bị chính xác**: Khắc phục lỗi đếm thiếu camera (chỉ lấy 6 camera giao thông trong bảng `plate_event`), đảm bảo phản ánh đầy đủ **10 camera đang hoạt động (ONLINE)** thuộc cả 3 phân hệ giám sát trên AIOC (`https://aioc.atin.vn/devices`).
-2. **Thu thập phản hồi người dùng (Human Feedback)**: Cung cấp cơ chế đánh giá câu trả lời (Tốt 👍 / Xấu 👎) ngay trên giao diện chat. Khi đánh giá xấu, người dùng có thể nhập lý do và đính kèm ảnh chụp màn hình. Dữ liệu được lưu trữ có cấu trúc vào file JSON kèm toàn bộ vết thực thi của agent (`agent_trace`) để phục vụ gỡ lỗi và cải tiến chất lượng trả lời.
-3. **Trải nghiệm hội thoại thời gian thực (Token Streaming)**: Chuyển đổi phản hồi ở bước cuối cùng từ hiển thị một khối sau khi chờ sang dạng stream từng từ (gõ chữ thời gian thực) qua Server-Sent Events (SSE).
+Xây dựng và chuẩn hóa hệ thống **Memory & Context Engineering** tinh gọn, bền vững cho multi-agent VMS KCN Hưng Phú dựa trên kiến trúc của `llm-engineer-demo`:
+
+1. **Bền vững hóa dữ liệu (PostgreSQL Persistence)**: Lưu trữ các sự thật (facts) dài hạn của người dùng vào bảng `user_memories` trong PostgreSQL, khắc phục tình trạng mất dữ liệu khi restart container.
+2. **Tối ưu hóa ngữ cảnh (Context Engineering)**: Áp dụng kỹ thuật Sliding Window, ước lượng token theo nguyên tắc 40-60% (chủ động tóm tắt trước khi suy giảm chất lượng), nén kết quả tool dài, và tái chèn chỉ dẫn cốt lõi ở cuối prompt chống trôi quy tắc.
+3. **Bộ đệm phản hồi tức thì (TTL Cache)**: Lưu tạm câu trả lời theo mã băm SHA-256 trong 300s, phản hồi tức thì (< 5ms) khi câu hỏi trùng lặp mà không cần gọi lại LLM/SQL.
+4. **An toàn vận hành (Graceful Degradation)**: Tự động chuyển đổi sang in-memory fallback nếu database ngắt kết nối, đảm bảo 100% không phát sinh lỗi làm gián đoạn trải nghiệm người dùng.
 
 ---
 
 ## 2. Target Users
 
-| Đối tượng người dùng | Hành vi & Nhu cầu chính | Giá trị mang lại |
-|----------------------|-------------------------|-------------------|
-| **Nhân viên vận hành KCN / Giám sát viên** | - Đặt câu hỏi tiếng Việt về số lượng camera, lưu lượng xe, cảnh báo an ninh.<br>- Xem câu trả lời xuất hiện dần dần theo luồng stream mượt mà.<br>- Đánh giá Like (👍) khi câu trả lời đúng, Dislike (👎) khi sai và cung cấp lý do + ảnh minh họa trực tiếp. | - Nhận thông tin chính xác, nhanh chóng.<br>- Dễ dàng báo cáo câu trả lời sai lệch mà không cần rời màn hình chat. |
-| **Kỹ sư AI / Reviewer / Nhà phát triển** | - Mở file `data/feedback.json` để kiểm tra các trường hợp người dùng đánh giá xấu.<br>- Đọc hiểu nhanh câu hỏi, câu trả lời, lý do phản hồi, ảnh đính kèm và toàn bộ luồng xử lý (`agent_trace`). | - Nhanh chóng tái hiện lỗi, tinh chỉnh prompt, cải thiện schema catalog hoặc bổ sung vào dataset đánh giá (golden-30). |
+| Đối tượng | Nhu cầu chính | Giá trị nhận được |
+|-----------|---------------|-------------------|
+| **Giám sát viên KCN** | - Chat nhiều lượt liên tục về camera, xe cộ, an ninh.<br>- Trợ lý ghi nhớ tên, phòng ban, ca trực và khu vực phụ trách.<br>- Nhận kết quả tức thì với các câu hỏi lặp lại trong ca trực. | Trải nghiệm thông minh, nhất quán, không bị mất ngữ cảnh khi F5 hoặc bảo trì server. |
+| **Kỹ sư AI / Developer** | - Mã nguồn Memory & Context sạch sẽ, dễ bảo trì, tuân thủ Clean Architecture.<br>- Viết test độc lập không phụ thuộc cứng vào hạ tầng ngoài.<br>- Dễ dàng cấu hình bật/tắt từng lớp memory qua file `.env`. | Hệ thống chuẩn Enterprise, dữ liệu an toàn trên PostgreSQL, dễ mở rộng. |
 
 ---
 
 ## 3. Core User Flow
 
-1. **Khởi tạo & Nhập câu hỏi**:
-   - Người dùng truy cập giao diện web (`http://localhost:8080` hoặc `http://localhost:3001`).
-   - Nhập câu hỏi (ví dụ: *"Hiện có bao nhiêu camera đang hoạt động?"* hoặc *"Hôm nay có bao nhiêu lượt xe ra vào?"*).
-2. **Điều phối xử lý (Agent Execution Flow)**:
-   - Câu hỏi đi qua Guardrail an toàn → `rewrite` → `classify`.
-   - **Nhánh Camera Master Data**: Nếu câu hỏi hỏi về số lượng/danh sách camera trong hệ thống, agent tra cứu nhanh từ AIOC Master Registry (`camera_registry.yaml`) để trả lời chuẩn xác **10 camera ONLINE**.
-   - **Nhánh Thống kê số liệu**: Chuyển sang pipeline Text-to-SQL (`retrieve_schema` → `generate_sql` → `validate_sql` → `execute_sql` → `respond`).
-3. **Phản hồi dạng Stream (Token / Chunk Streaming)**:
-   - Server phát SSE event mang delta ký tự (`status: "chunk"`).
-   - Frontend hiển thị hiệu ứng gõ chữ liên tục, mượt mà vào khung chat.
-   - Kết thúc lượt phản hồi bằng event `status: "done"`.
-4. **Đánh giá Human Feedback**:
-   - Dưới bubble câu trả lời của AI xuất hiện 2 nút đánh giá: 👍 (Tốt) và 👎 (Xấu).
-   - **Kịch bản A (Tốt 👍)**: Người dùng click 👍 → Gửi request ghi nhận feedback tích cực kèm context và trace vào `data/feedback.json` → Hiển thị toast cảm ơn ngắn gọn.
-   - **Kịch bản B (Xấu 👎)**: Người dùng click 👎 → Mở modal phản hồi:
-     - Người dùng nhập lý do (textarea).
-     - Người dùng tải lên hoặc dán (paste) ảnh chụp màn hình minh họa (nếu có).
-     - Người dùng bấm nút **"Xác nhận lưu phản hồi"** (Accept).
-     - Hệ thống lưu toàn bộ dữ liệu gồm: câu hỏi, câu trả lời, lý do, đường dẫn ảnh và `agent_trace` chi tiết vào `data/feedback.json`.
-
 ```text
-                     [ Người dùng nhập câu hỏi ]
-                                  │
-                                  ▼
-                     [ Guardrail & Phân loại ]
-                                  │
-                 ┌────────────────┴────────────────┐
-                 ▼                                 ▼
-      [ Hỏi về Camera hệ thống ]        [ Hỏi sự kiện & số liệu ]
-                 │                                 │
-     Tra cứu Master Registry 10 Cam         Pipeline Text-to-SQL
-                 │                                 │
-                 └────────────────┬────────────────┘
-                                  │
-                                  ▼
-             [ Phản hồi Token Stream qua SSE (gõ chữ) ]
-                                  │
-                                  ▼
-                     [ Đánh giá Human Feedback ]
-                       ┌──────────┴──────────┐
-                       ▼                     ▼
-                  Like (👍)              Dislike (👎)
-                       │                     │
-                       │              Mở Modal nhập:
-                       │              - Lý do đánh giá sai
-                       │              - Đính kèm ảnh minh họa
-                       │              - Bấm Xác nhận (Accept)
-                       └──────────┬──────────┘
-                                  ▼
-              Lưu vào data/feedback.json (kèm Agent Trace)
+[Người dùng gửi câu hỏi] (question, user_id, session_id)
+        │
+        ▼
+[1. Kiểm tra TTL Cache] ──(Hit: <5ms)──► [Trả ngay câu trả lời]
+        │ (Miss)
+        ▼
+[2. Recall Long-Term Memory] ──► Truy vấn facts của user_id từ PostgreSQL
+        │
+        ▼
+[3. Context Engineering Engine]
+   ├─ Kiểm tra Context Usage (ngưỡng 40%) ──► Tự động tóm tắt hội thoại cũ nếu vượt ngưỡng
+   ├─ Cắt tỉa Sliding Window ──► Giữ N tin nhắn gần nhất + system prompt gốc
+   ├─ Nạp facts người dùng ──► Chèn vào system context ("Thông tin đã biết về user: ...")
+   └─ Re-inject Core Instructions ──► Chèn chỉ dẫn cốt lõi ở cuối prompt
+        │
+        ▼
+[4. Agent Graph Execution]
+   └─ Thực thi Tool (Text-to-SQL / Docs) ──► Nén kết quả tool nếu quá dài (Tool Compression)
+        │
+        ▼
+[5. Extract & Store Fact] ──► Trích xuất fact mới đáng nhớ và ghi vào PostgreSQL
+        │
+        ▼
+[6. Lưu TTL Cache & Stream Response] ──► Ghi cache 300s và stream câu trả lời về người dùng
 ```
 
 ---
 
 ## 4. Features in Scope
 
-### Feature 1: Chuẩn hóa đếm và tra cứu camera toàn hệ thống (10 Camera AIOC)
-- **Vấn đề cần khắc phục**: Trợ lý đang chỉ đếm 6 camera trong bảng `plate_event` (phân hệ giao thông/biển số) khi người dùng hỏi tổng số camera.
-- **Giải pháp**:
-  - Tích hợp Master Data Registry (`resource/db/camera_registry.yaml` đồng bộ từ AIOC Cloud Cam).
-  - Ghi nhận và phản hồi đầy đủ thông tin **10 camera đang hoạt động (ONLINE)**:
-    - 6 camera Giám sát phương tiện: `congchinh1`, `congchinh2`, `congvanle1`, `congvanle2`, `congvanle3`, `congvanle4`.
-    - 2 camera Giám sát vùng cấm: `Cổng Ra Vào BOH` (`CVN_CONG_BOH`), `CVNTT`.
-    - 2 camera Cảnh báo cháy khói: `CVN_KHO_TANG2_BOH`, `CVN_P_CAP_PHAT_DONG_PHUC`.
-  - Cập nhật quy tắc text-to-SQL và fast-path để khi hỏi số lượng hoặc danh sách camera của hệ thống, agent trả lời chính xác số 10 và phân loại chức năng rõ ràng.
+1. **PostgreSQL Memory Persistence (`src/memory/db.py`)**:
+   - Tự động tạo bảng `user_memories` (`id`, `user_id`, `fact`, `category`, `created_at`, `updated_at`) và index `(user_id)`.
+   - Kết nối qua connection pool sẵn có; an toàn tuyệt đối, không crash ứng dụng nếu DB tạm thời offline.
 
-### Feature 2: Hệ thống Human Feedback (Đánh giá Tốt / Xấu & Lưu vết chi tiết)
-- **Giao diện người dùng (UI)**:
-  - Cụm nút icon 👍 và 👎 hiển thị kín đáo, chuyên nghiệp dưới mỗi câu trả lời của trợ lý.
-  - Modal Dislike hỗ trợ:
-    - Textarea nhập nội dung giải thích lý do không hài lòng.
-    - Input upload file ảnh (.png, .jpg, .jpeg) và hỗ trợ dán ảnh từ clipboard (paste).
-    - Thumbnail preview ảnh trước khi bấm gửi.
-    - Nút "Hủy bỏ" và nút "Xác nhận lưu phản hồi" (Accept).
-- **Backend & Cơ chế lưu trữ SQLite (`data/feedback.db`)**:
-  - Endpoint API: `POST /api/feedback` và `GET /api/feedback`.
-  - Cơ sở dữ liệu lưu trữ: `data/feedback.db` (SQLite chuẩn ACID, tự động khởi tạo thư mục và bảng `feedback`). Đồng thời hỗ trợ đồng bộ xuất `data/feedback.json` để tương thích ngược.
-  - File đính kèm lưu tại: `data/feedback/attachments/{feedback_id}_{filename}`.
-  - Bảng SQLite `feedback`:
-    ```sql
-    CREATE TABLE IF NOT EXISTS feedback (
-        id TEXT PRIMARY KEY,
-        timestamp TEXT NOT NULL,
-        session_id TEXT NOT NULL,
-        user_id TEXT NOT NULL,
-        rating TEXT NOT NULL,
-        feedback_reason TEXT,
-        attachment_path TEXT,
-        question TEXT NOT NULL,
-        answer TEXT NOT NULL,
-        agent_trace TEXT,
-        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-    );
-    ```
-  - Cấu trúc bản ghi đầy đủ ngữ cảnh để AI/Developer tái hiện và hiểu rõ luồng:
-    ```json
-    {
-      "id": "fb_20260924_093000_a1b2",
-      "timestamp": "2026-09-24T09:30:00+07:00",
-      "session_id": "session_default",
-      "user_id": "default",
-      "rating": "negative",
-      "feedback_reason": "Hệ thống trả lời 6 camera là thiếu 4 camera vùng cấm và cháy khói",
-      "attachment_path": "data/feedback/attachments/fb_20260924_093000_a1b2.png",
-      "question": "Hiện có bao nhiêu camera đang hoạt động?",
-      "answer": "6 camera đang hoạt động...",
-      "agent_trace": {
-        "nodes": [
-          {"node_id": "recall", "input": {...}, "output": {...}, "duration_ms": 0.8},
-          {"node_id": "classify", "input": {...}, "output": {"intent": "query_data"}, "duration_ms": 544},
-          {"node_id": "generate_sql", "output": {"sql": "SELECT DISTINCT camera_name FROM plate_event..."}, "duration_ms": 690},
-          {"node_id": "execute_sql", "output": {"row_count": 6}, "duration_ms": 37}
-        ],
-        "sql": "SELECT DISTINCT camera_name FROM plate_event WHERE ...",
-        "detail": "query_data"
-      }
-    }
-    ```
+2. **Clean Long-Term Memory (`src/memory/longterm.py`)**:
+   - `save_to_long_term(user_id, fact, category)`: Ghi fact vào PostgreSQL.
+   - `recall_long_term(user_id, query, k=3)`: Lấy top-k fact liên quan nhất của `user_id` từ PostgreSQL (xếp hạng theo mức độ trùng khớp từ khóa).
+   - `clear_long_term(user_id)`: Xóa memory phục vụ kiểm thử.
+   - Tự động fallback sang RAM list khi không có DB.
 
-### Feature 3: Phản hồi dạng Stream (Token / Chunk Response Streaming)
-- **Backend SSE**:
-  - Tại bước phản hồi cuối (`respond`, `respond_inline`, `answer_from_docs`), kích hoạt stream từ model (hoặc chia chunk tự nhiên khi dùng fast template).
-  - Gửi các sự kiện SSE: `{"node_id": "__answer__", "status": "chunk", "delta": "từng từ"}`.
-  - Kết thúc với sự kiện: `{"node_id": "__answer__", "status": "done", "output": "toàn bộ câu trả lời", "detail": {...}}`.
-- **Frontend Live Rendering**:
-  - Frontend nhận `delta` và nối trực tiếp vào tin nhắn hiện tại theo thời gian thực (hiệu ứng gõ chữ mượt mà).
-  - Không gây giật lag hay vỡ bố cục khi có biểu đồ Chart.js đi kèm.
+3. **Context Engineering Engine (`src/memory/context.py`)**:
+   - `sliding_window(messages, max_messages=20)`: Giữ N message gần nhất, luôn giữ system message khởi tạo.
+   - `estimate_tokens(messages)` & `context_usage(messages, window_tokens)`: Đo lường tải context (hỗ trợ tiktoken / 4 ký tự/token).
+   - `should_compact(messages, window_tokens, threshold=0.40)`: Kích hoạt tóm tắt chủ động khi vượt 40% window (nguyên tắc 40-60%).
+   - `should_compact_route(messages, window_tokens, threshold=0.40)`: Conditional edge cho LangGraph (`"compact"` hoặc `"continue"`).
+   - `summarize_old_messages(messages, keep_recent=6)`: Tóm tắt tin nhắn cũ thành 3-5 câu mang tiền tố `[Tóm tắt hội thoại trước]: ...`.
+   - `create_compaction_diff(messages, keep_recent=6)`: Tạo diff `RemoveMessage(id)` và `SystemMessage` tóm tắt để mutate/persist trực tiếp vào LangGraph state (`add_messages` reducer).
+   - `compress_tool_result(raw_result, query, max_tokens=300)`: Nén kết quả tool dài trước khi đưa vào prompt.
+   - `reinject_instructions(messages, instructions)`: Chèn lại quy tắc cốt lõi ở cuối context chống instruction fade-out (`[Nhắc lại chỉ dẫn]: ...`).
+   - `latest_human_query(messages)` (`_latest_human_query`): Quét ngược tìm câu hỏi user/human gần nhất phục vụ tool retrieval & memory recall.
+   - `detect_repetition(messages, window=4)` (`_detect_repetition`): Circuit breaker phát hiện agent lặp lại hành động/tool call liên tiếp để ngắt vòng lặp vô tận.
 
-### Kế thừa từ v7 (Giữ nguyên không thay đổi)
-- Môi trường chạy chính thức bằng Docker Compose (không đóng cứng mã nguồn vào image).
-- Bảo vệ an toàn đầu vào qua Regex Guardrails.
-- Truy vấn PostgreSQL read-only với cơ chế validate SQL chống DDL/DML và chặn truy vấn chéo database.
-- Hiển thị biểu đồ trực quan (Canvas Chart.js & PNG).
+4. **Short-Term Checkpointer (`src/memory/shortterm.py`)**:
+   - `get_checkpointer()`: Cung cấp checkpointer cho LangGraph phiên chat, hỗ trợ lưu trữ bền vững khi có DB và fallback `MemorySaver` trong RAM.
+
+5. **TTL Response Cache (`src/memory/ttl_cache.py`)**:
+   - Khóa băm SHA-256 chuẩn hóa câu hỏi.
+   - `get_ttl_cached(key)` & `set_ttl_cached(key, data, ttl=300)`: Thread-safe, tự động xóa entry hết hạn.
+
+6. **Fact Extraction (`src/memory/extract.py`)**:
+   - Heuristic regex tiếng Việt (tên, vai trò, camera phụ trách, lưu ý).
+   - Tích hợp prompt trích xuất ngắn gọn cuối lượt hội thoại. Bỏ qua các số liệu thống kê tạm thời.
+
+7. **Graph Integration & Config (`src/agent/graph.py` & `src/config.py`)**:
+   - Gắn `recall_node` ở đầu luồng và `extract_node` ở cuối luồng graph.
+   - Cấu hình qua `.env`: `MEMORY_ENABLED`, `MEMORY_SHORT_TERM_ENABLED`, `MEMORY_LONG_TERM_ENABLED`, `MEMORY_TTL_SECONDS`.
 
 ---
 
-## 5. Features Out of Scope
+## 5. Features out of Scope
 
-Để giữ vững tinh thần MVP và tránh phân tán phạm vi phát triển:
-- **Không xây dựng trang Web Admin quản lý Feedback riêng biệt**: Toàn bộ phản hồi được lưu trữ dạng file `.json` chuẩn có cấu trúc rõ ràng để kỹ sư/AI đọc trực tiếp.
-- **Không thay đổi lược đồ cơ sở dữ liệu vật lý**: Không thêm bảng hay cột mới vào các cơ sở dữ liệu PostgreSQL của VMS.
-- **Không tự động kích hoạt tiến trình Fine-tuning mô hình**: Dữ liệu feedback được lưu làm tài nguyên phân tích, chưa tự động hóa pipeline training lại model.
-- **Không tích hợp dịch vụ lưu trữ đám mây ngoài (S3, Cloudinary)**: Toàn bộ ảnh đính kèm được lưu cục bộ trong thư mục `data/feedback/attachments/`.
+- **Không dùng Vector Database rời**: Không kéo thêm Qdrant Cloud, Milvus, Pinecone hay Chroma. Tận dụng tối đa PostgreSQL native và token/keyword overlap đơn giản, hiệu quả.
+- **Không làm GUI quản trị Memory**: Không dựng trang web riêng để xem/sửa memory; dữ liệu được quản lý tự động qua API và bảng PostgreSQL.
+- **Không áp dụng thuật toán nén phức tạp ngoài MVP**: Giữ cơ chế Sliding Window + Summarization đơn giản, không nhúng các thư viện tóm tắt phân cấp cồng kềnh.
+- **Không yêu cầu Embeddings bên ngoài**: Mọi hàm trích xuất và tìm kiếm hoạt động tốt cả khi offline hoặc không có API key OpenAI.
 
 ---
 
 ## 6. Acceptance Criteria
 
-| STT | Tiêu chí nghiệm thu (Acceptance Criteria) | Kết quả kỳ vọng |
-|:---:|-------------------------------------------|-----------------|
-| **AC-1** | **Đếm camera chuẩn xác (10 Cams)** | - Hỏi *"Hiện có bao nhiêu camera đang hoạt động?"* → Trả lời đúng **10 camera** đang hoạt động (không trả lời 6).<br>- Câu trả lời có phân loại rõ 3 phân hệ: 6 phương tiện, 2 vùng cấm, 2 cháy khói. |
-| **AC-2** | **Liệt kê camera đầy đủ** | - Hỏi *"Kể tên các camera trong hệ thống"* → Liệt kê đủ 10 camera (chứa cả các mã: `CVN_CONG_BOH`, `CVNTT`, `CVN_KHO_TANG2_BOH`, `CVN_P_CAP_PHAT_DONG_PHUC` bên cạnh các camera `congchinh`, `congvanle`). |
-| **AC-3** | **Đánh giá Like (👍)** | - Bấm Like dưới tin nhắn trợ lý → Gửi `POST /api/feedback` thành công.<br>- File `data/feedback.json` có bản ghi mới với `rating: "positive"` kèm `question`, `answer`, `agent_trace`. |
-| **AC-4** | **Đánh giá Dislike (👎) kèm Modal & Ảnh** | - Bấm Dislike → Mở Modal phản hồi.<br>- Cho phép nhập lý do và đính kèm file ảnh (hoặc paste ảnh screenshot).<br>- Bấm "Xác nhận lưu phản hồi" → File ảnh được lưu vào `data/feedback/attachments/` và bản ghi trong `data/feedback.json` có `rating: "negative"`, `feedback_reason`, `attachment_path` và toàn bộ `agent_trace`. |
-| **AC-5** | **Tính toàn vẹn dữ liệu Feedback SQLite & JSON** | - Dữ liệu được lưu trữ chuẩn xác vào SQLite `data/feedback.db` (bảng `feedback`) và đồng bộ `data/feedback.json`, mã hóa UTF-8 tiếng Việt chuẩn, hỗ trợ ghi đồng thời nhiều request an toàn. |
-| **AC-6** | **Trải nghiệm Stream câu trả lời** | - Khi trợ lý phản hồi, câu trả lời xuất hiện dần dần từng chữ/từ trên giao diện người dùng thay vì chờ 2-3 giây rồi xuất hiện cả khối. |
-| **AC-7** | **Kiểm thử tự động (Unit Tests)** | - Toàn bộ bộ test `pytest -q` đạt 100% xanh (≥613 tests hiện tại + các test mới cho camera count và feedback API). |
-| **AC-8** | **Không gây lỗi hồi quy** | - Các câu hỏi số liệu khác (lưu lượng xe, xâm nhập hàng rào ảo, vẽ biểu đồ Chart.js, chào hỏi nhanh) tiếp tục hoạt động chính xác. |
+- **AC-1 (PostgreSQL Durability)**: Fact lưu qua `save_to_long_term` phải nằm trong bảng `user_memories`. Sau khi restart server, `recall_long_term` vẫn đọc lại đúng dữ liệu của `user_id`.
+- **AC-2 (User Isolation)**: Mọi thao tác bộ nhớ phải cô lập theo `user_id`. Không bao giờ để rò rỉ fact của user này sang context của user khác.
+- **AC-3 (Graceful Fallback)**: Khi `DB_HOST` rỗng hoặc DB ngắt kết nối, 100% các hàm memory tự động fallback sang in-memory, tuyệt đối không văng exception ra ngoài.
+- **AC-4 (TTL Cache Speed & Expiry)**:
+  - Cache Hit phản hồi câu trả lời với latency < 5ms.
+  - Sau thời gian TTL (300s), cache tự động hết hạn và kích hoạt lại luồng xử lý thông thường.
+- **AC-5 (Sliding Window & Instruction Retention)**: Hội thoại dài trên 10 lượt không bị tràn token; chỉ dẫn an toàn luôn hiện diện ở cuối prompt nhờ `reinject_instructions`.
+- **AC-6 (Active Compaction 40%)**: Khi dung lượng ngữ cảnh vượt ngưỡng 40% window, hệ thống tự động gom tin nhắn cũ thành 1 đoạn tóm tắt `[Tóm tắt hội thoại trước]: ...`, giữ nguyên các tin nhắn gần nhất.
+- **AC-7 (Tool Output Compression)**: Kết quả SQL table hoặc Docs dài hơn `max_tokens` được nén gọn gàng trước khi nạp vào context.
+- **AC-8 (Zero Regression & Clean Code)**: Không còn code rác `vector=[0.0]`; toàn bộ test suite cũ và mới (≥620 tests) đạt kết quả PASS 100%.

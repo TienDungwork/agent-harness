@@ -1,23 +1,15 @@
 # AGENTS.md — agent dong
 
-Hướng dẫn thực thi chuẩn cho AI agent trong `agent-harness/dong`.
+Hướng dẫn thực thi chuẩn cho AI agent trong `agent-harness/dong` theo phương pháp Spec-Driven Development.
 
-## Trạng thái dự án (v8)
+## Trạng thái dự án (v9)
 
-- **Mục tiêu v8:**
-  1. Fix lỗi số lượng camera (trả về đúng 10 camera theo AIOC Master Registry).
-  2. Hệ thống Human Feedback (Like/Dislike + Lý do + Ảnh đính kèm lưu vào `data/feedback.json` có agent trace).
-  3. Token / Chunk Response Streaming (hiển thị câu trả lời gõ chữ dần dần qua SSE).
-- **Môi trường chạy:** Docker Compose (`docker compose up -d`).
-
----
-
-## Tài liệu bắt buộc đọc trước khi code
-
-1. [`specs/product-spec.md`](specs/product-spec.md) — Yêu cầu nghiệp vụ, luồng xử lý và tiêu chí nghiệm thu.
-2. [`specs/implementation-plan.md`](specs/implementation-plan.md) — Danh sách 7 phase triển khai tuần tự.
-3. [`specs/test-plan.md`](specs/test-plan.md) — Kế hoạch kiểm thử tự động và checklist thủ công.
-4. [`specs/change-log.md`](specs/change-log.md) — Nhật ký thay đổi qua từng bước.
+- **Mục tiêu v9**: Xây dựng hệ thống Memory & Context Engineering 3 tầng (Short-Term, Long-Term, TTL Cache) lưu trữ bền vững trên PostgreSQL (bảng `user_memories`), tích hợp kỹ thuật Sliding Window, nguyên tắc 40-60%, Summarization, Tool Output Compression và Re-injecting Instructions.
+- **Tài liệu bắt buộc đọc trước khi code**:
+  1. [`specs/product-spec.md`](specs/product-spec.md) — Yêu cầu nghiệp vụ và tiêu chí nghiệm thu.
+  2. [`specs/implementation-plan.md`](specs/implementation-plan.md) — 7 phase triển khai tuần tự.
+  3. [`specs/test-plan.md`](specs/test-plan.md) — Kế hoạch kiểm thử tự động và thủ công.
+  4. [`specs/change-log.md`](specs/change-log.md) — Nhật ký thay đổi qua từng bước.
 
 ---
 
@@ -25,7 +17,7 @@ Hướng dẫn thực thi chuẩn cho AI agent trong `agent-harness/dong`.
 
 1. **Always read the specs before coding**: Luôn đọc kỹ `specs/product-spec.md` và `specs/implementation-plan.md` trước khi viết bất kỳ dòng code nào.
 2. **Implement only one phase or task at a time**: Chỉ thực hiện duy nhất 1 phase hoặc 1 task (`[ ]`) tại một thời điểm. Không nhảy cóc, không gộp nhiều task.
-3. **Keep the app simple**: Giữ mã nguồn đơn giản, rõ ràng, tập trung vào phạm vi MVP, không làm quá mức cần thiết (over-engineering).
+3. **Keep the app simple**: Giữ mã nguồn đơn giản, rõ ràng, tập trung vào phạm vi MVP, không làm phức tạp hóa vấn đề (over-engineering).
 4. **Do not add unnecessary libraries**: Tận dụng tối đa thư viện và công cụ sẵn có trong dự án, không tự ý cài đặt thêm dependency nếu không bắt buộc.
 5. **Do not change architecture unless the spec is updated**: Tuyệt đối không thay đổi kiến trúc hệ thống trừ khi spec đã được thảo luận và cập nhật trước.
 6. **After each implementation, update specs/change-log.md**: Sau mỗi lần hoàn thành 1 task, đánh dấu `[x]` trong `specs/implementation-plan.md` và ghi nhận chi tiết vào `specs/change-log.md`.
@@ -38,12 +30,12 @@ Hướng dẫn thực thi chuẩn cho AI agent trong `agent-harness/dong`.
 ```bash
 cd agent-harness/dong
 
-# 1. Chạy unit tests
+# 1. Chạy toàn bộ unit test suite
 PYTHONPATH=. pytest -q
 
-# 2. Khởi động Docker container
-docker compose up -d
+# 2. Chạy riêng bộ kiểm thử memory & context
+PYTHONPATH=. pytest tests/test_product_memory_context.py tests/test_product_memory_cache.py tests/test_product_memory_postgres.py -v
 
-# 3. Kiểm tra logs
-docker compose logs -f ai_backend
+# 3. Khởi động backend local
+uvicorn src.main:app --host 0.0.0.0 --port 8000 --reload
 ```

@@ -51,7 +51,12 @@ def rewrite_question(raw: str) -> RewrittenQuestion:
         {"role": "system", "content": registry().render("rewrite")},
         {"role": "user", "content": f"Câu hỏi gốc: {cleaned}"},
     ]
-    return _normalize_rewritten(invoke_structured(messages, RewrittenQuestion, substep="rewrite"))
+    try:
+        return _normalize_rewritten(invoke_structured(messages, RewrittenQuestion, substep="rewrite"))
+    except Exception as exc:
+        import logging
+        logging.getLogger(__name__).warning("rewrite_question failed, falling back to passthrough: %s", exc)
+        return _passthrough_rewrite(cleaned)
 
 
 def rewrite_question_safe(raw: str) -> RewrittenQuestion:
