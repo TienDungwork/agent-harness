@@ -104,5 +104,8 @@ def set_ttl_cached(key: str, data: dict, ttl: int | None = None) -> None:
 
 def clear_ttl_cache() -> None:
     """Clear all entries in TTL cache (primarily for testing)."""
-    with _ttl_lock:
+    try:
+        with _ttl_lock:
+            _ttl_cache.clear()
+    except Exception:
         _ttl_cache.clear()

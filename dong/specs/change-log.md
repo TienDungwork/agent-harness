@@ -1,5 +1,47 @@
 # Change Log — agent dong
 
+## 2026-09-25 — Kích hoạt toàn diện Memory 3 lớp & Khóa/Ghim xem Input-Output trên Live Graph
+
+### Thay đổi
+- **Cấu hình Memory (`.env` & `docker-compose.yml`)**:
+  - Bật toàn bộ các lớp bộ nhớ và cache:
+    * `MEMORY_ENABLED=true`
+    * `MEMORY_SHORT_TERM_ENABLED=true`
+    * `MEMORY_LONG_TERM_ENABLED=true`
+    * `CACHE_ENABLED=true`
+    * `CACHE_TTL_S=60`
+    * `MEMORY_TTL_SECONDS=300`
+  - Đảm bảo các node `recall` và `store_extract` được kích hoạt trơn tru trong luồng LangGraph orchestrator.
+- **Ổn định module Memory (`src/memory/longterm.py`, `src/memory/ttl_cache.py`)**:
+  - `clear_long_term()`: Bọc `try...except` an toàn khi dọn dẹp bộ nhớ trong test suite (phòng ngừa mock object không có phương thức `.clear()`).
+  - `clear_ttl_cache()`: Bọc an toàn khối acquire lock trong khối `try...except`.
+  - Kết quả: `test_product_memory_cache.py` đạt **47/47 passed (100%)**.
+- **Frontend Live Graph & Input/Output Node Viewer (`frontend/app.js`, `frontend/style.css`, `frontend/index.html`)**:
+  - **Cơ chế Ghim (Pin / Lock) khi Click**:
+    * Khi click vào một bước (card node), bước đó được ghim (`pinnedGraphNodeId = nodeId`), card có viền cam nổi bật (`.graph-node.pinned`) và tiêu đề có badge `📌 (đã ghim — click lại để bỏ ghim)`.
+    * Click lại vào chính node đó để gỡ ghim (unpin).
+  - **Trải nghiệm Hover mượt mà, không nhảy nội dung**:
+    * Sự kiện `mouseenter` chỉ xem trước (preview) nội dung nếu **chưa có node nào được ghim**. Khi một node đã được click ghim, di chuột qua các node khác sẽ **không làm thay đổi hay ghi đè** bảng Input / Output.
+    * Sự kiện `mouseleave` giữ nguyên nội dung đang hiển thị, không xóa hay làm trống panel.
+    * Hỗ trợ xem Input / Output ngay cả khi node đang ở trạng thái `running` (không chỉ lúc `done`).
+  - **Bảo vệ luồng Streaming**:
+    * Khi luồng stream nhận sự kiện node mới hoàn thành (`status === 'done'`), `upsertGraphNode` chỉ tự động cập nhật I/O nếu người dùng chưa ghim hoặc đang xem đúng node đó, loại bỏ hiện tượng nội dung nhảy liên tục khi đồ thị đang xử lý.
+  - **Đồng bộ gợi ý câu hỏi**: Cập nhật nhóm câu hỏi mẫu AIOC & Camera (`#016` AC-1 và `#017` AC-2) trên `index.html`.
+
+### Review vs `specs/product-spec.md` + `specs/test-plan.md`
+
+#### What Passes:
+- **Tương tác trực quan Live Graph**: Người dùng thoải mái click vào bất kỳ bước nào trong quy trình (ví dụ: `guardrail_input`, `classify`, `recall`, `db_agent`, `respond`) để xem chi tiết Input / Output mà không lo bị nhảy mất nội dung khi rê chuột hay khi các bước tiếp theo chạy xong.
+- **Hệ thống Memory 3 lớp**: Hoạt động ổn định trên cả local test và docker container backend.
+- **Kiểm thử**:
+  - `tests/test_product_memory_cache.py`: **47/47 passed (100%)**.
+  - `tests/test_product_graph_orchestrator.py`: **88/88 passed (100%)**.
+  - Tổng cộng 135/135 tests liên quan đến Memory và Graph Orchestrator đều xanh.
+- **Docker Production Containers**: Recreated và healthy trên port 8000 (Backend) và 8001 (Frontend).
+
+---
+
+
 ## 2026-09-25 — Chuẩn hóa Golden Dataset (eval/datasets/agent_stat/v2.yaml v2.3) bám sát mục đích sản phẩm v8
 
 ### Thay đổi

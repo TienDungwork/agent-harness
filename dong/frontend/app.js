@@ -507,6 +507,7 @@
   const IO_MAX_CHARS = 80000;
   let graphRunId = 0;
   let hoveredGraphNodeId = null;
+  let pinnedGraphNodeId = null;
 
   function formatIoValue(val) {
     if (val === null || val === undefined) return '(empty)';
@@ -541,6 +542,8 @@
 
   function resetGraph() {
     graphRunId += 1;
+    pinnedGraphNodeId = null;
+    hoveredGraphNodeId = null;
     if (state.streamAbortController) {
       state.streamAbortController.abort();
     }
@@ -571,19 +574,27 @@
   }
 
   function showNodeIo(nodeId) {
-    const n = state.graphNodes[nodeId];
-    if (!n || n.status !== 'done') return;
+    const activeNodeId = pinnedGraphNodeId || nodeId;
+    const n = state.graphNodes[activeNodeId];
+    if (!n) return;
+
     document.querySelectorAll('.graph-node').forEach(node => {
-      node.classList.toggle('selected', node.dataset.nodeId === nodeId);
+      const isTarget = node.dataset.nodeId === activeNodeId;
+      node.classList.toggle('selected', isTarget);
+      node.classList.toggle('pinned', Boolean(pinnedGraphNodeId && node.dataset.nodeId === pinnedGraphNodeId));
     });
     el.graphIoEmpty.hidden = true;
     el.graphIoBody.hidden = false;
+
+    const isRunning = n.status === 'running';
     let raw =
-      'input:\n' + formatIoValue(n.input) +
-      '\n\noutput:\n' + formatIoValue(n.output);
+      'node: ' + activeNodeId + (n.status ? ` [${n.status}]` : '') +
+      (pinnedGraphNodeId === activeNodeId ? ' 📌 (đã ghim — click lại để bỏ ghim)' : '') +
+      '\n\ninput:\n' + formatIoValue(n.input) +
+      '\n\noutput:\n' + (isRunning && (n.output === undefined || n.output === null) ? '(đang chạy…)' : formatIoValue(n.output));
     if (n.durationMs !== undefined && n.durationMs !== null) {
-      const durFormatted = n.durationMs >= 1000 ? (n.durationMs / 1000).toFixed(2) + 's' : n.durationMs + 'ms';
-      raw += `\n\nthời gian thực thi (latency): ${durFormatted} (${n.durationMs}ms)`;
+      const durFormatted = n.durationMs >= 1000 ? (n.durationMs / 1000).toFixed(2) + 's' : (n.durationMs >= 10 ? Math.round(n.durationMs) : n.durationMs.toFixed(1)) + 'ms';
+      raw += `\n\nthời gian thực thi (latency): ${durFormatted}`;
     }
     if (n.meta && typeof n.meta === 'object' && Object.keys(n.meta).length > 0) {
       raw += '\n\nmeta:\n' + formatIoValue(n.meta);
@@ -632,10 +643,21 @@
       card.dataset.nodeId = nodeId;
       card.innerHTML =
         '<div class="graph-node-header"><span class="graph-node-id"></span><span class="graph-node-time"></span></div><div class="graph-node-status"></div>';
-      card.addEventListener('click', () => showNodeIo(nodeId));
+      card.addEventListener('click', (e) => {
+        e.stopPropagation();
+        if (pinnedGraphNodeId === nodeId) {
+          pinnedGraphNodeId = null;
+          showNodeIo(nodeId);
+        } else {
+          pinnedGraphNodeId = nodeId;
+          showNodeIo(nodeId);
+        }
+      });
       card.addEventListener('mouseenter', () => {
         hoveredGraphNodeId = nodeId;
-        showNodeIo(nodeId);
+        if (!pinnedGraphNodeId) {
+          showNodeIo(nodeId);
+        }
       });
       card.addEventListener('mouseleave', () => {
         if (hoveredGraphNodeId === nodeId) hoveredGraphNodeId = null;
@@ -703,8 +725,14 @@
         ? 'đang chạy…'
         : (durLabel ? `xong (${durLabel}) — trỏ hoặc bấm để xem I/O` : 'xong — trỏ hoặc bấm để xem I/O');
 
-    if (status === 'done' && (card.classList.contains('selected') || hoveredGraphNodeId === nodeId)) {
-      showNodeIo(nodeId);
+    if (status === 'done') {
+      if (pinnedGraphNodeId) {
+        if (nodeId === pinnedGraphNodeId) {
+          showNodeIo(nodeId);
+        }
+      } else if (hoveredGraphNodeId === nodeId) {
+        showNodeIo(nodeId);
+      }
     }
   }
 

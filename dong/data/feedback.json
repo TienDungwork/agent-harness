@@ -451,5 +451,230 @@
       ],
       "detail": "chat"
     }
+  },
+  {
+    "id": "fb_20260925_103459_8b5a9a",
+    "timestamp": "2026-09-25T10:34:59.700679+00:00",
+    "session_id": "fc5accf5-d9b1-44d4-89bc-a31859c9f24c",
+    "user_id": "7f57929b-b4ce-4506-89e1-27afc035114c",
+    "rating": "negative",
+    "feedback_reason": "Chưa lấy đủ context trước đó",
+    "attachment_path": null,
+    "question": "Thuộc camera nào? khu vực nào?",
+    "answer": "Xin chào! Bạn có thể làm rõ hơn câu hỏi của mình không? Ví dụ: Bạn muốn biết camera nào thuộc khu vực nào? Hoặc bạn đang hỏi về một camera cụ thể?",
+    "agent_trace": {
+      "nodes": [
+        {
+          "node_id": "guardrail_input",
+          "status": "running",
+          "input": null,
+          "output": null,
+          "meta": null,
+          "duration_ms": null
+        },
+        {
+          "node_id": "guardrail_input",
+          "status": "done",
+          "input": {
+            "question": "Thuộc camera nào? khu vực nào?"
+          },
+          "output": {
+            "question": "Thuộc camera nào? khu vực nào?",
+            "pii_redacted": false,
+            "ok": true
+          },
+          "meta": {
+            "user_id": "7f57929b-b4ce-4506-89e1-27afc035114c",
+            "session_id": "fc5accf5-d9b1-44d4-89bc-a31859c9f24c",
+            "duration_ms": 1
+          },
+          "duration_ms": 1
+        },
+        {
+          "node_id": "recall",
+          "status": "running",
+          "input": null,
+          "output": null,
+          "meta": null,
+          "duration_ms": null
+        },
+        {
+          "node_id": "recall",
+          "status": "done",
+          "input": {
+            "user_id": "7f57929b-b4ce-4506-89e1-27afc035114c",
+            "question": "Thuộc camera nào? khu vực nào?"
+          },
+          "output": {
+            "recalled_memories": []
+          },
+          "meta": {
+            "user_id": "7f57929b-b4ce-4506-89e1-27afc035114c",
+            "session_id": "fc5accf5-d9b1-44d4-89bc-a31859c9f24c",
+            "recalled_count": 0,
+            "duration_ms": 0.4
+          },
+          "duration_ms": 0.4
+        },
+        {
+          "node_id": "rewrite",
+          "status": "running",
+          "input": null,
+          "output": null,
+          "meta": null,
+          "duration_ms": null
+        },
+        {
+          "node_id": "rewrite",
+          "status": "done",
+          "input": {
+            "question": "Thuộc camera nào? khu vực nào?"
+          },
+          "output": {
+            "rewritten": {
+              "text": "Thuộc camera nào? khu vực nào?",
+              "sub_questions": [
+                "Thuộc camera nào? khu vực nào?"
+              ],
+              "filters": [],
+              "time_range": null,
+              "intent_hint": null
+            }
+          },
+          "meta": {
+            "llm_used": false,
+            "user_id": "7f57929b-b4ce-4506-89e1-27afc035114c",
+            "session_id": "fc5accf5-d9b1-44d4-89bc-a31859c9f24c",
+            "sub_question_count": 1,
+            "skipped": true,
+            "duration_ms": 0.5
+          },
+          "duration_ms": 0.5
+        },
+        {
+          "node_id": "classify",
+          "status": "running",
+          "input": null,
+          "output": null,
+          "meta": null,
+          "duration_ms": null
+        },
+        {
+          "node_id": "classify",
+          "status": "done",
+          "input": {
+            "rewritten_text": "Thuộc camera nào? khu vực nào?",
+            "rewritten": {
+              "text": "Thuộc camera nào? khu vực nào?",
+              "sub_questions": [
+                "Thuộc camera nào? khu vực nào?"
+              ],
+              "filters": [],
+              "time_range": null,
+              "intent_hint": null
+            }
+          },
+          "output": {
+            "intent": "clarify",
+            "reason": "Câu hỏi quá ngắn, không rõ ý định",
+            "answer": "Xin chào! Bạn có thể làm rõ hơn câu hỏi của mình không? Ví dụ: Bạn muốn biết camera nào thuộc khu vực nào? Hoặc bạn đang hỏi về một camera cụ thể?",
+            "chart_requested": false,
+            "chart_type": null
+          },
+          "meta": {
+            "llm_used": true,
+            "user_id": "7f57929b-b4ce-4506-89e1-27afc035114c",
+            "session_id": "fc5accf5-d9b1-44d4-89bc-a31859c9f24c",
+            "chart_requested": false,
+            "chart_type": null,
+            "duration_ms": 1217.1
+          },
+          "duration_ms": 1217.1
+        },
+        {
+          "node_id": "respond_inline",
+          "status": "running",
+          "input": null,
+          "output": null,
+          "meta": null,
+          "duration_ms": null
+        },
+        {
+          "node_id": "respond_inline",
+          "status": "done",
+          "input": {
+            "question": "Thuộc camera nào? khu vực nào?",
+            "intent": "clarify"
+          },
+          "output": {
+            "answer": "Xin chào! Bạn có thể làm rõ hơn câu hỏi của mình không? Ví dụ: Bạn muốn biết camera nào thuộc khu vực nào? Hoặc bạn đang hỏi về một camera cụ thể?",
+            "respond_mode": "inline"
+          },
+          "meta": {
+            "user_id": "7f57929b-b4ce-4506-89e1-27afc035114c",
+            "session_id": "fc5accf5-d9b1-44d4-89bc-a31859c9f24c",
+            "duration_ms": 6.9
+          },
+          "duration_ms": 6.9
+        },
+        {
+          "node_id": "respond",
+          "status": "running",
+          "input": null,
+          "output": null,
+          "meta": null,
+          "duration_ms": null
+        },
+        {
+          "node_id": "respond",
+          "status": "done",
+          "input": {
+            "question": "Thuộc camera nào? khu vực nào?",
+            "rewritten_question": "Thuộc camera nào? khu vực nào?",
+            "respond_mode": "inline",
+            "intent": "clarify"
+          },
+          "output": {
+            "answer_vi": "Xin chào! Bạn có thể làm rõ hơn câu hỏi của mình không? Ví dụ: Bạn muốn biết camera nào thuộc khu vực nào? Hoặc bạn đang hỏi về một camera cụ thể?",
+            "answer_source": "inline"
+          },
+          "meta": {
+            "llm_used": false,
+            "user_id": "7f57929b-b4ce-4506-89e1-27afc035114c",
+            "session_id": "fc5accf5-d9b1-44d4-89bc-a31859c9f24c",
+            "duration_ms": 0.7
+          },
+          "duration_ms": 0.7
+        },
+        {
+          "node_id": "guardrail_output",
+          "status": "running",
+          "input": null,
+          "output": null,
+          "meta": null,
+          "duration_ms": null
+        },
+        {
+          "node_id": "guardrail_output",
+          "status": "done",
+          "input": {
+            "question": "Thuộc camera nào? khu vực nào?",
+            "answer_len": 146
+          },
+          "output": {
+            "valid": true,
+            "issues": [],
+            "answer": "Xin chào! Bạn có thể làm rõ hơn câu hỏi của mình không? Ví dụ: Bạn muốn biết camera nào thuộc khu vực nào? Hoặc bạn đang hỏi về một camera cụ thể?"
+          },
+          "meta": {
+            "user_id": "7f57929b-b4ce-4506-89e1-27afc035114c",
+            "session_id": "fc5accf5-d9b1-44d4-89bc-a31859c9f24c",
+            "duration_ms": 0.7
+          },
+          "duration_ms": 0.7
+        }
+      ],
+      "detail": "clarify"
+    }
   }
 ]

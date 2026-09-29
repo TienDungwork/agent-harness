@@ -53,6 +53,28 @@ If you have questions or feedback, please open a GitHub issue or join the [#proj
 >
 > The source code for Agent Canvas lives in [Creanova/agent-canvas](https://github.com/Creanova/agent-canvas).
 
+## Table of Contents
+
+- [Quickstart](#quickstart)
+- [Local Development](#local-development)
+  - [Prerequisites](#prerequisites)
+  - [Installation](#installation)
+  - [Environment Variables & Configuration](#environment-variables--configuration)
+  - [Running the Application](#running-the-application)
+    - [Full Stack (Backend + Frontend)](#full-stack-backend--frontend)
+    - [Backend Only](#backend-only)
+    - [Frontend Only](#frontend-only)
+  - [Local URLs](#local-urls)
+  - [Troubleshooting Notes](#troubleshooting-notes)
+- [Docker Deployment](#docker-deployment)
+  - [Docker Compose](#docker-compose)
+  - [Pre-built Container Image](#pre-built-container-image)
+  - [Dev Container](#dev-container)
+- [Architecture](#architecture)
+- [More Documentation](#more-documentation)
+
+---
+
 ## Quickstart
 
 You can install Creanova to run agents on any machine: on your laptop, on a dedicated computer like a Mac Mini,
@@ -66,7 +88,7 @@ Notably, you can run the backend in _multiple different environments_, and switc
 them from the same Agent Canvas frontend. E.g. you can share an Agent Server with your team for agents doing
 code review and dependency updates, then have your personal agents running on your laptop.
 
-### Option 1: Without a Sandbox
+### Option 1: Global CLI (Without a Sandbox)
 
 > [!WARNING]
 > This runs the agent-server directly on the machine you're installing on — the agent will have full access to your filesystem!
@@ -88,9 +110,8 @@ agent-canvas --backend-only   # agent server + automation backend + ingress only
 ### Option 2: With a Docker Sandbox
 
 **Prerequisites**:
-
-- Docker: Docker Desktop on macOS/Windows, or Docker Engine/Docker Desktop on Linux.
-- A host directory for `PROJECTS_PATH` containing the project folders you want the agent to access. Create it before starting the container.
+- Docker (Docker Desktop on macOS/Windows, or Docker Engine on Linux).
+- A host directory for `PROJECTS_PATH` containing the project folders you want the agent to access.
 
 **macOS / Linux:**
 
@@ -107,25 +128,329 @@ docker run -it --rm \
 
 **Windows (PowerShell / Windows Terminal):** See [README.windows.md](https://github.com/Creanova/agent-canvas/blob/main/README.windows.md) for the equivalent commands.
 
-The agent will be able to access any project under `PROJECTS_PATH`.
+---
 
-### Option 3: From Source
+## Local Development
 
-> [!WARNING]
-> This runs the agent-server directly on the machine you're installing on — the agent will have full access to your filesystem!
+Follow these steps to set up and run the full Creanova codebase (Python backend + React frontend) locally from source.
 
-**Prerequisites**: Node.js 22.12.x or later, `npm`, `uv` (for running the agent server via `uvx`)
+### Prerequisites
 
-```sh
-git clone https://github.com/Creanova/agent-canvas.git
-cd agent-canvas
-npm install
-npm run dev
+Ensure you have the following installed on your machine:
+
+| Tool | Version / Requirement | Purpose |
+| ---- | --------------------- | ------- |
+| **Python** | `3.12.x` or `3.13.x` (`>= 3.12, < 3.14`) | Backend runtime and services |
+| **Poetry** | `>= 1.8.0` | Python package and environment management |
+| **Node.js** | `>= 22.12.0` | Frontend runtime |
+| **npm** | Bundled with Node.js | Frontend package management |
+| **Docker** | Docker Engine or Docker Desktop | Sandbox execution and containerized deployment |
+| **netcat (`nc`)** | `netcat-openbsd` or equivalent | Readiness checks during local startup |
+| **tmux** | Recommended | Terminal session handling in local runtime |
+
+#### OS-Specific Dependency Installation
+
+<details>
+<summary><strong>macOS (Homebrew)</strong></summary>
+
+```bash
+brew install python@3.12 node poetry netcat
+brew install --cask docker
+```
+In Docker Desktop: **Settings → Advanced → Enable "Allow the default Docker socket to be used"**.
+</details>
+
+<details>
+<summary><strong>Linux (Ubuntu / Debian)</strong></summary>
+
+```bash
+sudo apt update
+sudo apt install -y build-essential curl netcat-openbsd software-properties-common tmux
+
+# Python 3.12
+sudo apt install -y python3.12 python3.12-dev python3.12-venv
+
+# Node.js 22.x
+curl -fsSL https://deb.nodesource.com/setup_22.x | sudo -E bash -
+sudo apt install -y nodejs
+
+# Poetry
+curl -sSL https://install.python-poetry.org | python3 -
+echo 'export PATH="$HOME/.local/bin:$PATH"' >> ~/.bashrc
+source ~/.bashrc
+
+# Docker Engine & Docker Compose plugin
+sudo apt install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
+sudo usermod -aG docker $USER
+```
+*(Log out and back in after adding your user to the `docker` group).*
+</details>
+
+<details>
+<summary><strong>Windows (WSL2)</strong></summary>
+
+1. Install WSL2 with Ubuntu 22.04+: `wsl --install -d Ubuntu-22.04`
+2. Follow the Linux setup steps inside your WSL Ubuntu terminal.
+3. In Docker Desktop for Windows: enable **WSL 2 based engine** and toggle **WSL Integration** for your Ubuntu distro.
+4. Always clone and run the repository inside the WSL Linux filesystem (`~/...`), not on `/mnt/c/`.
+</details>
+
+---
+
+### Installation
+
+Clone the repository and build the project dependencies:
+
+```bash
+# Clone the repository
+git clone https://github.com/Creanova/agent-harness.git
+cd agent-harness
+
+# Build Python and Frontend dependencies, pre-commit hooks, and assets
+make build
+```
+
+The `make build` command automatically:
+1. Validates system dependencies (Python, Node.js, npm, Poetry, Docker).
+2. Installs Python packages via `poetry install --with dev,test,runtime`.
+3. Installs Frontend packages in `frontend/` via `npm install`.
+4. Configures Git pre-commit hooks.
+5. Builds the frontend production bundle.
+
+#### Individual Install Commands (Optional)
+
+If you prefer to install components separately:
+
+```bash
+# Install backend Python dependencies only
+poetry install --with dev,test,runtime
+
+# Install frontend dependencies only
+cd frontend && npm install && cd ..
+
+# Install pre-commit hooks
+make install-pre-commit-hooks
 ```
 
 ---
 
-Access the UI at [http://localhost:8000](http://localhost:8000). You can add additional backends directly from the UI.
+### Environment Variables & Configuration
+
+#### 1. Core Configuration (`config.toml`)
+Creanova uses a root `config.toml` file for workspace paths and LLM settings.
+
+To initialize an interactive configuration prompt:
+```bash
+make setup-config
+```
+
+Or generate a basic configuration:
+```bash
+make setup-config-basic
+```
+
+Key fields in `config.toml`:
+```toml
+[core]
+workspace_base = "./workspace"
+debug = false
+
+[llm]
+model = "gpt-4o"
+api_key = "your-api-key"
+# base_url = "http://localhost:11434/v1" # For local Ollama / LiteLLM
+```
+
+> [!TIP]
+> When using the Web UI, you can also configure your LLM provider, models, and API keys directly under the **Settings** page (`/settings`).
+
+#### 2. Backend & Runtime Environment Variables
+
+| Variable | Description | Default |
+| -------- | ----------- | ------- |
+| `RUNTIME` | Execution runtime (`docker` for container sandboxing, `local` for host execution) | `docker` |
+| `INSTALL_DOCKER` | Set to `0` when running locally without Docker daemon verification | `1` |
+| `BACKEND_HOST` | Host IP for backend server binding | `127.0.0.1` |
+| `BACKEND_PORT` | Port for backend REST and WebSocket server | `3000` |
+| `FRONTEND_HOST` | Host IP for frontend dev server binding | `127.0.0.1` |
+| `FRONTEND_PORT` | Port for frontend dev server | `3001` |
+| `WORKSPACE_BASE` | Absolute or relative path to agent workspace directory | `./workspace` |
+| `DEBUG` | Set `1` to enable verbose LLM interaction logging under `logs/llm/` | `0` |
+| `PLAYWRIGHT_BROWSERS_PATH` | Cache path for Playwright Chromium binaries | `~/.cache/playwright` |
+
+#### 3. Frontend Environment Variables (`frontend/.env`)
+
+| Variable | Description | Default |
+| -------- | ----------- | ------- |
+| `VITE_BACKEND_HOST` | Backend host & port used for HTTP API requests | `127.0.0.1:3000` |
+| `VITE_BACKEND_BASE_URL` | Hostname without protocol used for WebSocket connections | `localhost:3000` |
+| `VITE_FRONTEND_PORT` | Port for Vite frontend dev server | `3001` |
+| `VITE_MOCK_API` | Enable/disable Mock Service Worker (MSW) mocking | `false` |
+| `VITE_MOCK_SAAS` | Simulate SaaS multi-tenant UI mode | `false` |
+| `VITE_USE_TLS` | Enable HTTPS / WSS for backend connections | `false` |
+| `VITE_INSECURE_SKIP_VERIFY`| Skip TLS certificate verification | `false` |
+
+---
+
+### Running the Application
+
+#### Full Stack (Backend + Frontend)
+
+Start both backend and frontend servers with a single command:
+
+```bash
+# Standard run (Backend on :3000, Frontend on :3001)
+make run
+```
+
+To run with custom ports or allow external/cloud network access:
+```bash
+make run FRONTEND_PORT=12000 FRONTEND_HOST=0.0.0.0 BACKEND_HOST=0.0.0.0
+```
+
+To run locally in host mode without Docker containers:
+```bash
+export INSTALL_DOCKER=0
+export RUNTIME=local
+make run
+```
+
+#### Backend Only
+
+To run just the Python FastAPI/Uvicorn backend:
+
+```bash
+make start-backend
+```
+*Backend runs on `http://127.0.0.1:3000` with hot reload enabled.*
+
+Alternatively, run directly with Poetry:
+```bash
+poetry run uvicorn Creanova.server.listen:app --host 127.0.0.1 --port 3000 --reload --reload-exclude "./workspace"
+```
+
+#### Frontend Only
+
+To run just the React/Vite frontend:
+
+```bash
+# Using Makefile
+make start-frontend
+
+# Or directly from the frontend directory
+cd frontend
+npm run dev
+```
+
+Frontend development options:
+```bash
+cd frontend
+npm run dev                  # Live backend mode
+npm run dev:mock             # Mock API backend mode (MSW)
+npm run dev:mock:saas        # Mock SaaS multi-tenant mode
+npm run build && npm start   # Production build preview
+```
+
+---
+
+### Local URLs
+
+Once started, access the application through the following endpoints:
+
+| Service | URL | Description |
+| ------- | --- | ----------- |
+| **Frontend Web App** | [http://localhost:3001](http://localhost:3001) | Main user interface for conversations and agent interaction |
+| **Settings UI** | [http://localhost:3001/settings](http://localhost:3001/settings) | LLM provider, model selection, and API key management |
+| **Backend REST API** | [http://localhost:3000](http://localhost:3000) | Application server REST endpoints and WebSocket server |
+| **Interactive API Docs (Swagger)** | [http://localhost:3000/docs](http://localhost:3000/docs) | Swagger UI for exploring and testing API endpoints |
+| **Alternative API Docs (ReDoc)** | [http://localhost:3000/redoc](http://localhost:3000/redoc) | OpenAPI specification rendered with ReDoc |
+
+---
+
+### Troubleshooting Notes
+
+- **`nc: command not found` on startup:**
+  The `make run` target uses netcat to wait for the backend socket. Install it via `sudo apt install -y netcat-openbsd` (Ubuntu/Debian) or `brew install netcat` (macOS).
+
+- **Stale tmux session (`duplicate session: test-session`):**
+  If local runtime startup crashes with a duplicate session error, terminate the stale session:
+  ```bash
+  tmux -S /tmp/tmux-$(id -u)/default kill-session -t test-session
+  ```
+
+- **Playwright Chromium missing in local runtime:**
+  If browser-based tasks fail due to missing browser binaries, install Chromium into your user cache:
+  ```bash
+  PLAYWRIGHT_BROWSERS_PATH=$HOME/.cache/playwright poetry run playwright install chromium
+  ```
+
+- **401 Unauthorized in Settings UI:**
+  If an inherited `SESSION_API_KEY` prevents access to `/api/v1/settings`, unset it in your shell before running:
+  ```bash
+  unset SESSION_API_KEY
+  make run
+  ```
+
+- **Docker permission denied (`/var/run/docker.sock`):**
+  Ensure your user is in the `docker` group (`sudo usermod -aG docker $USER`) and you have restarted your session, or grant permissions with `sudo chmod 666 /var/run/docker.sock`.
+
+- **Port already in use (`EADDRINUSE` / `bind: address already in use`):**
+  Check what process is occupying port 3000 or 3001 with `lsof -i :3000` or `lsof -i :3001`, or override ports via `make run BACKEND_PORT=3005 FRONTEND_PORT=3006`.
+
+- **WSL filesystem lag:**
+  Ensure the repository is placed in the Linux filesystem (e.g. `~/Creanova`) and not on Windows mounts (`/mnt/c/...`).
+
+---
+
+## Docker Deployment
+
+### Docker Compose
+
+Deploy the containerized Creanova stack using Docker Compose:
+
+```bash
+# Run with Docker Compose
+docker compose up -d
+
+# Or via Makefile target
+make docker-run
+```
+
+#### Docker Compose Configuration
+The `docker-compose.yml` mounts your local workspace and manages agent container sandboxes:
+```bash
+export WORKSPACE_BASE="$PWD/workspace"
+export AGENT_SERVER_IMAGE_REPOSITORY="ghcr.io/Creanova/agent-server"
+export AGENT_SERVER_IMAGE_TAG="1.30.0-python"
+docker compose up -d
+```
+Access the containerized application at `http://localhost:13000`.
+
+### Pre-built Container Image
+
+Run the official all-in-one container directly:
+
+```bash
+export PROJECTS_PATH="$HOME/projects"
+mkdir -p "$PROJECTS_PATH" "$HOME/.Creanova"
+
+docker run -it --rm \
+  -p 8000:8000 \
+  -v "$HOME/.Creanova:/home/Creanova/.Creanova" \
+  -v "${PROJECTS_PATH}:/projects" \
+  ghcr.io/Creanova/agent-canvas:1
+```
+Access the application at `http://localhost:8000`.
+
+### Dev Container
+
+Develop inside an isolated container with all pre-configured runtimes:
+```bash
+make docker-dev
+```
+Or use VS Code with the Remote Containers extension: open the Command Palette (`Ctrl+Shift+P` / `Cmd+Shift+P`) and choose **Dev Containers: Reopen in Container**.
+
+---
 
 # Architecture
 
@@ -148,3 +473,4 @@ The Agent Server is often paired with an [Automation Server](https://github.com/
 - [Architecture overview](#architecture)
 - [Development guide](./Development.md)
 - [Self-hosting guide](https://docs.Creanova.dev/Creanova/usage/agent-canvas/backend-setup/vm)
+

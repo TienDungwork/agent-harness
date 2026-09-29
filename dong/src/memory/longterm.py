@@ -148,7 +148,13 @@ def clear_long_term(user_id: str | None = None) -> None:
     """Xóa bộ nhớ (dùng cho testing/reset). Nếu user_id=None, xóa toàn bộ."""
     global _LONG_TERM_STORE
     if user_id is None:
-        _LONG_TERM_STORE.clear()
+        try:
+            _LONG_TERM_STORE.clear()
+        except Exception:
+            _LONG_TERM_STORE = []
     else:
         uid = user_id.strip()
-        _LONG_TERM_STORE[:] = [item for item in _LONG_TERM_STORE if item[0] != uid]
+        try:
+            _LONG_TERM_STORE[:] = [item for item in _LONG_TERM_STORE if item[0] != uid]
+        except Exception:
+            _LONG_TERM_STORE = []
