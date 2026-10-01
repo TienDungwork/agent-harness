@@ -47,7 +47,7 @@ export function VmsCssBars({ chart }: { chart: VmsChartPayload }) {
           <span className="inline-flex items-center gap-1.5">
             <span
               className="inline-block h-2.5 w-2.5 rounded-sm"
-              style={{ background: "var(--chart-1)" }}
+              style={{ background: "#C9B974" }}
             />
             {s1}
           </span>
@@ -55,7 +55,7 @@ export function VmsCssBars({ chart }: { chart: VmsChartPayload }) {
             <span className="inline-flex items-center gap-1.5">
               <span
                 className="inline-block h-2.5 w-2.5 rounded-sm"
-                style={{ background: "var(--chart-2)" }}
+                style={{ background: "#6EA8FE" }}
               />
               {s2}
             </span>
@@ -84,7 +84,7 @@ export function VmsCssBars({ chart }: { chart: VmsChartPayload }) {
                     className="h-full rounded-full"
                     style={{
                       width: w1,
-                      background: "var(--chart-1)",
+                      background: "#C9B974",
                       minWidth: v1 > 0 ? 4 : 0,
                     }}
                   />
@@ -95,7 +95,7 @@ export function VmsCssBars({ chart }: { chart: VmsChartPayload }) {
                       className="h-full rounded-full"
                       style={{
                         width: w2,
-                        background: "var(--chart-2)",
+                        background: "#6EA8FE",
                         minWidth: v2 > 0 ? 4 : 0,
                       }}
                     />

@@ -2,9 +2,14 @@
 
 **Mục đích:** Kiểm tra chatbot hỗ trợ **vận hành / điều hành khu công nghiệp** — số liệu biển số, ra/vào, hãng xe, truy vết, xâm nhập — qua hội thoại tiếng Việt trên Agent Canvas (Home → chat mới).
 
-**Phạm vi dữ liệu:** ClickHouse VMS (`vms.ai_events`), org scope theo cấu hình gateway. Agent **không** được bịa số; phải gọi MCP **`vms_query`** (lean path).
+**Phạm vi dữ liệu:** ClickHouse VMS (`vms.ai_events`), **org scope** theo `VMS_ORGANIZATION_ID` (mặc định **106**). Agent **không** được bịa số; phải gọi MCP **`vms_query`**.
 
-**Lưu ý kho (hay gặp “không có dữ liệu”):** sync có thể trễ hơn ngày lịch “hôm nay”. `plate_flow` / `manufacturer` / `intrusion` (và `count` không truyền `day`) **tự fallback** sang ngày gần nhất còn dữ liệu và ghi rõ trong `reply_vi` (*Hôm nay chưa có dữ liệu; dùng ngày gần nhất…*). Không coi đó là FAIL nếu số liệu khớp ngày fallback.
+| Org | Có gì (kho hiện tại) | Câu hỏi phù hợp |
+|-----|----------------------|-----------------|
+| **106** (default) | PLATE ~04–07/09/2026; biển vd `14H03464` | Tháng 9 / flow `07/09` / trace `14H03464` |
+| **103** | PLATE dài hơn (có **08/09**); xâm nhập Aug (có **27/08**); biển vd `15HC00507` | Cần đổi `VMS_ORGANIZATION_ID=103` rồi restart `local-gateway` |
+
+**Lưu ý kho (hay gặp “không có dữ liệu”):** sync có thể trễ hơn ngày lịch “hôm nay”. `plate_flow` / `manufacturer` / `intrusion` (và `count` không truyền `day`) **tự fallback** sang ngày gần nhất còn dữ liệu và ghi rõ trong `reply_vi`. Hỏi **ngày cụ thể không có data trong org** → tool trả 0 + gợi ý ngày gần nhất (không phải bug).
 
 ---
 
@@ -82,7 +87,7 @@ Biểu đồ hôm nay có bao nhiêu lượt xe ra và vào, phân loại theo x
 vẽ biểu đồ số lượng xe trong tháng 9 đến nay
 ```
 
-**Kỳ vọng:** `vms_query(action="count", month="2026-09")` — **không** `day=hôm nay`, **không** `vehicle_type` trừ khi user nói rõ loại. `reply_vi` dạng *Từ 01/09/… đến …: tổng N (K ngày)*. Chart type **line** (`per_day`).
+**Kỳ vọng:** `vms_query(action="count", month="2026-09")` — **không** `day=hôm nay`, **không** `vehicle_type` trừ khi hỏi rõ loại. `reply_vi` dạng *Từ … đến …: tổng N (K ngày có dữ liệu / M ngày hỏi)*. Chart **line** chỉ các ngày có số > 0.
 
 **FAIL:** trả lời một ngày / chỉ xe máy / `day` + `vehicle_type` thay vì `month`.
 
@@ -246,7 +251,20 @@ Mỗi case: **conversation mới** hoặc tin nhắn follow-up sau lời chào; 
 
 
 
+## Câu hỏi copy-paste (org **106** — default)
+
+```text
+vẽ biểu đồ số lượng xe trong tháng 9 đến nay
+Biểu đồ ngày 07/09/2026 có bao nhiêu lượt xe ra và vào, phân loại theo xe máy, ô tô?
+Truy vết, lịch sử di chuyển của phương tiện có biển số 14H03464
+Khung thời gian xảy ra xâm nhập nhiều nhất ngày hôm nay
+```
+
+## Câu hỏi org **103** (đổi `VMS_ORGANIZATION_ID=103` trước)
+
+```text
 Biểu đồ ngày 08/09/2026 có bao nhiêu lượt xe ra và vào, phân loại theo xe máy, ô tô?
 Số liệu ô tô theo hãng xe ngày 08/09/2026.
 Truy vết, lịch sử di chuyển của phương tiện có biển số 15HC00507.
 Khung thời gian xảy ra xâm nhập nhiều nhất ngày 27/08/2026.
+```

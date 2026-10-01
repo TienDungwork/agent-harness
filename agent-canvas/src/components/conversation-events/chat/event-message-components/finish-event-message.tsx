@@ -30,8 +30,9 @@ export function FinishEventMessage({
         type="agent"
         message={message}
         isFromPlanningAgent={isFromPlanningAgent}
-      />
-      {chart ? <VmsAnalyticsChartSafe chart={chart} /> : null}
+      >
+        {chart ? <VmsAnalyticsChartSafe chart={chart} /> : null}
+      </ChatMessage>
       {event.critic_result != null && (
         <CriticResultDisplay criticResult={event.critic_result} />
       )}

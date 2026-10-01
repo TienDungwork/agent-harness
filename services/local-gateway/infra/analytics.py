@@ -314,7 +314,43 @@ LIMIT {{lim:UInt16}}
         settings, sql, {**scope_params, 'days': d, 'plate': plate, 'lim': lim}
     )
     if not items:
-        reply = f'Không tìm thấy lịch sử biển số {plate} trong {d} ngày gần đây.'
+        # Same plate may live under another organization_id in the warehouse.
+        other = query_json(
+            settings,
+            """
+SELECT organization_id, count() AS n
+FROM vms.ai_events
+PREWHERE module = 'PLATE'
+WHERE license_plate = {plate:String}
+  AND event_time >= now() - toIntervalDay({days:UInt16})
+GROUP BY organization_id
+ORDER BY n DESC
+LIMIT 5
+""",
+            {'plate': plate, 'days': d},
+        )
+        cur_org = int(scope_params['org_id'])
+        other = [
+            r
+            for r in other
+            if int(r.get('organization_id') or 0) != cur_org
+            and int(r.get('n') or 0) > 0
+        ]
+        if other:
+            bits = ', '.join(
+                f'org {int(r["organization_id"])} ({_fmt_n(r["n"])} mốc)'
+                for r in other[:3]
+            )
+            reply = (
+                f'Không tìm thấy biển {plate} trong org hiện tại ({cur_org}) '
+                f'trong {d} ngày. Kho có dữ liệu ở: {bits}. '
+                f'Đổi VMS_ORGANIZATION_ID hoặc hỏi biển khác (vd 14H03464).'
+            )
+        else:
+            reply = (
+                f'Không tìm thấy lịch sử biển số {plate} trong {d} ngày gần đây '
+                f'(org {cur_org}).'
+            )
     else:
         lines = [
             f'Lịch sử biển số {plate} ({len(items)} mốc gần nhất, cửa sổ {d} ngày):'
@@ -518,6 +554,14 @@ def _fmt_dmy(iso: str) -> str:
     return f'{dd}/{mo}/{y}'
 
 
+def _fmt_n(n: int | float | None) -> str:
+    """Vietnamese thousand grouping: 299622 → '299.622'."""
+    try:
+        return f'{int(n or 0):,}'.replace(',', '.')
+    except (TypeError, ValueError):
+        return '0'
+
+
 def daily_multi(
     settings: Settings,
     *,
@@ -570,25 +614,37 @@ ORDER BY day
     # Keep zeros for requested days with no events (full month axis on chart).
     per_day = [{'day': day, 'total_n': by_day.get(day, 0)} for day in days_sorted]
     total = sum(int(r['total_n']) for r in per_day)
+    nonzero = [r for r in per_day if int(r['total_n']) > 0]
     if len(per_day) > 5:
-        reply = (
-            f'Từ {_fmt_dmy(per_day[0]["day"])} đến {_fmt_dmy(per_day[-1]["day"])}: '
-            f'tổng {total} lượt biển số ({len(per_day)} ngày, giờ VN).'
-        )
+        if nonzero:
+            reply = (
+                f'Từ {_fmt_dmy(nonzero[0]["day"])} đến {_fmt_dmy(nonzero[-1]["day"])}: '
+                f'tổng {_fmt_n(total)} phương tiện '
+                f'({_fmt_n(len(nonzero))} ngày có dữ liệu'
+                f' / {len(per_day)} ngày hỏi, giờ VN).'
+            )
+        else:
+            reply = (
+                f'Từ {_fmt_dmy(per_day[0]["day"])} đến {_fmt_dmy(per_day[-1]["day"])}: '
+                f'không có dữ liệu phương tiện (giờ VN).'
+            )
     else:
         lines = [
-            f'Ngày {_fmt_dmy(row["day"])}: {row["total_n"]} lượt biển số.'
+            f'Ngày {_fmt_dmy(row["day"])}: {_fmt_n(row["total_n"])} phương tiện.'
             for row in per_day
         ]
         if len(per_day) > 1:
-            lines.append(f'Tổng {len(per_day)} ngày: {total} lượt biển số.')
+            lines.append(f'Tổng {len(per_day)} ngày: {_fmt_n(total)} phương tiện.')
         reply = '\n'.join(lines)
     return {
         'ok': True,
         'module': m,
         'organization_id': org_id,
         'days_list': days_sorted,
-        'per_day': per_day,
+        # Chart only days with data (avoids a flat zero axis that looks "ảo").
+        'per_day': nonzero if nonzero else per_day,
+        'per_day_full': per_day,
+        'days_with_data': len(nonzero),
         'items': [],
         'total_n': total,
         'tz': 'Asia/Ho_Chi_Minh',
@@ -669,7 +725,7 @@ def ask_vehicle_count(settings: Settings, *, q: str) -> dict[str, Any]:
         data = daily(settings, days=1, module='PLATE', day=day)
         total = int(data.get('total_n') or 0)
         y, m, d = day.split('-')
-        reply = f'Ngày {d}/{m}/{y} có {total} lượt biển số.'
+        reply = f'Ngày {d}/{m}/{y} có {_fmt_n(total)} phương tiện.'
         return {
             'ok': True,
             'day': day,
@@ -682,7 +738,7 @@ def ask_vehicle_count(settings: Settings, *, q: str) -> dict[str, Any]:
 
     data = summary(settings, days=1, module='PLATE')
     total = int(data.get('total_n') or 0)
-    reply = f'Hôm nay có {total} lượt biển số.'
+    reply = f'Hôm nay có {_fmt_n(total)} phương tiện.'
     return {
         'ok': True,
         'days': 1,
@@ -864,17 +920,30 @@ LIMIT 50
             by_dir[d] = by_dir.get(d, 0) + n
             by_type[vt] = by_type.get(vt, 0) + n
 
-        lines = [f'{_fmt_day_vi(day_label)}: tổng {total} lượt biển số.']
+        lines = [f'{_fmt_day_vi(day_label)}: tổng {_fmt_n(total)} phương tiện.']
         if note:
             lines.insert(0, note)
+        if total == 0 and day_label != 'today' and not note:
+            latest = _latest_event_day(
+                settings,
+                module='PLATE',
+                site_id=site_id,
+                iam_area_id=iam_area_id,
+                iam_zone_id=iam_zone_id,
+            )
+            if latest and latest != day_label:
+                lines.append(
+                    f'Org hiện tại không có dữ liệu ngày này. '
+                    f'Ngày gần nhất có dữ liệu: {_fmt_dmy(latest)}.'
+                )
         for key in ('IN', 'OUT'):
             if key in by_dir:
-                lines.append(f'- {_DIR_VI[key].capitalize()}: {by_dir[key]}')
+                lines.append(f'- {_DIR_VI[key].capitalize()}: {_fmt_n(by_dir[key])}')
         for vt, n in sorted(by_type.items(), key=lambda x: -x[1]):
             label = _VEHICLE_TYPE_VI.get(
                 vt, vt.lower() if vt != 'UNKNOWN' else 'chưa xác định'
             )
-            lines.append(f'- {label}: {n}')
+            lines.append(f'- {label}: {_fmt_n(n)}')
         if items:
             lines.append('Chi tiết:')
             for row in items[:12]:
@@ -883,7 +952,7 @@ LIMIT 50
                 n = int(row.get('n') or 0)
                 d_vi = _DIR_VI.get(d, d)
                 vt_vi = _VEHICLE_TYPE_VI.get(vt, vt or 'chưa xác định')
-                lines.append(f'  · {d_vi} / {vt_vi}: {n}')
+                lines.append(f'  · {d_vi} / {vt_vi}: {_fmt_n(n)}')
         lines.append(
             'Lưu ý: kho hiện chưa có số chỗ (5/7/9/16…) — chỉ có loại xe máy/ô tô/tải.'
         )
@@ -962,7 +1031,8 @@ LIMIT {{lim:UInt16}}
         total = sum(int(r.get('n') or 0) for r in items)
         type_vi = _VEHICLE_TYPE_VI.get(vt, 'xe') if vt != 'ALL' else 'xe'
         lines = [
-            f'{_fmt_day_vi(day_label)} — {type_vi} theo hãng (tổng {total} lượt có gắn hãng/UNKNOWN):'
+            f'{_fmt_day_vi(day_label)} — {type_vi} theo hãng '
+            f'(tổng {_fmt_n(total)} lượt có gắn hãng/UNKNOWN):'
         ]
         if note:
             lines.insert(0, note)
@@ -971,7 +1041,7 @@ LIMIT {{lim:UInt16}}
         for row in items:
             mfr = str(row.get('manufacturer') or 'UNKNOWN')
             n = int(row.get('n') or 0)
-            lines.append(f'- {mfr}: {n}')
+            lines.append(f'- {mfr}: {_fmt_n(n)}')
         return {
             'ok': True,
             'day': None if day_label == 'today' else day_label,
@@ -1037,6 +1107,22 @@ LIMIT 24
             reply = f'{_fmt_day_vi(day_label)} không có sự kiện xâm nhập (INTRUSION_DETECTION).'
             if note:
                 reply = note + '\n' + reply
+            elif day_label != 'today':
+                latest = _latest_event_day(
+                    settings,
+                    module='ANOMALY',
+                    event_type='INTRUSION_DETECTION',
+                    site_id=site_id,
+                    iam_area_id=iam_area_id,
+                    iam_zone_id=iam_zone_id,
+                )
+                if latest and latest != day_label:
+                    reply += (
+                        f' Ngày gần nhất có xâm nhập (org hiện tại): '
+                        f'{_fmt_day_vi(latest)}.'
+                    )
+                elif not latest:
+                    reply += ' Org hiện tại chưa có sự kiện xâm nhập trong kho.'
             return {
                 'ok': True,
                 'day': None if day_label == 'today' else day_label,
@@ -1051,8 +1137,9 @@ LIMIT 24
         peak_h = int(top.get('hour') or 0)
         peak_n = int(top.get('n') or 0)
         lines = [
-            f'{_fmt_day_vi(day_label)} có {total} lượt xâm nhập.',
-            f'Khung giờ nhiều nhất: {peak_h:02d}:00–{peak_h:02d}:59 ({peak_n} sự kiện).',
+            f'{_fmt_day_vi(day_label)} có {_fmt_n(total)} lượt xâm nhập.',
+            f'Khung giờ nhiều nhất: {peak_h:02d}:00–{peak_h:02d}:59 '
+            f'({_fmt_n(peak_n)} sự kiện).',
             'Top khung giờ:',
         ]
         if note:
@@ -1060,7 +1147,7 @@ LIMIT 24
         for row in items[:5]:
             h = int(row.get('hour') or 0)
             n = int(row.get('n') or 0)
-            lines.append(f'- {h:02d}h: {n}')
+            lines.append(f'- {h:02d}h: {_fmt_n(n)}')
         return {
             'ok': True,
             'day': None if day_label == 'today' else day_label,

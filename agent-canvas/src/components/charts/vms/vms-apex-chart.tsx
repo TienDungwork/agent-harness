@@ -1,6 +1,7 @@
 import { useEffect, useId, useRef } from "react";
 import ApexCharts from "apexcharts";
 import type { ApexOptions } from "apexcharts";
+import "apexcharts/dist/apexcharts.css";
 import type { VmsChartPayload } from "./types";
 
 /** Hex only — Apex SVG ignores most CSS variables. */
@@ -49,6 +50,20 @@ function fmtAxis(v: number): string {
   if (n >= 10_000) return `${Math.round(v / 1000)}k`;
   if (n >= 1000) return `${(v / 1000).toFixed(1)}k`;
   return `${Math.round(v)}`;
+}
+
+/** Rolldown/Vite may wrap CJS default; always resolve a constructable ctor. */
+function resolveApexCtor(): typeof ApexCharts {
+  const mod = ApexCharts as unknown as {
+    default?: typeof ApexCharts;
+  };
+  const ctor = (typeof ApexCharts === "function" ? ApexCharts : mod?.default) as
+    | typeof ApexCharts
+    | undefined;
+  if (typeof ctor !== "function") {
+    throw new Error("apexcharts constructor missing");
+  }
+  return ctor;
 }
 
 function ChartShell({
@@ -122,7 +137,12 @@ function buildOptions(chart: VmsChartPayload): {
               size: "72%",
               labels: {
                 show: true,
-                name: { show: true, fontSize: "12px", color: MUTED, offsetY: 18 },
+                name: {
+                  show: true,
+                  fontSize: "12px",
+                  color: MUTED,
+                  offsetY: 18,
+                },
                 value: {
                   show: true,
                   fontSize: "20px",
@@ -167,7 +187,7 @@ function buildOptions(chart: VmsChartPayload): {
     const dense = categories.length > 12;
     const series = [
       {
-        name: chart.series?.value || "Lượt biển",
+        name: chart.series?.value || "Phương tiện",
         data: chart.data.map((d) => d.value || 0),
       },
     ];
@@ -189,7 +209,7 @@ function buildOptions(chart: VmsChartPayload): {
           type: "gradient",
           gradient: {
             shadeIntensity: 0.35,
-            opacityFrom: 0.4,
+            opacityFrom: 0.45,
             opacityTo: 0.05,
             stops: [0, 90, 100],
           },
@@ -217,9 +237,8 @@ function buildOptions(chart: VmsChartPayload): {
         },
         xaxis: {
           categories,
-          tickAmount: dense ? Math.min(8, categories.length) : undefined,
           labels: {
-            rotate: dense ? -40 : 0,
+            rotate: dense ? -35 : 0,
             hideOverlappingLabels: true,
             style: { colors: MUTED, fontSize: "11px" },
           },
@@ -237,7 +256,6 @@ function buildOptions(chart: VmsChartPayload): {
     };
   }
 
-  // mixed-bar / multiple-bar → column
   const categories = chart.data.map((d) => labelVi(d.label));
   const hasSecond = chart.data.some((d) => d.value2 != null);
   const distributed = !hasSecond && chart.type === "mixed-bar";
@@ -310,14 +328,18 @@ function buildOptions(chart: VmsChartPayload): {
 
 function ApexHost({ chart }: { chart: VmsChartPayload }) {
   const hostRef = useRef<HTMLDivElement | null>(null);
-  const chartRef = useRef<ApexCharts | null>(null);
   const reactId = useId();
   const chartKey = JSON.stringify(chart);
+  const height =
+    chart.type === "pie" ? 320 : chart.type === "line" || chart.type === "area"
+      ? 300
+      : 300;
 
   useEffect(() => {
     const el = hostRef.current;
-    if (!el) return undefined;
+    if (!el || typeof window === "undefined") return undefined;
 
+    const ApexCtor = resolveApexCtor();
     const built = buildOptions(chart);
     const opts: ApexOptions = {
       ...built.options,
@@ -325,43 +347,83 @@ function ApexHost({ chart }: { chart: VmsChartPayload }) {
         ...built.options.chart,
         type: built.type,
         height: built.height,
+        width: "100%",
         id: `vms-${reactId.replace(/:/g, "")}`,
       },
       series: built.series,
     };
 
+    let instance: ApexCharts | null = null;
     let cancelled = false;
-    const run = async () => {
-      if (chartRef.current) {
-        chartRef.current.destroy();
-        chartRef.current = null;
-      }
-      el.innerHTML = "";
-      const instance = new ApexCharts(el, opts);
-      chartRef.current = instance;
-      await instance.render();
-      if (cancelled) {
-        instance.destroy();
-        chartRef.current = null;
+    let raf = 0;
+    let ro: ResizeObserver | null = null;
+
+    const mount = () => {
+      if (cancelled || !hostRef.current) return;
+      const host = hostRef.current;
+      if (host.clientWidth < 8) return;
+      try {
+        if (instance) {
+          try {
+            instance.destroy();
+          } catch {
+            /* ignore */
+          }
+          instance = null;
+          host.innerHTML = "";
+        }
+        instance = new ApexCtor(host, opts);
+        void instance.render();
+        ro?.disconnect();
+        ro = null;
+      } catch (err) {
+        console.error("[vms-chart] ApexCharts render error", err);
       }
     };
-    void run();
+
+    // Wait until the host has a real layout width (chat column can be 0 on
+    // first paint / while the message bubble is still measuring).
+    raf = window.requestAnimationFrame(() => {
+      if (cancelled || !hostRef.current) return;
+      if (hostRef.current.clientWidth >= 8) {
+        mount();
+        return;
+      }
+      ro = new ResizeObserver(() => {
+        if (hostRef.current && hostRef.current.clientWidth >= 8) {
+          mount();
+        }
+      });
+      ro.observe(hostRef.current);
+    });
 
     return () => {
       cancelled = true;
-      if (chartRef.current) {
-        chartRef.current.destroy();
-        chartRef.current = null;
+      window.cancelAnimationFrame(raf);
+      ro?.disconnect();
+      if (instance) {
+        try {
+          instance.destroy();
+        } catch {
+          /* ignore */
+        }
+        instance = null;
       }
+      if (hostRef.current) hostRef.current.innerHTML = "";
     };
-    // chartKey captures payload; chart object identity is unstable across renders.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [chartKey, reactId]);
 
-  return <div ref={hostRef} className="w-full min-h-[280px]" />;
+  return (
+    <div
+      ref={hostRef}
+      className="w-full"
+      style={{ minHeight: height, height }}
+    />
+  );
 }
 
-/** ApexCharts core (npm local — no CDN, no react-apexcharts wrapper). */
+/** ApexCharts core (npm local — no CDN). */
 export function VmsApexChart({ chart }: { chart: VmsChartPayload }) {
   return (
     <ChartShell chart={chart}>

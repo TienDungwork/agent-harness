@@ -142,9 +142,9 @@ export function UserAssistantEventMessage({
         {imageUrls.length > 0 && (
           <ImageCarousel size="small" images={imageUrls} />
         )}
+        {vmsChart ? <VmsAnalyticsChartSafe chart={vmsChart} /> : null}
         {isLastMessage && <ConversationConfirmationButtons />}
       </ChatMessage>
-      {vmsChart ? <VmsAnalyticsChartSafe chart={vmsChart} /> : null}
       {event.source === "agent" && event.critic_result != null && (
         <CriticResultDisplay criticResult={event.critic_result} />
       )}

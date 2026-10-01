@@ -30,6 +30,15 @@ _SUDO_BLOCKED_REPLY_VI = (
     'Đã vào máy rồi — đừng dùng sudo. Bạn muốn chạy lệnh gì (không sudo)?'
 )
 
+
+def _fmt_n(n: int | float | None) -> str:
+    """Vietnamese thousand grouping: 299622 → '299.622'."""
+    try:
+        return f'{int(n or 0):,}'.replace(',', '.')
+    except (TypeError, ValueError):
+        return '0'
+
+
 # After connect-only resolve, block infra_run briefly so the model cannot auto-ls/sudo.
 _CONNECT_ONLY_UNTIL: dict[str, tuple[float, str]] = {}
 _CONNECT_ONLY_TTL_SEC = 45.0
@@ -222,7 +231,7 @@ async def vms_count_vehicles(
             return raw
         total = int((data or {}).get('total_n') or 0)
         y, m, d = day_s.split('-')
-        reply = f'Ngày {d}/{m}/{y} có {total} lượt biển số.'
+        reply = f'Ngày {d}/{m}/{y} có {_fmt_n(total)} phương tiện.'
         return json.dumps(
             {
                 'ok': True,
@@ -263,7 +272,9 @@ async def vms_count_vehicles(
             latest = max(by_day)
             total = by_day[latest]
             y, m, d = latest.split('-')
-            reply = f'Ngày gần nhất có dữ liệu là {d}/{m}/{y}: {total} lượt biển số.'
+            reply = (
+                f'Ngày gần nhất có dữ liệu là {d}/{m}/{y}: {_fmt_n(total)} phương tiện.'
+            )
             return json.dumps(
                 {
                     'ok': True,
@@ -291,9 +302,9 @@ async def vms_count_vehicles(
         return raw
     total = int((data or {}).get('total_n') or 0)
     if window <= 1:
-        reply = f'Hôm nay có {total} lượt biển số.'
+        reply = f'Hôm nay có {_fmt_n(total)} phương tiện.'
     else:
-        reply = f'{window} ngày gần đây có {total} lượt biển số.'
+        reply = f'{window} ngày gần đây có {_fmt_n(total)} phương tiện.'
     return json.dumps(
         {
             'ok': True,
@@ -362,11 +373,11 @@ def _build_chart(data: dict[str, Any]) -> dict[str, Any] | None:
         if series:
             return {
                 'type': 'line',
-                'title': 'Lượt biển theo ngày',
+                'title': 'Phương tiện theo ngày',
                 'description': f'{len(series)} ngày',
-                'footer': f'Tổng: {int(data.get("total_n") or 0)}',
+                'footer': f'Tổng: {_fmt_n(data.get("total_n"))} phương tiện',
                 'data': series,
-                'series': {'value': 'Lượt biển'},
+                'series': {'value': 'Phương tiện'},
             }
 
     # Manufacturer ranking → mixed bar
@@ -393,7 +404,7 @@ def _build_chart(data: dict[str, Any]) -> dict[str, Any] | None:
                 'type': 'mixed-bar',
                 'title': f'Theo hãng ({vt})',
                 'description': data.get('day') or 'hôm nay',
-                'footer': f'Tổng: {int(data.get("total_n") or 0)}',
+                'footer': f'Tổng: {_fmt_n(data.get("total_n"))} phương tiện',
                 'data': series,
             }
 
@@ -417,9 +428,9 @@ def _build_chart(data: dict[str, Any]) -> dict[str, Any] | None:
                 'title': 'Xâm nhập theo giờ',
                 'description': data.get('day') or 'hôm nay',
                 'footer': (
-                    f'Peak {int(peak):02d}h · tổng {int(data.get("total_n") or 0)}'
+                    f'Peak {int(peak):02d}h · tổng {_fmt_n(data.get("total_n"))}'
                     if peak is not None
-                    else f'Tổng: {int(data.get("total_n") or 0)}'
+                    else f'Tổng: {_fmt_n(data.get("total_n"))} phương tiện'
                 ),
                 'data': series,
                 'series': {'value': 'Sự kiện'},
@@ -463,7 +474,7 @@ def _build_chart(data: dict[str, Any]) -> dict[str, Any] | None:
                     'type': 'multiple-bar',
                     'title': 'Ra / vào theo loại xe',
                     'description': data.get('day') or 'hôm nay',
-                    'footer': f'Tổng: {int(data.get("total_n") or 0)}',
+                    'footer': f'Tổng: {_fmt_n(data.get("total_n"))} phương tiện',
                     'data': series,
                     'series': {'value': 'Vào (IN)', 'value2': 'Ra (OUT)'},
                 }
@@ -481,7 +492,7 @@ def _build_chart(data: dict[str, Any]) -> dict[str, Any] | None:
                 'type': 'pie',
                 'title': 'Tỷ lệ ra / vào',
                 'description': data.get('day') or 'hôm nay',
-                'footer': f'Tổng: {int(data.get("total_n") or 0)}',
+                'footer': f'Tổng: {_fmt_n(data.get("total_n"))} phương tiện',
                 'data': series,
             }
     if isinstance(by_type, dict) and by_type:
@@ -498,7 +509,7 @@ def _build_chart(data: dict[str, Any]) -> dict[str, Any] | None:
                 'type': 'pie',
                 'title': 'Tỷ lệ loại xe',
                 'description': data.get('day') or 'hôm nay',
-                'footer': f'Tổng: {int(data.get("total_n") or 0)}',
+                'footer': f'Tổng: {_fmt_n(data.get("total_n"))} phương tiện',
                 'data': series[:6],
             }
     return None
@@ -656,9 +667,11 @@ async def vms_daily(
         latest_n = by_day[latest]
     if latest:
         y, m, d = latest.split('-')
-        reply = f'Ngày gần nhất có dữ liệu là {d}/{m}/{y}: {latest_n} lượt biển số.'
+        reply = (
+            f'Ngày gần nhất có dữ liệu là {d}/{m}/{y}: {_fmt_n(latest_n)} phương tiện.'
+        )
     else:
-        reply = f'{int(days)} ngày gần đây có {total} lượt biển số.'
+        reply = f'{int(days)} ngày gần đây có {_fmt_n(total)} phương tiện.'
     return json.dumps(
         {
             'ok': True,
@@ -857,9 +870,9 @@ async def _count_by_vehicle_type(*, day: str | None, vehicle_type: str) -> str:
     label = labels.get(vehicle_type, vehicle_type.lower())
     if day_s and re.fullmatch(r'\d{4}-\d{2}-\d{2}', day_s):
         y, m, d = day_s.split('-')
-        reply = f'Ngày {d}/{m}/{y} có {n} lượt {label}.'
+        reply = f'Ngày {d}/{m}/{y} có {_fmt_n(n)} {label}.'
     else:
-        reply = f'Hôm nay có {n} lượt {label}.'
+        reply = f'Hôm nay có {_fmt_n(n)} {label}.'
     return json.dumps(
         {
             'ok': True,

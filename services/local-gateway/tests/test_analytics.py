@@ -5,6 +5,7 @@ from types import SimpleNamespace
 import pytest
 from fastapi import HTTPException
 from infra.analytics import (
+    _fmt_n,
     clamp_days,
     require_day,
     require_event_type,
@@ -27,6 +28,13 @@ def _ch_settings(**kwargs):
     }
     data.update(kwargs)
     return SimpleNamespace(**data)
+
+
+def test_fmt_n_vietnamese_grouping():
+    assert _fmt_n(299622) == '299.622'
+    assert _fmt_n(0) == '0'
+    assert _fmt_n(1000) == '1.000'
+    assert _fmt_n(None) == '0'
 
 
 def test_require_module_allowlist():
@@ -150,7 +158,7 @@ def test_ask_vehicle_count_parses_dmy(monkeypatch):
     out = mod.ask_vehicle_count(_ch_settings(), q='đếm số lương ô tô ngày 05 09 2026')
     assert captured['day'] == '2026-09-05'
     assert out['total_n'] == 125458
-    assert out['reply_vi'] == 'Ngày 05/09/2026 có 125458 lượt biển số.'
+    assert out['reply_vi'] == 'Ngày 05/09/2026 có 125.458 phương tiện.'
 
 
 def test_plate_flow_builds_reply(monkeypatch):

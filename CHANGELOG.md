@@ -2,6 +2,15 @@
 
 All notable changes to this workspace are listed here.
 
+## [beta v0.10.8] - 2026-10-01
+
+### Changed
+
+- VMS replies use Vietnamese thousand grouping and say "phương tiện" instead of "lượt biển số" (gateway analytics + infra MCP).
+- Multi-day / month charts plot only days with data; reply states days with data vs days asked.
+- Plate trace / day counts with no data point to other organizations or the latest day that has data.
+- VMS chart is embedded immediately in the agent message (no fake streaming delay); ApexCharts and typing indicator tweaks.
+
 ## [beta v0.10.7] - 2026-09-16
 
 ### Changed

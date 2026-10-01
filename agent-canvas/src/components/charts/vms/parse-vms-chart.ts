@@ -7,17 +7,22 @@ export function parseVmsChartFromObservationText(
   text: string,
 ): VmsChartPayload | null {
   const trimmed = text.trim();
-  if (!trimmed) return null;
+  if (!trimmed || !trimmed.includes('"chart"')) return null;
 
-  // Prefer fenced / raw JSON object containing "chart"
   const candidates: string[] = [];
   if (trimmed.startsWith("{")) candidates.push(trimmed);
 
   const fence = trimmed.match(/```(?:json)?\s*([\s\S]*?)```/i);
   if (fence?.[1]) candidates.push(fence[1].trim());
 
-  const embedded = trimmed.match(/\{[\s\S]*"chart"\s*:[\s\S]*\}/);
-  if (embedded?.[0]) candidates.push(embedded[0]);
+  // Tool wrappers often prefix JSON with "[Tool 'vms_query' executed.]".
+  const brace = trimmed.indexOf("{");
+  if (brace >= 0) {
+    const fromBrace = trimmed.slice(brace);
+    candidates.push(fromBrace);
+    const embedded = fromBrace.match(/\{[\s\S]*"chart"\s*:[\s\S]*\}/);
+    if (embedded?.[0]) candidates.push(embedded[0]);
+  }
 
   for (const raw of candidates) {
     try {

@@ -13,7 +13,6 @@ import json
 import logging
 import re
 import sys
-import time
 import uuid
 from typing import Any
 
@@ -23,11 +22,12 @@ logger = logging.getLogger("agent-canvas.vms_reply_vi")
 # when ObservationEvent content is collapsed / not walked. Stripped from display.
 _VMS_CHART_MARK = "<!--CREANOVA_VMS_CHART:"
 _VMS_CHART_END = "-->"
-# Fake token stream pacing. Must use asyncio.sleep on async path so the
-# event loop can flush WebSocket pub_sub between chunks (time.sleep blocks
-# the loop → UI only sees the final MessageEvent).
-_STREAM_CHUNK_SLEEP = 0.045
-_STREAM_CHUNK_CHARS = 12
+# Immediate status so the chat shows characters while the LLM decides the
+# tool call (real TTFT bottleneck: user→ActionEvent often 1–7s). Final reply
+# still streams after MCP so the answer feels typed.
+_STATUS_TEXT = "Đang lấy số liệu…"
+_STREAM_CHUNK_SLEEP = 0.028
+_STREAM_CHUNK_CHARS = 24
 
 _PATCH_ATTR = "_creanova_vms_reply_vi_finish"
 _COUNT_NL_RE = re.compile(
@@ -184,6 +184,26 @@ def _embed_chart(reply: str, chart: dict[str, Any] | None) -> str:
     return f"{reply.rstrip()}\n\n{_VMS_CHART_MARK}{payload}{_VMS_CHART_END}"
 
 
+def _emit_status_delta(
+    on_event: Any,
+    *,
+    StreamingDeltaEvent: type | None,
+) -> None:
+    """First visible characters while waiting on the LLM tool-call TTFT."""
+    if StreamingDeltaEvent is None:
+        return
+    try:
+        on_event(
+            StreamingDeltaEvent(
+                source="agent",
+                content=_STATUS_TEXT,
+                reasoning_content=None,
+            )
+        )
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("VMS status delta failed: %s", exc)
+
+
 def _iter_reply_chunks(reply: str):
     if not reply:
         return
@@ -192,8 +212,8 @@ def _iter_reply_chunks(reply: str):
     while i < n:
         end = min(i + _STREAM_CHUNK_CHARS, n)
         if end < n:
-            space = reply.rfind(" ", i, end + 6)
-            newline = reply.rfind("\n", i, end + 6)
+            space = reply.rfind(" ", i, end + 8)
+            newline = reply.rfind("\n", i, end + 8)
             break_at = max(space, newline)
             if break_at > i:
                 end = break_at + 1
@@ -203,31 +223,12 @@ def _iter_reply_chunks(reply: str):
             yield chunk
 
 
-def _stream_reply_deltas(
-    on_event: Any,
-    reply: str,
-    *,
-    StreamingDeltaEvent: type,
-) -> None:
-    """Sync path: sleep between chunks (OK off the asyncio loop)."""
-    for chunk in _iter_reply_chunks(reply):
-        on_event(
-            StreamingDeltaEvent(
-                source="agent",
-                content=chunk,
-                reasoning_content=None,
-            )
-        )
-        time.sleep(_STREAM_CHUNK_SLEEP)
-
-
 async def _astream_reply_deltas(
     on_event: Any,
     reply: str,
     *,
     StreamingDeltaEvent: type,
 ) -> None:
-    """Async path: await sleep so WS subscribers flush between chunks."""
     import asyncio
 
     for chunk in _iter_reply_chunks(reply):
@@ -276,7 +277,6 @@ def _finish_with_reply(
     Message: type,
     TextContent: type,
     ConversationExecutionStatus: type,
-    StreamingDeltaEvent: type | None = None,
 ) -> bool:
     for ev in captured:
         if not isinstance(ev, ObservationEvent):
@@ -292,13 +292,7 @@ def _finish_with_reply(
             len(reply),
             bool(chart),
         )
-        if StreamingDeltaEvent is not None:
-            try:
-                _stream_reply_deltas(
-                    on_event, reply, StreamingDeltaEvent=StreamingDeltaEvent
-                )
-            except Exception as exc:  # noqa: BLE001
-                logger.warning("VMS stream deltas failed: %s", exc)
+        # Sync path: dump final message (no sleep — would block the event loop).
         on_event(
             MessageEvent(
                 source="agent",
@@ -329,7 +323,7 @@ async def _afinish_with_reply(
     ConversationExecutionStatus: type,
     StreamingDeltaEvent: type | None = None,
 ) -> bool:
-    """Like _finish_with_reply but awaits between deltas (does not block the loop)."""
+    """Stream reply after MCP, then commit MessageEvent+chart."""
     for ev in captured:
         if not isinstance(ev, ObservationEvent):
             continue
@@ -425,7 +419,6 @@ def apply_runtime_monkeypatch() -> int:
             Message=Message,
             TextContent=TextContent,
             ConversationExecutionStatus=ConversationExecutionStatus,
-            StreamingDeltaEvent=StreamingDeltaEvent,
         )
 
     async def _aexecute_actions(self, conversation, pending_actions, on_event):  # type: ignore[no-untyped-def]
@@ -522,6 +515,8 @@ def apply_runtime_monkeypatch() -> int:
 
     def step(self, conversation, on_event, on_token=None):  # type: ignore[no-untyped-def]
         _, text = _last_user_text(conversation)
+        if text and _needs_mcp_tools(text):
+            _emit_status_delta(on_event, StreamingDeltaEvent=StreamingDeltaEvent)
         if text and not _needs_mcp_tools(text) and hasattr(self, "_tools"):
             full = dict(self._tools)
             self._tools = {}
@@ -542,6 +537,8 @@ def apply_runtime_monkeypatch() -> int:
             return await original_async_step(agent, conv, cb, tok)
 
         _, text = _last_user_text(conversation)
+        if text and _needs_mcp_tools(text):
+            _emit_status_delta(on_event, StreamingDeltaEvent=StreamingDeltaEvent)
         if text and not _needs_mcp_tools(text) and hasattr(self, "_tools"):
             full = dict(self._tools)
             self._tools = {}
