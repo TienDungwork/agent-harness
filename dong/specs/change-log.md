@@ -1,5 +1,42 @@
 # Change Log — agent dong
 
+## 2026-09-30 — Fix Context Memory & Multi-turn Follow-up trong Streaming Chat (/api/agent/stream)
+
+### Tóm tắt trước khi triển khai (Pre-coding Summary)
+- **Vấn đề phát hiện**:
+  - Tại giao diện Web Chat (sử dụng SSE endpoint `/api/agent/stream`), khi người dùng đặt câu hỏi nối tiếp/ngắn như *"Vậy còn vùng cấm thì sao?"* sau câu hỏi *"Hôm nay có bao nhiêu event phương tiện?"*, agent không nhận biết được ngữ cảnh câu trước, dẫn đến việc `rewrite` passthrough nguyên văn câu hỏi và bị phân loại vào intent `clarify` (hỏi lại: *"Bạn có thể làm rõ hơn về vùng cấm mà bạn muốn hỏi không?"*).
+  - Ngoài ra, sau khi nối context, prompt rewrite trước đó thiếu hướng dẫn phân tách đối tượng và hành động khi đổi domain, dẫn đến việc câu hỏi bị dập khuôn mang theo từ *"xe"* sang domain vùng cấm (*"Hôm nay có bao nhiêu lượt xe xâm nhập vào vùng cấm?"* thay vì *"sự kiện xâm nhập hoặc leo trèo vùng cấm"*).
+- **Nguyên nhân cốt lõi**:
+  - Trong [src/main.py](file:///home/atin/dong/dong/KCNHungPhu/agent-harness/dong/src/main.py), hàm `stream_chat` gọi `rewrite_question_safe(question)` mà không nạp lịch sử phiên `prev_messages` từ session store (`history=None`).
+  - Prompt hệ thống `rewrite` (v1.yaml) và chỉ dẫn user_content trong `rewrite.py` chưa có quy tắc tách biệt đối tượng theo domain (PLATE vs ZONE/FACE/FIGHT/CROWD/FIRE/WATER), khiến LLM sao chép nguyên đối tượng ("xe") từ câu trước khi kế thừa cấu trúc.
+- **Giải pháp**:
+  - Tại `stream_chat`: Nạp `prev_messages = get_session_messages(session_id, user_id)` và bypass cache cho câu hỏi follow-up.
+  - Tối ưu hóa prompt rewrite tại [resource/prompts/rewrite/v1.yaml](file:///home/atin/dong/dong/KCNHungPhu/agent-harness/dong/resource/prompts/rewrite/v1.yaml) và [src/agent/rewrite.py](file:///home/atin/dong/dong/KCNHungPhu/agent-harness/dong/src/agent/rewrite.py):
+    * Chỉ định rõ: Domain `ZONE` chỉ dùng hành động *"sự kiện xâm nhập / leo trèo / vượt hàng rào"*, tuyệt đối không tự ý thêm *"xe"* nếu câu hỏi không yêu cầu cụ thể.
+    * Hướng dẫn LLM chuyển đổi linh hoạt đối tượng và hành động phù hợp với domain mới khi xử lý câu hỏi rút gọn/nối tiếp.
+  - Khởi động lại service backend (`docker compose restart ai_backend`).
+- **Tập tin chỉnh sửa**:
+  - `src/main.py`: Bổ sung nạp `prev_messages` và bypass cache cho câu hỏi follow-up trong stream handler.
+  - `src/agent/rewrite.py`: Hướng dẫn linh hoạt chuyển đổi đối tượng theo domain trong prompt context.
+  - `resource/prompts/rewrite/v1.yaml`: Bổ sung bảng phân biệt domain & đối tượng, thêm ví dụ câu hỏi nối tiếp chuyển domain.
+  - `specs/change-log.md`: Cập nhật chi tiết kết quả review và khắc phục.
+
+### Đánh giá theo Acceptance Criteria (Review vs AC)
+- **what passes**:
+  - Turn 1 (*"Hôm nay có bao nhiêu lượt event phương tiện"*): Trả lời chính xác số lượt xe hôm nay qua `sql_builder`.
+  - Turn 2 (*"Vậy còn vùng cấm"*):
+    - `rewrite` node viết lại hoàn toàn tự nhiên và chính xác:
+      * `text`: *"Thống kê số lượng sự kiện xâm nhập vùng cấm hôm nay"*
+      * `sub_questions`: `["Hôm nay có bao nhiêu sự kiện xâm nhập hoặc leo trèo vùng cấm?"]`
+      * Không còn bị gán nhầm từ *"xe"*.
+    - Output trả về số liệu chuẩn xác: *"Hôm nay có 1160 sự kiện xâm nhập vùng cấm tại khu vực POLY_789629."*
+- **what fails**:
+  - Không có.
+- **what is missing**:
+  - Không có.
+
+---
+
 ## 2026-09-28 — Phase 7: Kịch bản demo kiểm chứng độ bền vững của Memory & Context Engineering v9 (Hoàn thành)
 
 ### Tóm tắt trước khi triển khai (Pre-coding Summary)

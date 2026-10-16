@@ -119,7 +119,10 @@ def run_pipeline(question: str) -> PipelineResult:
     evidence_parts = [question] + (
         [f"{c}={v}" for row in query.rows for c, v in zip(query.columns, row)] if query else []
     )
-    tool_empty = _is_tool_empty(query)
+    is_mixed_or_docs = out.detail in ("docs", "orchestrator:multi") or (query and query.tool == "docs")
+    if is_mixed_or_docs:
+        evidence_parts.append(out.answer)
+    tool_empty = False if is_mixed_or_docs else _is_tool_empty(query)
     result = check_output(out.answer, evidence_parts, tool_empty=tool_empty)
 
     tools = set()

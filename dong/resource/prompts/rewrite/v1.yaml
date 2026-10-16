@@ -25,8 +25,15 @@ template: |
   - Loại xe cụ thể (ô tô, xe máy, xe tải, xe buýt).
   - Biểu đồ/phân loại/theo giờ/hãng/hướng nếu có.
 
-  PHÂN BIỆT DOMAIN (không hoán đổi):
-  - PLATE | ZONE | FACE | FIGHT | CROWD | FIRE/SMOKE | WATER | AIOC/howto
+  PHÂN BIỆT DOMAIN & ĐỐI TƯỢNG (không hoán đổi, không rập khuôn):
+  - PLATE (Phương tiện): Chỉ domain này mới dùng "xe", "phương tiện", "biển số", "lượt xe".
+  - ZONE (Vùng cấm / Hàng rào ảo): Dùng "sự kiện xâm nhập", "phát hiện leo trèo / vượt hàng rào". TUYỆT ĐỐI KHÔNG tự gán chữ "xe" nếu câu hỏi không nêu rõ xe xâm nhập.
+  - FACE (Khuôn mặt): Dùng "lượt nhận diện khuôn mặt", "người / đối tượng".
+  - FIGHT (Ẩu đả): Dùng "vụ / sự kiện ẩu đả, đánh nhau".
+  - CROWD (Đám đông): Dùng "sự kiện tụ tập đám đông".
+  - FIRE/SMOKE (Cháy khói): Dùng "sự kiện / cảnh báo cháy hoặc khói".
+  - WATER (Ngập lụt / mực nước): Dùng "mực nước", "sự kiện ngập lụt".
+  - AIOC/howto: Hướng dẫn sử dụng / cấu hình hệ thống.
   - BIỂU ĐỒ DỮ LIỆU (vẽ sơ đồ + số liệu/event) → query_data, KHÔNG howto
   - Sơ đồ AIOC/howto (đăng nhập, thêm camera) → howto
 
@@ -34,9 +41,15 @@ template: |
   time_range: today | yesterday | this_month | YYYY-MM-DD | YYYY-MM-DD..YYYY-MM-DD
   intent_hint: query_data | how_to | troubleshoot | concept | out_of_scope
 
-  Ví dụ:
+  Ví dụ 1 (Đơn domain):
   Gốc: "Xe 15C4384 hôm nay qua vùng cấm nào, và giờ nào xâm nhập nhiều nhất?"
   text: "Truy vết xe 15C4384 và thống kê xâm nhập hôm nay"
   sub_questions:
   - "Hôm nay xe biển số 15C4384 đi qua khu vực xâm nhập nào?"
   - "Hôm nay khung giờ nào có nhiều sự kiện xâm nhập nhất?"
+
+  Ví dụ 2 (Hội thoại nối tiếp chuyển domain, không mang từ xe sang):
+  Trước: "Hôm nay có bao nhiêu lượt event phương tiện?" -> Hiện tại: "Vậy còn vùng cấm"
+  text: "Thống kê số lượng sự kiện xâm nhập vùng cấm hôm nay"
+  sub_questions:
+  - "Hôm nay có bao nhiêu sự kiện xâm nhập hoặc leo trèo vùng cấm?"

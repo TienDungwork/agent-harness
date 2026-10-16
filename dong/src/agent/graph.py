@@ -214,7 +214,7 @@ def recall_node(state: AgentState) -> dict:
             "session_id": session_id,
             "original_question": q,
             "recalled_memories": [],
-            "rewritten": None,
+            "rewritten": state.get("rewritten"),
             "intent": "",
             "answer": "",
             "respond_mode": "",
@@ -264,7 +264,7 @@ def recall_node(state: AgentState) -> dict:
         "session_id": session_id,
         "original_question": q,
         "recalled_memories": memories,
-        "rewritten": None,
+        "rewritten": state.get("rewritten"),
         "intent": "",
         "answer": "",
         "respond_mode": "",
@@ -425,9 +425,10 @@ def rewrite_node(state: AgentState) -> dict:
     is_chat = is_chat_greeting(q)
     from src.agent.rewrite import _needs_rewrite_llm
 
+    raw_messages = list(state.get("messages") or [])
     if not rewritten:
-        rewritten = rewrite_question(q)
-    skip_llm = is_chat or not _needs_rewrite_llm(q.strip())
+        rewritten = rewrite_question(q, history=raw_messages)
+    skip_llm = is_chat or (not raw_messages and not _needs_rewrite_llm(q.strip()))
     llm_used = not skip_llm
 
     # Quản lý ngữ cảnh sliding_window & nén chủ động 40% cho lịch sử hội thoại
@@ -1451,7 +1452,7 @@ def respond_node(state: AgentState) -> dict:
     elif not rows:
         from src.guardrails import empty_stat_reply
 
-        ans = empty_stat_reply()
+        ans = empty_stat_reply(q)
         answer_source = "empty"
     else:
         with trace_substep("simple_answer", kind="tool", input={"row_count": len(rows)}) as sub:
@@ -1712,7 +1713,7 @@ def _fresh_invoke_state(question: str, inp: Agent_Input, uid: str, session_id: s
     return {
         "question": question,
         "original_question": question,
-        "rewritten": None,
+        "rewritten": getattr(inp, "rewritten", None),
         "user_id": uid,
         "session_id": session_id,
         "stream_tokens": getattr(inp, "stream_tokens", False),

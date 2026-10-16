@@ -39,9 +39,6 @@ class Settings(BaseSettings):
     model_api_key: str = Field(default="", alias="MODEL_API_KEY")
     model_endpoint: str = Field(default="http://192.168.1.196:18083/v1/chat/completions", alias="MODEL_ENDPOINT")
 
-    # Bước "Answer" (diễn giải số liệu -> câu tiếng Việt)
-    answer_use_llm: bool = Field(default=True, alias="ANSWER_USE_LLM")
-
     # v7 text-to-SQL / QueryPlan repair loop
     sql_repair_max: int = Field(default=2, alias="SQL_REPAIR_MAX")
 
@@ -74,14 +71,6 @@ class Settings(BaseSettings):
     db_organization_id: int = Field(default=0, alias="DB_ORGANIZATION_ID")
     db_timezone: str = Field(default="Asia/Ho_Chi_Minh", alias="DB_TIMEZONE")
     db_query_timeout_s: float = Field(default=5.0, alias="DB_QUERY_TIMEOUT_S")
-    db_max_rows: int = Field(default=200, alias="DB_MAX_ROWS")
-
-    # ── ClickHouse analytics (READ-ONLY) ───────────────────────────────────────────
-    ch_host: str = Field(default="", alias="CH_HOST")
-    ch_port: int = Field(default=8123, alias="CH_PORT")
-    ch_user: str = Field(default="", alias="CH_USER")
-    ch_password: str = Field(default="", alias="CH_PASSWORD")
-    ch_database: str = Field(default="", alias="CH_DATABASE")
 
     # ── Guardrails ───────────────────────────────────────────────────────────
     guardrails_min_answer_len: int = Field(default=5, alias="GUARDRAILS_MIN_ANSWER_LEN")
@@ -95,7 +84,6 @@ class Settings(BaseSettings):
 
     # ── Cache / TTL response cache (trước graph) ─────────────────────────────
     cache_enabled: bool = Field(default=True, alias="CACHE_ENABLED")
-    cache_ttl_s: int = Field(default=60, alias="CACHE_TTL_S")
 
     # Rewrite + decompose (gom trong rewrite_node — bỏ LLM khi câu ngắn/đơn)
     agent_decompose_min_chars: int = Field(default=48, alias="AGENT_DECOMPOSE_MIN_CHARS")
@@ -107,7 +95,6 @@ class Settings(BaseSettings):
         "memory_long_term_enabled",
         "cache_enabled",
         "monitoring_enabled",
-        "answer_use_llm",
         mode="before",
     )
     @classmethod

@@ -101,18 +101,29 @@ def append_session_messages(
     user_id: str,
     new_messages: list[dict[str, Any]],
 ) -> dict[str, Any] | None:
-    """Append tin nhắn vào phiên; cập nhật preview/title khi cần."""
+    """Append tin nhắn vào phiên; cập nhật preview/title khi cần (tự khởi tạo nếu chưa có)."""
     if not session_id or not user_id or not new_messages:
         return None
+    uid = user_id.strip()
+    sid = session_id.strip()
+    now = _now_iso()
     with _lock:
-        user_sessions = _SESSIONS_STORE.get(user_id)
-        if not user_sessions or session_id not in user_sessions:
-            return None
-        sess = user_sessions[session_id]
+        if uid not in _SESSIONS_STORE:
+            _SESSIONS_STORE[uid] = {}
+        if sid not in _SESSIONS_STORE[uid]:
+            _SESSIONS_STORE[uid][sid] = {
+                "id": sid,
+                "user_id": uid,
+                "title": "Phiên chat mới",
+                "preview": "",
+                "messages": [],
+                "updated_at": now,
+                "created_at": now,
+            }
+        sess = _SESSIONS_STORE[uid][sid]
         if not isinstance(sess.get("messages"), list):
             sess["messages"] = []
         sess["messages"].extend(new_messages)
-        now = _now_iso()
         sess["updated_at"] = now
 
         if sess.get("title") == "Phiên chat mới":

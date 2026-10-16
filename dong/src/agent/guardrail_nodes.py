@@ -92,16 +92,31 @@ def guardrail_out_of_scope_node(state: AgentState) -> dict:
 def _build_output_evidence(state: AgentState, result: Any) -> list[str]:
     question = (state.get("question") or result.question or "").strip()
     query = result.query
+    ev = [question] if question else []
+
+    # Bổ sung evidence từ các bước điều phối multi-hop
+    step_results = state.get("orchestrator_step_results") or []
+    for sr in step_results:
+        ans_vi = sr.get("answer_vi")
+        if ans_vi:
+            ev.append(ans_vi)
+
+    docs_ans = state.get("docs_answer")
+    if docs_ans and isinstance(docs_ans, dict):
+        if docs_ans.get("answer_vi"):
+            ev.append(docs_ans["answer_vi"])
+
     if not query:
-        ev = [question] if question else []
-        if state.get("respond_mode") in ("inline", "out_of_scope") or getattr(result, "detail", None) in ("chat", "clarify", "out_of_scope", "inline"):
+        if (
+            state.get("respond_mode") in ("inline", "out_of_scope")
+            or getattr(result, "detail", None) in ("chat", "clarify", "out_of_scope", "inline", "docs")
+        ):
             if getattr(result, "answer", None):
                 ev.append(result.answer)
         return ev
-    return [question] + (
-        [f"row_count={query.row_count}", getattr(query, "reply_vi", "")]
-        + [f"{c}={v}" for row in query.rows for c, v in zip(query.columns, row)]
-    )
+    ev.extend([f"row_count={query.row_count}", getattr(query, "reply_vi", "")])
+    ev.extend([f"{c}={v}" for row in query.rows for c, v in zip(query.columns, row)])
+    return ev
 
 
 def guardrail_output_node(state: AgentState) -> dict:
@@ -122,6 +137,10 @@ def guardrail_output_node(state: AgentState) -> dict:
 
     evidence = _build_output_evidence(state, result)
     tool_empty = _is_tool_empty(result.query)
+    step_results = state.get("orchestrator_step_results") or []
+    has_docs_step = any(sr.get("agent") == "docs" for sr in step_results) or state.get("docs_answer") is not None
+    if has_docs_step or getattr(result, "detail", "") == "docs":
+        tool_empty = False
     checked = check_output(result.answer, evidence, tool_empty=tool_empty)
     guarded = Agent_Output(
         question=result.question,

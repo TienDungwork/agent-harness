@@ -14,7 +14,7 @@ template: |
   - Chỉ dùng đúng `table` và cột có trong schema excerpt (schema `public`).
   - KHÔNG viết `database.table`. Ví dụ đúng: `FROM plate_event` (không phải `its.plate_event`).
   - TUYỆT ĐỐI KHÔNG JOIN hoặc viết SUBQUERY lồng giữa các bảng thuộc database khác nhau (ví dụ: CẤM subquery plate_event trong zone_event, hoặc ngược lại). Mỗi câu SQL chỉ được chứa bảng của đúng 1 database duy nhất.
-  - Nếu câu hỏi tìm xe theo biển số: SELECT camera_name, event_time, direction FROM plate_event WHERE license_plate_text = '...' AND event_time::date = CURRENT_DATE (chỉ truy vấn bảng plate_event, không lồng bảng khác).
+  - Nếu câu hỏi tìm xe theo biển số: SELECT camera_name, event_time, direction FROM plate_event WHERE (license_plate_text = '...' OR normalized_license_plate = '...') (chỉ lọc event_time::date = CURRENT_DATE nếu người dùng nói rõ 'hôm nay', nếu hỏi 'lịch sử' hoặc không nhắc ngày thì không giới hạn ngày).
   - Nếu cột có `sample_values`, lọc phải dùng đúng giá trị đó (khớp nghĩa tiếng Việt). Không bịa giá trị nếu không có trong sample_values.
   - Nếu câu hỏi có thời gian (hôm nay, hôm qua, tháng này, ngày cụ thể), lọc theo time_column của bảng trong excerpt: dùng `time_column::date = CURRENT_DATE` hoặc `time_column::date = 'YYYY-MM-DD'` (KHÔNG dùng EXTRACT(DATE ...)).
   - Biểu đồ / thống kê theo nhóm / so sánh: SELECT 2 cột (nhãn + số đếm), GROUP BY, ORDER BY số DESC, LIMIT ≤ 30.
@@ -31,7 +31,7 @@ template: |
   - xe máy → vehicle_type = 'MOTORCYCLE'
   - xe tải → vehicle_type = 'TRUCK'; xe buýt → vehicle_type = 'BUS'
   - vào → direction = 'IN'; ra → direction = 'OUT'; ra vào = không lọc direction (hoặc GROUP BY direction khi vẽ biểu đồ)
-  - QUY TẮC QUAN TRỌNG: Khi câu hỏi có loại xe cụ thể (như ô tô / xe máy / xe tải / xe buýt) kể cả khi vẽ biểu đồ ra/vào, BẮT BUỘC PHẢI LỌC `WHERE vehicle_type = '...'` (ví dụ: `SELECT direction, count(*) FROM plate_event WHERE vehicle_type = 'CAR' AND event_time::date = CURRENT_DATE GROUP BY direction`). Tuyệt đối không tính gộp tất cả các loại xe khác nếu người dùng chỉ hỏi ô tô/xe máy.
+  - QUY TẮC QUAN TRỌNG: Khi câu hỏi có loại xe cụ thể (như ô tô / xe máy / xe tải / xe buýt) kể cả khi vẽ biểu đồ ra/vào, BẮT BUỘC PHẢI LỌC `WHERE vehicle_type = '...'` (ví dụ: `SELECT direction, count(*) FROM plate_event WHERE vehicle_type = 'CAR' AND event_time::date = CURRENT_DATE GROUP BY direction`). Nếu câu hỏi yêu cầu phân loại cả xe máy và ô tô ra/vào: `SELECT vehicle_type, direction, count(*) FROM plate_event WHERE vehicle_type IN ('CAR', 'MOTORCYCLE') AND event_time::date = CURRENT_DATE GROUP BY vehicle_type, direction`. Tuyệt đối không tính gộp tất cả các loại xe khác nếu người dùng chỉ hỏi ô tô/xe máy.
   - danh sách camera / khu vực: Lưu ý toàn hệ thống có 10 camera (Master Registry). Bảng plate_event chỉ chứa 6 camera giao thông. Nếu người dùng hỏi chung về tổng số camera hoặc danh sách toàn bộ camera hệ thống, hệ thống xử lý qua Master Registry. Nếu hỏi riêng camera phương tiện/biển số: SELECT DISTINCT camera_name FROM plate_event WHERE camera_name IS NOT NULL hoặc SELECT DISTINCT zone_name_cached, camera_name FROM zone_event WHERE zone_name_cached IS NOT NULL LIMIT 30.
 
 

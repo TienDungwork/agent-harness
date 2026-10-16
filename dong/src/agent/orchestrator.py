@@ -387,7 +387,7 @@ def _offline_plan_orchestration(question: str) -> OrchestratorPlan:
 def _plan_diagram_concept_docs(question: str) -> OrchestratorPlan | None:
     """Sơ đồ/phân biệt khái niệm AIOC — docs only, không SQL."""
     low = (question or "").lower()
-    if ("vẽ sơ đồ" in low or "sơ đồ" in low) and ("khác gì so với" in low or "phân biệt" in low):
+    if any(k in low for k in ("vẽ sơ đồ", "sơ đồ", "hướng dẫn các bước", "hướng dẫn")) and any(k in low for k in ("khác gì so với", "phân biệt")):
         return OrchestratorPlan(
             steps=[OrchestratorStep(agent="docs", sub_question=question.strip())],
             is_multi=False,

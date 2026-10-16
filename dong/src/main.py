@@ -522,42 +522,51 @@ def chat(req: ChatRequest) -> ChatResponse:
     ) as t:
         question = redact_pii(req.question)
 
-        try:
-            cached = _lookup_ttl_cache(question)
-        except Exception as exc:
-            logger.warning("Cache lookup failed on chat: %s", exc)
-            cached = None
-        if isinstance(cached, dict) and "answer" in cached:
-            logger.info("cache hit")
-            detail_payload = {
-                "tool": cached.get("tool", ""),
-                "columns": cached.get("columns", []),
-                "row_count": cached.get("row_count", 0),
-                "agent_detail": cached.get("agent_detail", ""),
-                "cache_hit": True,
-            }
-            _persist_session_turn(
-                session_id=req.session_id.strip(),
-                user_id=req.user_id.strip(),
-                question=req.question,
-                answer=cached["answer"],
-                detail=detail_payload,
-            )
-            response = ChatResponse(
-                question=cached.get("question", req.question),
-                answer=cached["answer"],
-                tool=cached.get("tool", ""),
-                detail=detail_payload,
-                row_count=cached.get("row_count", 0),
-            )
-            t["output"] = {
-                "status": "ok",
-                "answer": response.answer,
-                "tool": response.tool,
-                "row_count": response.row_count,
-                "cached": True,
-            }
-            return response
+        from src.sessions import get_session_messages
+
+        prev_messages = get_session_messages(session_id=req.session_id.strip(), user_id=req.user_id.strip()) or []
+        is_followup = bool(prev_messages) and any(
+            question.lower().startswith(p) or f" {p}" in question.lower()
+            for p in ("vậy còn", "thế còn", "còn ", "thì sao", "thì như thế nào", "đối với")
+        )
+
+        if not is_followup:
+            try:
+                cached = _lookup_ttl_cache(question)
+            except Exception as exc:
+                logger.warning("Cache lookup failed on chat: %s", exc)
+                cached = None
+            if isinstance(cached, dict) and "answer" in cached:
+                logger.info("cache hit")
+                detail_payload = {
+                    "tool": cached.get("tool", ""),
+                    "columns": cached.get("columns", []),
+                    "row_count": cached.get("row_count", 0),
+                    "agent_detail": cached.get("agent_detail", ""),
+                    "cache_hit": True,
+                }
+                _persist_session_turn(
+                    session_id=req.session_id.strip(),
+                    user_id=req.user_id.strip(),
+                    question=req.question,
+                    answer=cached["answer"],
+                    detail=detail_payload,
+                )
+                response = ChatResponse(
+                    question=cached.get("question", req.question),
+                    answer=cached["answer"],
+                    tool=cached.get("tool", ""),
+                    detail=detail_payload,
+                    row_count=cached.get("row_count", 0),
+                )
+                t["output"] = {
+                    "status": "ok",
+                    "answer": response.answer,
+                    "tool": response.tool,
+                    "row_count": response.row_count,
+                    "cached": True,
+                }
+                return response
 
         try:
             from src.agent.intent import is_chat_greeting
@@ -567,7 +576,7 @@ def chat(req: ChatRequest) -> ChatResponse:
             if is_chat_greeting(question):
                 rewritten = RewrittenQuestion(text=question, intent_hint="chat")
             else:
-                rewritten = rewrite_question_safe(question)
+                rewritten = rewrite_question_safe(question, history=prev_messages)
             cache_q = rewritten.text if (rewritten and rewritten.text) else question
             out = run_agent(
                 Agent_Input(question=req.question.strip(), rewritten=rewritten, user_id=req.user_id),
@@ -595,7 +604,8 @@ def chat(req: ChatRequest) -> ChatResponse:
         route = out.detail or getattr(out, "intent", "")
         if not _is_identity_query(question) and not _is_identity_query(cache_q):
             try:
-                set_ttl_cached(make_cache_key(question, route=route), cache_data, ttl=settings.memory_ttl_seconds)
+                if not is_followup:
+                    set_ttl_cached(make_cache_key(question, route=route), cache_data, ttl=settings.memory_ttl_seconds)
                 if cache_q and cache_q != question:
                     set_ttl_cached(make_cache_key(cache_q, route=route), cache_data, ttl=settings.memory_ttl_seconds)
             except Exception as exc:
@@ -791,40 +801,49 @@ def stream_agent(req: ChatRequest) -> StreamingResponse:
         ) as t:
             question = redact_pii(req.question)
 
-            try:
-                cached = _lookup_ttl_cache(question)
-            except Exception as exc:
-                logger.warning("Cache lookup failed on stream: %s", exc)
-                cached = None
-            if isinstance(cached, dict) and "answer" in cached:
-                t["output"] = {
-                    "status": "ok",
-                    "answer": cached["answer"],
-                    "tool": cached.get("tool", ""),
-                    "row_count": cached.get("row_count", 0),
-                    "cached": True,
-                }
-                yield f'data: {json.dumps({"node_id": "cache", "status": "done", "input": question, "output": cached["answer"]}, ensure_ascii=False)}\n\n'
+            from src.sessions import get_session_messages
 
-                detail_payload = {
-                    "tool": cached.get("tool", ""),
-                    "columns": cached.get("columns", []),
-                    "row_count": cached.get("row_count", 0),
-                    "agent_detail": cached.get("agent_detail", ""),
-                    "cache_hit": True,
-                }
-                _persist_session_turn(
-                    session_id=req.session_id.strip(),
-                    user_id=req.user_id.strip(),
-                    question=question,
-                    answer=cached["answer"],
-                    detail=detail_payload,
-                )
-                if req.stream_tokens:
-                    for delta in _split_into_chunks(cached["answer"]):
-                        yield f'data: {json.dumps({"node_id": "__answer__", "status": "chunk", "delta": delta}, ensure_ascii=False)}\n\n'
-                yield f'data: {json.dumps({"node_id": "__answer__", "status": "done", "output": cached["answer"], "detail": detail_payload}, ensure_ascii=False)}\n\n'
-                return
+            prev_messages = get_session_messages(session_id=req.session_id.strip(), user_id=req.user_id.strip()) or []
+            is_followup = bool(prev_messages) and any(
+                question.lower().startswith(p) or f" {p}" in question.lower()
+                for p in ("vậy còn", "thế còn", "còn ", "thì sao", "thì như thế nào", "đối với")
+            )
+
+            if not is_followup:
+                try:
+                    cached = _lookup_ttl_cache(question)
+                except Exception as exc:
+                    logger.warning("Cache lookup failed on stream: %s", exc)
+                    cached = None
+                if isinstance(cached, dict) and "answer" in cached:
+                    t["output"] = {
+                        "status": "ok",
+                        "answer": cached["answer"],
+                        "tool": cached.get("tool", ""),
+                        "row_count": cached.get("row_count", 0),
+                        "cached": True,
+                    }
+                    yield f'data: {json.dumps({"node_id": "cache", "status": "done", "input": question, "output": cached["answer"]}, ensure_ascii=False)}\n\n'
+
+                    detail_payload = {
+                        "tool": cached.get("tool", ""),
+                        "columns": cached.get("columns", []),
+                        "row_count": cached.get("row_count", 0),
+                        "agent_detail": cached.get("agent_detail", ""),
+                        "cache_hit": True,
+                    }
+                    _persist_session_turn(
+                        session_id=req.session_id.strip(),
+                        user_id=req.user_id.strip(),
+                        question=question,
+                        answer=cached["answer"],
+                        detail=detail_payload,
+                    )
+                    if req.stream_tokens:
+                        for delta in _split_into_chunks(cached["answer"]):
+                            yield f'data: {json.dumps({"node_id": "__answer__", "status": "chunk", "delta": delta}, ensure_ascii=False)}\n\n'
+                    yield f'data: {json.dumps({"node_id": "__answer__", "status": "done", "output": cached["answer"], "detail": detail_payload}, ensure_ascii=False)}\n\n'
+                    return
 
             try:
                 from src.agent.intent import is_chat_greeting
@@ -835,7 +854,7 @@ def stream_agent(req: ChatRequest) -> StreamingResponse:
                 if is_chat_greeting(question):
                     rewritten = RewrittenQuestion(text=question, intent_hint="chat")
                 else:
-                    rewritten = rewrite_question_safe(question)
+                    rewritten = rewrite_question_safe(question, history=prev_messages)
                 cache_q = rewritten.text if (rewritten and rewritten.text) else question
                 stream_kwargs = {"parent_span": t.get("_span")}
                 target_fn = getattr(run_agent_stream, "side_effect", None) or run_agent_stream
