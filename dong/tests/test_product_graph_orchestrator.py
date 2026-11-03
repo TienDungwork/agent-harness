@@ -25,11 +25,11 @@ Kiểm tra:
 
 from unittest.mock import patch
 
-from src.agent.graph import Agent_Input, _build_graph, run_agent, run_agent_stream
-from src.agent.generate_sql import generate_sql_node
-from src.agent.orchestrator import plan_orchestration
-from src.db.catalog import select_relevant_tables
-from src.llm.schemas import OrchestratorPlan, OrchestratorStep
+from src.domain.agents.graph import Agent_Input, _build_graph, run_agent, run_agent_stream
+from src.domain.agents.generate_sql import generate_sql_node
+from src.domain.agents.orchestrator import plan_orchestration
+from src.infra.db.catalog import select_relevant_tables
+from src.infra.llm.schemas import OrchestratorPlan, OrchestratorStep
 
 
 def test_plan_orchestration_routes_009_010_011_to_query_data():
@@ -102,7 +102,7 @@ def test_plan_orchestration_case_024_docs_focused_not_sql_only():
 
 def test_classify_vehicle_violation_queries_route_to_query_data():
     """Kiểm tra các câu hỏi tra cứu xe vi phạm / phương tiện mới nhất phân loại đúng query_data."""
-    from src.agent.intent import classify_intent_safe
+    from src.domain.agents.intent import classify_intent_safe
     for q in [
         "ô tô vi phạm gần nhất lúc nào?",
         "phương tiện vi phạm gần đây nhất",
@@ -216,8 +216,8 @@ def test_graph_emits_orchestrator_events_in_stream():
     assert "execute_sql" in node_ids
 
 
-@patch("src.agent.orchestrator.use_offline_tools", return_value=False)
-@patch("src.agent.orchestrator.invoke_structured")
+@patch("src.domain.agents.orchestrator.use_offline_tools", return_value=False)
+@patch("src.domain.agents.orchestrator.invoke_structured")
 def test_plan_orchestration_mock_online(mock_invoke, _mock_offline):
     """Kiểm tra online orchestrator gọi invoke_structured qua prompt registry."""
     expected = OrchestratorPlan(
@@ -242,9 +242,9 @@ def test_plan_orchestration_mock_online(mock_invoke, _mock_offline):
 
 from unittest.mock import patch
 
-from src.agent import classify_intent, classify_intent_str, rewrite_question, sanitize_intent_result
-from src.agent.graph import Agent_Input, _build_graph, run_agent
-from src.llm.schemas import IntentResult, RewrittenQuestion
+from src.domain.agents import classify_intent, classify_intent_str, rewrite_question, sanitize_intent_result
+from src.domain.agents.graph import Agent_Input, _build_graph, run_agent
+from src.infra.llm.schemas import IntentResult, RewrittenQuestion
 
 
 def test_graph_nodes_and_structure():
@@ -269,12 +269,12 @@ def test_graph_nodes_and_structure():
     assert "react" not in node_names
 
 
-@patch("src.agent.graph.rewrite_question")
-@patch("src.agent.intent.use_offline_tools", return_value=False)
-@patch("src.agent.intent.invoke_structured")
+@patch("src.domain.agents.graph.rewrite_question")
+@patch("src.domain.agents.intent.use_offline_tools", return_value=False)
+@patch("src.domain.agents.intent.invoke_structured")
 def test_intent_routing(mock_invoke_structured, mock_offline, mock_rewrite):
     """Test intent routing qua invoke_structured: stats, how-to, weather."""
-    from src.llm.schemas import RewrittenQuestion
+    from src.infra.llm.schemas import RewrittenQuestion
     mock_rewrite.side_effect = [
         RewrittenQuestion(text="Hôm nay có bao nhiêu lượt xe vào?", intent_hint=None),
         RewrittenQuestion(text="Cách xem lại camera", intent_hint=None),
@@ -316,11 +316,11 @@ def test_intent_routing(mock_invoke_structured, mock_offline, mock_rewrite):
 
 def test_rewrite_short_question_skips_llm():
     from unittest.mock import patch
-    from src.agent.rewrite import rewrite_question, _needs_rewrite_llm
+    from src.domain.agents.rewrite import rewrite_question, _needs_rewrite_llm
 
     q = "Hôm nay có bao nhiêu lượt xe vào?"
     assert _needs_rewrite_llm(q) is False
-    with patch("src.agent.rewrite.invoke_structured") as mock_llm:
+    with patch("src.domain.agents.rewrite.invoke_structured") as mock_llm:
         out = rewrite_question(q)
     mock_llm.assert_not_called()
     assert out.text == q
@@ -329,8 +329,8 @@ def test_rewrite_short_question_skips_llm():
 
 def test_rewrite_compound_question_calls_llm():
     from unittest.mock import patch
-    from src.agent.rewrite import rewrite_question, _needs_rewrite_llm
-    from src.llm.schemas import RewrittenQuestion
+    from src.domain.agents.rewrite import rewrite_question, _needs_rewrite_llm
+    from src.infra.llm.schemas import RewrittenQuestion
 
     q = (
         "Xe biển số 15C4384 hôm nay có đi qua khu vực xâm nhập nào không, "
@@ -345,15 +345,15 @@ def test_rewrite_compound_question_calls_llm():
         ],
         intent_hint="query_data",
     )
-    with patch("src.agent.rewrite.invoke_structured", return_value=expected):
+    with patch("src.domain.agents.rewrite.invoke_structured", return_value=expected):
         out = rewrite_question(q)
     assert out.sub_questions == expected.sub_questions
 
 
 def test_rewrite_caps_max_sub_questions():
-    from src.agent.rewrite import _normalize_rewritten
-    from src.llm.schemas import RewrittenQuestion
-    from src.config import settings
+    from src.domain.agents.rewrite import _normalize_rewritten
+    from src.infra.llm.schemas import RewrittenQuestion
+    from src.shared.config import settings
 
     many = [f"câu {i}" for i in range(6)]
     out = _normalize_rewritten(RewrittenQuestion(text="tóm tắt", sub_questions=many))
@@ -361,8 +361,8 @@ def test_rewrite_caps_max_sub_questions():
 
 
 def test_rewrite_normalize_sub_questions():
-    from src.agent.rewrite import _normalize_rewritten
-    from src.llm.schemas import RewrittenQuestion
+    from src.domain.agents.rewrite import _normalize_rewritten
+    from src.infra.llm.schemas import RewrittenQuestion
 
     only_text = _normalize_rewritten(RewrittenQuestion(text="Hôm nay có bao nhiêu lượt xe vào?"))
     assert only_text.sub_questions == ["Hôm nay có bao nhiêu lượt xe vào?"]
@@ -376,7 +376,7 @@ def test_rewrite_normalize_sub_questions():
 
 
 def test_plan_from_rewrite_sub_questions():
-    from src.agent.orchestrator import plan_from_rewrite_sub_questions, REWRITE_SUBQUESTIONS_PLAN_REASON
+    from src.domain.agents.orchestrator import plan_from_rewrite_sub_questions, REWRITE_SUBQUESTIONS_PLAN_REASON
 
     subs = [
         "Hôm nay xe biển số 15C4384 đi qua khu vực xâm nhập nào?",
@@ -391,7 +391,7 @@ def test_plan_from_rewrite_sub_questions():
 
 
 def test_plan_orchestration_prefers_rewrite_sub_questions():
-    from src.agent.orchestrator import plan_orchestration, REWRITE_SUBQUESTIONS_PLAN_REASON
+    from src.domain.agents.orchestrator import plan_orchestration, REWRITE_SUBQUESTIONS_PLAN_REASON
 
     subs = [
         "Trong khoảng từ 23/09/2026 đến 24/09/2026, có bao nhiêu sự kiện phương tiện?",
@@ -403,8 +403,8 @@ def test_plan_orchestration_prefers_rewrite_sub_questions():
 
 
 def test_is_rewrite_multi_routes_orchestrator():
-    from src.agent.orchestrator import is_multi_question
-    from src.llm.schemas import RewrittenQuestion
+    from src.domain.agents.orchestrator import is_multi_question
+    from src.infra.llm.schemas import RewrittenQuestion
 
     rw = RewrittenQuestion(
         text="So sánh phương tiện và vùng cấm",
@@ -423,7 +423,7 @@ def test_rewrite_question_empty_passthrough():
     assert empty.filters == []
 
 
-@patch("src.agent.rewrite.invoke_structured")
+@patch("src.domain.agents.rewrite.invoke_structured")
 def test_rewrite_question_mock_structured(mock_structured):
     """Test rewrite_question gọi invoke_structured khi online."""
     expected = RewrittenQuestion(
@@ -478,8 +478,8 @@ def test_classify_intent_offline_heuristics():
     assert res_clarify.answer != ""
 
 
-@patch("src.agent.intent.use_offline_tools", return_value=False)
-@patch("src.agent.intent.invoke_structured")
+@patch("src.domain.agents.intent.use_offline_tools", return_value=False)
+@patch("src.domain.agents.intent.invoke_structured")
 def test_classify_intent_mock_structured(mock_structured, _mock_offline):
     """Test classify_intent mock invoke_structured (how_to != query_data)."""
     mock_structured.return_value = IntentResult(intent="how_to", reason="hướng dẫn cấu hình")
@@ -513,8 +513,8 @@ def test_sanitize_intent_result_preserves_chat_and_clarify():
     assert sanitize_intent_result(clarify_res).answer == "Bạn muốn hỏi gì?"
 
 
-@patch("src.agent.intent.use_offline_tools", return_value=False)
-@patch("src.agent.intent.invoke_structured")
+@patch("src.domain.agents.intent.use_offline_tools", return_value=False)
+@patch("src.domain.agents.intent.invoke_structured")
 def test_classify_intent_clears_pipeline_inline_answer_mock_structured(mock_structured, _mock_offline):
     """Test classify_intent clears inline answer if LLM hallucinates an answer for pipeline intents."""
     # 1. query_data with fake answer -> cleared
@@ -538,7 +538,7 @@ def test_classify_intent_clears_pipeline_inline_answer_mock_structured(mock_stru
 
 def test_production_classify_prompt_v2():
     """Kiểm tra production classify prompt tải v2 và chứa đầy đủ hướng dẫn intent."""
-    from src.prompts.registry import registry
+    from src.infra.prompts.registry import registry
 
     prompt = registry().get("classify", "production")
     assert prompt.version == 2
@@ -580,9 +580,9 @@ import uuid
 from unittest.mock import patch
 import pytest
 
-from src.agent.graph import Agent_Input, _get_graph, run_agent
-from src.llm.schemas import IntentResult, RewrittenQuestion
-from src.memory.ttl_cache import clear_ttl_cache
+from src.domain.agents.graph import Agent_Input, _get_graph, run_agent
+from src.infra.llm.schemas import IntentResult, RewrittenQuestion
+from src.infra.memory.ttl_cache import clear_ttl_cache
 
 
 FORBIDDEN_NODES_FOR_GREETING = (
@@ -602,11 +602,11 @@ FORBIDDEN_NODES_FOR_GREETING = (
 @pytest.fixture(autouse=True)
 def reset_graph_and_state():
     """Reset compiled graph and memory caches to ensure clean, isolated tests."""
-    import src.agent.graph
-    src.agent.graph._compiled = None
+    import src.domain.agents.graph
+    src.domain.agents.graph._compiled = None
     clear_ttl_cache()
     yield
-    src.agent.graph._compiled = None
+    src.domain.agents.graph._compiled = None
     clear_ttl_cache()
 
 
@@ -617,7 +617,7 @@ def reset_graph_and_state():
 @pytest.mark.parametrize("greeting", ["xin chào", "chào bạn", "Xin chào bạn!"])
 def test_greeting_offline_fast_path_run_agent(greeting: str):
     """Greeting offline via run_agent returns chat/clarify detail without executing queries."""
-    with patch("src.llm.client.use_offline_tools", return_value=True):
+    with patch("src.infra.llm.client.use_offline_tools", return_value=True):
         inp = Agent_Input(question=greeting)
         res = run_agent(inp, session_id=f"test_session_{uuid.uuid4().hex}")
 
@@ -629,7 +629,7 @@ def test_greeting_offline_fast_path_run_agent(greeting: str):
 @pytest.mark.parametrize("greeting", ["xin chào", "chào bạn"])
 def test_greeting_offline_fast_path_graph_events(greeting: str):
     """Greeting offline node path: classify + respond_inline + respond; no SQL/docs/orchestrator; 0 LLM hops."""
-    with patch("src.llm.client.use_offline_tools", return_value=True):
+    with patch("src.infra.llm.client.use_offline_tools", return_value=True):
         graph = _get_graph()
         state = graph.invoke(
             {"question": greeting, "events": []},
@@ -683,10 +683,10 @@ def test_greeting_online_one_hop_meaning(greeting: str):
         answer="Chào bạn, tôi là trợ lý ảo AIOC. Bạn cần tôi giúp gì?",
     )
 
-    with patch("src.llm.client.use_offline_tools", return_value=False), \
-         patch("src.agent.intent.use_offline_tools", return_value=False), \
-         patch("src.agent.intent.invoke_structured", return_value=mock_chat_intent) as mock_intent_invoke, \
-         patch("src.agent.rewrite.invoke_structured") as mock_rewrite_invoke:
+    with patch("src.infra.llm.client.use_offline_tools", return_value=False), \
+         patch("src.domain.agents.intent.use_offline_tools", return_value=False), \
+         patch("src.domain.agents.intent.invoke_structured", return_value=mock_chat_intent) as mock_intent_invoke, \
+         patch("src.domain.agents.rewrite.invoke_structured") as mock_rewrite_invoke:
 
         graph = _get_graph()
         state = graph.invoke(
@@ -737,10 +737,10 @@ def test_greeting_run_agent_online_one_hop():
         answer="Chào bạn! Tôi có thể hỗ trợ gì cho bạn hôm nay?",
     )
 
-    with patch("src.llm.client.use_offline_tools", return_value=False), \
-         patch("src.agent.intent.use_offline_tools", return_value=False), \
-         patch("src.agent.intent.invoke_structured", return_value=mock_chat_intent) as mock_intent_invoke, \
-         patch("src.agent.rewrite.invoke_structured") as mock_rewrite_invoke:
+    with patch("src.infra.llm.client.use_offline_tools", return_value=False), \
+         patch("src.domain.agents.intent.use_offline_tools", return_value=False), \
+         patch("src.domain.agents.intent.invoke_structured", return_value=mock_chat_intent) as mock_intent_invoke, \
+         patch("src.domain.agents.rewrite.invoke_structured") as mock_rewrite_invoke:
 
         inp = Agent_Input(question="xin chào")
         res = run_agent(inp, session_id=f"test_session_{uuid.uuid4().hex}")
@@ -770,9 +770,9 @@ def test_stat_question_routes_to_sql_path_offline(question: str):
         raw = user.replace("Câu hỏi gốc: ", "").strip()
         return RewrittenQuestion(text=raw, intent_hint="query_data")
 
-    with patch("src.llm.client.use_offline_tools", return_value=True), \
-         patch("src.agent.rewrite.invoke_structured", side_effect=_rewrite_passthrough), \
-         patch("src.agent.graph.execute_sql", return_value=mock_rows):
+    with patch("src.infra.llm.client.use_offline_tools", return_value=True), \
+         patch("src.domain.agents.rewrite.invoke_structured", side_effect=_rewrite_passthrough), \
+         patch("src.domain.agents.graph.execute_sql", return_value=mock_rows):
 
         # 1. run_agent test
         inp = Agent_Input(question=question)
@@ -827,11 +827,11 @@ def test_stat_question_routes_to_sql_path_online_mocked():
     )
     mock_rows = [{"so_luot": 250}]
 
-    with patch("src.llm.client.use_offline_tools", return_value=False), \
-         patch("src.agent.intent.use_offline_tools", return_value=False), \
-         patch("src.agent.intent.invoke_structured", return_value=mock_query_intent), \
-         patch("src.agent.rewrite.invoke_structured", return_value=mock_rewritten), \
-         patch("src.agent.graph.execute_sql", return_value=mock_rows):
+    with patch("src.infra.llm.client.use_offline_tools", return_value=False), \
+         patch("src.domain.agents.intent.use_offline_tools", return_value=False), \
+         patch("src.domain.agents.intent.invoke_structured", return_value=mock_query_intent), \
+         patch("src.domain.agents.rewrite.invoke_structured", return_value=mock_rewritten), \
+         patch("src.domain.agents.graph.execute_sql", return_value=mock_rows):
 
         graph = _get_graph()
         state = graph.invoke(
@@ -867,10 +867,10 @@ def test_stat_question_with_hallucinated_answer_sanitized_and_routes_to_sql():
     )
     mock_rows = [{"so_luot": 99}]
 
-    with patch("src.llm.client.use_offline_tools", return_value=False), \
-         patch("src.agent.intent.use_offline_tools", return_value=False), \
-         patch("src.agent.intent.invoke_structured", return_value=fake_intent), \
-         patch("src.agent.graph.execute_sql", return_value=mock_rows):
+    with patch("src.infra.llm.client.use_offline_tools", return_value=False), \
+         patch("src.domain.agents.intent.use_offline_tools", return_value=False), \
+         patch("src.domain.agents.intent.invoke_structured", return_value=fake_intent), \
+         patch("src.domain.agents.graph.execute_sql", return_value=mock_rows):
 
         graph = _get_graph()
         state = graph.invoke(
@@ -902,19 +902,19 @@ def test_stat_question_with_hallucinated_answer_sanitized_and_routes_to_sql():
 
 import pytest
 from unittest.mock import patch, MagicMock
-from src.agent.graph import run_agent, Agent_Input, _compiled
+from src.domain.agents.graph import run_agent, Agent_Input, _compiled
 
 @pytest.fixture(autouse=True)
 def reset_graph():
     """Reset compiled graph to pick up new nodes/edges."""
-    import src.agent.graph
-    src.agent.graph._compiled = None
+    import src.domain.agents.graph
+    src.domain.agents.graph._compiled = None
     yield
-    src.agent.graph._compiled = None
+    src.domain.agents.graph._compiled = None
 
 def test_inline_answer_routing():
     """Test that a greeting (chat intent) routes directly to END without hitting SQL or Docs nodes."""
-    with patch("src.llm.client.use_offline_tools", return_value=True):
+    with patch("src.infra.llm.client.use_offline_tools", return_value=True):
         inp = Agent_Input(question="xin chào bạn")
         result = run_agent(inp)
         
@@ -922,7 +922,7 @@ def test_inline_answer_routing():
         assert result.detail in ("chat", "clarify"), "Detail should be chat or clarify"
         assert result.query is None, "Should not execute any SQL query"
         
-        from src.agent.graph import _get_graph
+        from src.domain.agents.graph import _get_graph
         graph = _get_graph()
         
         state = graph.invoke(
@@ -943,10 +943,10 @@ def test_inline_answer_routing():
         
 def test_stat_question_still_routes_to_orchestrator():
     """Test that a simple stat question routes directly to SQL without orchestrator."""
-    with patch("src.llm.client.use_offline_tools", return_value=True), \
-         patch("src.agent.graph.execute_sql", return_value=[{"count": 1}]):
+    with patch("src.infra.llm.client.use_offline_tools", return_value=True), \
+         patch("src.domain.agents.graph.execute_sql", return_value=[{"count": 1}]):
         inp = Agent_Input(question="hôm nay có bao nhiêu người vào")
-        from src.agent.graph import _get_graph
+        from src.domain.agents.graph import _get_graph
         graph = _get_graph()
         
         state = graph.invoke(
@@ -966,18 +966,18 @@ def test_stat_question_still_routes_to_orchestrator():
 
 def test_pipeline_intent_fake_inline_answer_cleared_routes_to_orchestrator():
     """Pipeline intent with fake LLM answer must clear answer and route through orchestrator to retrieve_schema."""
-    from src.llm.schemas import IntentResult
+    from src.infra.llm.schemas import IntentResult
 
     fake_intent = IntentResult(
         intent="query_data",
         reason="hỏi số liệu",
         answer="bịa inline answer skip SQL",
     )
-    with patch("src.llm.client.use_offline_tools", return_value=False), \
-         patch("src.agent.intent.use_offline_tools", return_value=False), \
-         patch("src.agent.intent.invoke_structured", return_value=fake_intent), \
-         patch("src.agent.graph.execute_sql", return_value=[{"count": 1}]):
-        from src.agent.graph import _get_graph
+    with patch("src.infra.llm.client.use_offline_tools", return_value=False), \
+         patch("src.domain.agents.intent.use_offline_tools", return_value=False), \
+         patch("src.domain.agents.intent.invoke_structured", return_value=fake_intent), \
+         patch("src.domain.agents.graph.execute_sql", return_value=[{"count": 1}]):
+        from src.domain.agents.graph import _get_graph
         graph = _get_graph()
 
         state = graph.invoke(
@@ -999,17 +999,17 @@ def test_pipeline_intent_fake_inline_answer_cleared_routes_to_orchestrator():
 
 def test_docs_intent_fake_inline_answer_cleared_routes_to_docs():
     """Docs intent with fake LLM answer must clear answer and route through orchestrator to retrieve_docs."""
-    from src.llm.schemas import IntentResult
+    from src.infra.llm.schemas import IntentResult
 
     fake_intent = IntentResult(
         intent="how_to",
         reason="hướng dẫn",
         answer="bịa inline answer skip docs",
     )
-    with patch("src.llm.client.use_offline_tools", return_value=False), \
-         patch("src.agent.intent.use_offline_tools", return_value=False), \
-         patch("src.agent.intent.invoke_structured", return_value=fake_intent):
-        from src.agent.graph import _get_graph
+    with patch("src.infra.llm.client.use_offline_tools", return_value=False), \
+         patch("src.domain.agents.intent.use_offline_tools", return_value=False), \
+         patch("src.domain.agents.intent.invoke_structured", return_value=fake_intent):
+        from src.domain.agents.graph import _get_graph
         graph = _get_graph()
 
         state = graph.invoke(
@@ -1032,12 +1032,12 @@ def test_multi_heuristic_hits_orchestrator():
     """Test that a multi question still hits orchestrator."""
     multi_q = "hôm nay có bao nhiêu người vào, và cho biết cách xem lại camera"
 
-    with patch("src.llm.client.use_offline_tools", return_value=True), \
+    with patch("src.infra.llm.client.use_offline_tools", return_value=True), \
          patch(
-             "src.agent.rewrite.invoke_structured",
+             "src.domain.agents.rewrite.invoke_structured",
              return_value=RewrittenQuestion(text=multi_q, intent_hint="query_data"),
          ):
-        from src.agent.graph import _get_graph
+        from src.domain.agents.graph import _get_graph
         graph = _get_graph()
 
         state = graph.invoke(
@@ -1062,12 +1062,12 @@ def test_multi_heuristic_hits_orchestrator():
 from unittest.mock import MagicMock, patch
 import pytest
 
-from src.agent.graph import Agent_Input, rewrite_node, run_agent
-from src.agent.intent import is_chat_greeting, is_chat_like
-from src.agent.rewrite import rewrite_question, rewrite_question_safe
-from src.llm.schemas import RewrittenQuestion
+from src.domain.agents.graph import Agent_Input, rewrite_node, run_agent
+from src.domain.agents.intent import is_chat_greeting, is_chat_like
+from src.domain.agents.rewrite import rewrite_question, rewrite_question_safe
+from src.infra.llm.schemas import RewrittenQuestion
 from src.main import AskRequest, ChatRequest, ask, chat, stream_agent
-from src.memory.ttl_cache import clear_ttl_cache, make_cache_key, set_ttl_cached
+from src.infra.memory.ttl_cache import clear_ttl_cache, make_cache_key, set_ttl_cached
 
 
 @pytest.fixture(autouse=True)
@@ -1098,7 +1098,7 @@ def test_is_chat_greeting_heuristics():
     assert is_chat_greeting("Thời tiết hôm nay thế nào?") is False
 
 
-@patch("src.agent.rewrite.invoke_structured")
+@patch("src.domain.agents.rewrite.invoke_structured")
 def test_chat_greeting_skips_invoke_structured(mock_invoke_structured):
     """Chat greeting passthrough does not call LLM structured rewrite."""
     greetings = ["xin chào", "chào bạn", "hello", "cảm ơn", "bạn làm được gì"]
@@ -1115,8 +1115,8 @@ def test_chat_greeting_skips_invoke_structured(mock_invoke_structured):
     mock_invoke_structured.assert_not_called()
 
 
-@patch("src.llm.client.use_offline_tools", return_value=False)
-@patch("src.agent.rewrite.invoke_structured")
+@patch("src.infra.llm.client.use_offline_tools", return_value=False)
+@patch("src.domain.agents.rewrite.invoke_structured")
 def test_rewrite_node_meta_llm_used_false_for_chat(mock_invoke, _mock_offline):
     """rewrite_node marks llm_used=False in event meta for chat questions even when online."""
     out = rewrite_node({"question": "xin chào bạn", "events": []})
@@ -1129,7 +1129,7 @@ def test_rewrite_node_meta_llm_used_false_for_chat(mock_invoke, _mock_offline):
     mock_invoke.assert_not_called()
 
 
-@patch("src.agent.rewrite.invoke_structured")
+@patch("src.domain.agents.rewrite.invoke_structured")
 def test_stat_question_calls_invoke_structured(mock_invoke_structured):
     """Câu stat dài / nhiều vế mới gọi invoke_structured."""
     expected = RewrittenQuestion(
@@ -1153,7 +1153,7 @@ def test_stat_question_calls_invoke_structured(mock_invoke_structured):
     assert res.sub_questions == [expected.text]
 
 
-@patch("src.agent.rewrite.invoke_structured")
+@patch("src.domain.agents.rewrite.invoke_structured")
 def test_rewrite_node_meta_llm_used_true_for_stat(mock_invoke):
     """rewrite_node: câu phức tạp llm_used=True; câu ngắn skipped."""
     mock_invoke.return_value = RewrittenQuestion(text="xe vào", filters=["direction=IN"])
@@ -1172,8 +1172,8 @@ def test_rewrite_node_meta_llm_used_true_for_stat(mock_invoke):
 
 def test_ttl_cache_hit_chat_skips_rewrite_and_agent(monkeypatch):
     """Chat endpoint on TTL cache hit returns answer without calling rewrite or agent."""
-    monkeypatch.setattr("src.config.settings.cache_enabled", True)
-    monkeypatch.setattr("src.config.settings.memory_ttl_seconds", 300)
+    monkeypatch.setattr("src.shared.config.settings.cache_enabled", True)
+    monkeypatch.setattr("src.shared.config.settings.memory_ttl_seconds", 300)
 
     q = "Hôm nay có bao nhiêu lượt xe vào?"
     store_key = make_cache_key(q, route="query_data")
@@ -1188,7 +1188,7 @@ def test_ttl_cache_hit_chat_skips_rewrite_and_agent(monkeypatch):
 
     mock_rewrite = MagicMock()
     mock_run = MagicMock()
-    monkeypatch.setattr("src.agent.rewrite.rewrite_question_safe", mock_rewrite)
+    monkeypatch.setattr("src.domain.agents.rewrite.rewrite_question_safe", mock_rewrite)
     monkeypatch.setattr("src.main.run_agent", mock_run)
 
     resp = chat(ChatRequest(question=q))
@@ -1203,8 +1203,8 @@ def test_ttl_cache_hit_stream_skips_rewrite_and_stream(monkeypatch):
     from fastapi.testclient import TestClient
     from src.main import app
 
-    monkeypatch.setattr("src.config.settings.cache_enabled", True)
-    monkeypatch.setattr("src.config.settings.memory_ttl_seconds", 300)
+    monkeypatch.setattr("src.shared.config.settings.cache_enabled", True)
+    monkeypatch.setattr("src.shared.config.settings.memory_ttl_seconds", 300)
 
     q = "Hôm nay có bao nhiêu lượt xe vào cổng?"
     store_key = make_cache_key(q, route="query_data")
@@ -1219,8 +1219,8 @@ def test_ttl_cache_hit_stream_skips_rewrite_and_stream(monkeypatch):
 
     mock_rewrite = MagicMock()
     mock_stream = MagicMock()
-    monkeypatch.setattr("src.agent.rewrite.rewrite_question_safe", mock_rewrite)
-    monkeypatch.setattr("src.agent.graph.run_agent_stream", mock_stream)
+    monkeypatch.setattr("src.domain.agents.rewrite.rewrite_question_safe", mock_rewrite)
+    monkeypatch.setattr("src.domain.agents.graph.run_agent_stream", mock_stream)
 
     client = TestClient(app)
     res = client.post("/api/agent/stream", json={"question": q})
@@ -1235,8 +1235,8 @@ def test_ttl_cache_hit_stream_skips_rewrite_and_stream(monkeypatch):
 
 def test_ttl_cache_hit_ask_skips_rewrite_and_agent(monkeypatch):
     """Ask endpoint on TTL cache hit returns answer without calling rewrite or agent."""
-    monkeypatch.setattr("src.config.settings.cache_enabled", True)
-    monkeypatch.setattr("src.config.settings.memory_ttl_seconds", 300)
+    monkeypatch.setattr("src.shared.config.settings.cache_enabled", True)
+    monkeypatch.setattr("src.shared.config.settings.memory_ttl_seconds", 300)
 
     q = "Hôm nay có bao nhiêu lượt xe vào cổng?"
     store_key = make_cache_key(q, route="query_data")
@@ -1251,7 +1251,7 @@ def test_ttl_cache_hit_ask_skips_rewrite_and_agent(monkeypatch):
 
     mock_rewrite = MagicMock()
     mock_run = MagicMock()
-    monkeypatch.setattr("src.agent.rewrite.rewrite_question_safe", mock_rewrite)
+    monkeypatch.setattr("src.domain.agents.rewrite.rewrite_question_safe", mock_rewrite)
     monkeypatch.setattr("src.main.run_agent", mock_run)
 
     resp = ask(AskRequest(question=q))
@@ -1262,13 +1262,13 @@ def test_ttl_cache_hit_ask_skips_rewrite_and_agent(monkeypatch):
 
 def test_main_chat_greeting_skips_rewrite_safe_before_agent(monkeypatch):
     """Chat endpoint for greetings bypasses rewrite_question_safe completely."""
-    monkeypatch.setattr("src.config.settings.cache_enabled", True)
-    monkeypatch.setattr("src.config.settings.memory_ttl_seconds", 300)
+    monkeypatch.setattr("src.shared.config.settings.cache_enabled", True)
+    monkeypatch.setattr("src.shared.config.settings.memory_ttl_seconds", 300)
 
     mock_rewrite_safe = MagicMock()
-    monkeypatch.setattr("src.agent.rewrite.rewrite_question_safe", mock_rewrite_safe)
+    monkeypatch.setattr("src.domain.agents.rewrite.rewrite_question_safe", mock_rewrite_safe)
 
-    with patch("src.llm.client.use_offline_tools", return_value=True):
+    with patch("src.infra.llm.client.use_offline_tools", return_value=True):
         resp = chat(ChatRequest(question="xin chào bạn"))
 
     mock_rewrite_safe.assert_not_called()
@@ -1286,10 +1286,10 @@ from unittest.mock import patch
 
 import pytest
 
-from src.agent.graph import Agent_Input, run_agent
-from src.agent.intent import classify_intent_safe, is_stat_event_domain
-from src.db.catalog import select_relevant_tables
-from src.llm.schemas import IntentResult, RewrittenQuestion
+from src.domain.agents.graph import Agent_Input, run_agent
+from src.domain.agents.intent import classify_intent_safe, is_stat_event_domain
+from src.infra.db.catalog import select_relevant_tables
+from src.infra.llm.schemas import IntentResult, RewrittenQuestion
 
 
 @pytest.mark.parametrize(
@@ -1306,8 +1306,8 @@ def test_is_stat_event_domain_fire_anomaly_water(question: str):
 
 def test_classify_intent_safe_falls_back_on_llm_error():
     q = RewrittenQuestion(text="Hôm nay có cảnh báo cháy hoặc khói không?", filters=[])
-    with patch("src.agent.intent.use_offline_tools", return_value=False), patch(
-        "src.agent.intent.invoke_structured", side_effect=RuntimeError("LLM timeout")
+    with patch("src.domain.agents.intent.use_offline_tools", return_value=False), patch(
+        "src.domain.agents.intent.invoke_structured", side_effect=RuntimeError("LLM timeout")
     ):
         res = classify_intent_safe(q)
     assert res.intent == "query_data"
@@ -1324,7 +1324,7 @@ def test_wrong_classify_out_of_scope_still_routes_query_data():
     q = "Hôm nay có phát hiện leo trèo không?"
     wrong = IntentResult(intent="out_of_scope", reason="mock wrong classify")
 
-    with patch("src.agent.graph.classify_intent_safe", return_value=wrong):
+    with patch("src.domain.agents.graph.classify_intent_safe", return_value=wrong):
         res = run_agent(Agent_Input(question=q))
 
     assert res.detail == "query_data"
@@ -1337,7 +1337,7 @@ def test_wrong_classify_how_to_fire_still_routes_query_data():
     q = "Hôm nay có cảnh báo cháy hoặc khói không?"
     wrong = IntentResult(intent="how_to", reason="mock wrong classify")
 
-    with patch("src.agent.graph.classify_intent_safe", return_value=wrong):
+    with patch("src.domain.agents.graph.classify_intent_safe", return_value=wrong):
         res = run_agent(Agent_Input(question=q))
 
     assert res.detail == "query_data"
@@ -1350,7 +1350,7 @@ def test_wrong_classify_how_to_fire_still_routes_query_data():
 
 """Tests for structured node I/O events."""
 
-from src.agent.node_io import json_safe, node_event
+from src.domain.agents.node_io import json_safe, node_event
 
 
 def test_node_event_preserves_structured_rows():
@@ -1371,11 +1371,11 @@ def test_json_safe_datetime():
 
 
 def test_execute_node_emits_structured_rows(monkeypatch):
-    from src.agent.execute_sql import execute_sql_node
+    from src.domain.agents.execute_sql import execute_sql_node
 
-    monkeypatch.setattr("src.agent.execute_sql.use_offline_tools", lambda: False)
+    monkeypatch.setattr("src.domain.agents.execute_sql.use_offline_tools", lambda: False)
     monkeypatch.setattr(
-        "src.agent.execute_sql.execute_sql",
+        "src.domain.agents.execute_sql.execute_sql",
         lambda sql, params: [
             {"direction": "IN", "so_luot": 10},
             {"direction": "OUT", "so_luot": 8},
@@ -1396,7 +1396,7 @@ def test_execute_node_emits_structured_rows(monkeypatch):
 
 def test_orchestrator_decomposes_compound_vehicle_and_zone_queries():
     """Kiểm tra câu hỏi ghép vừa hỏi xe vừa hỏi xâm nhập được phân rã thành 2 query_data steps."""
-    from src.agent.orchestrator import is_multi_question, plan_orchestration
+    from src.domain.agents.orchestrator import is_multi_question, plan_orchestration
     q = "Xe biển số 15C4384 hôm nay có đi qua khu vực xâm nhập nào không, và khung giờ xâm nhập nhiều nhất hôm nay là mấy giờ?"
     assert is_multi_question(q) is True
     plan = plan_orchestration(q)
@@ -1410,7 +1410,7 @@ def test_orchestrator_decomposes_compound_vehicle_and_zone_queries():
 
 def test_orchestrator_decomposes_cross_db_hay_comparison():
     """So sánh 'phương tiện hay vùng cấm' phải tách 2 query_data — không gộp SQL chéo DB."""
-    from src.agent.orchestrator import is_cross_domain_comparison, is_multi_question, plan_orchestration
+    from src.domain.agents.orchestrator import is_cross_domain_comparison, is_multi_question, plan_orchestration
 
     q = "Trong khoảng từ 23/09/2026 đến 24/09/2026, phương tiện hay vùng cấm xảy ra nhiều hơn?"
     assert is_cross_domain_comparison(q) is True
@@ -1427,7 +1427,7 @@ def test_orchestrator_decomposes_cross_db_hay_comparison():
 
 def test_same_db_hay_comparison_stays_single_query():
     """ẩu đả hay đám đông cùng anomaly_event — không ép orchestrator multi."""
-    from src.agent.orchestrator import is_cross_domain_comparison, is_multi_question, plan_orchestration
+    from src.domain.agents.orchestrator import is_cross_domain_comparison, is_multi_question, plan_orchestration
 
     q = "Trong khoảng từ 04/09/2026 đến 16/09/2026, ẩu đả hay đám đông xảy ra nhiều hơn?"
     assert is_cross_domain_comparison(q) is False
@@ -1441,13 +1441,13 @@ def test_cross_db_hay_comparison_routes_through_respond_node():
     """Multihop so sánh cross-DB phải qua node respond và trả lời đúng vế 'nhiều hơn'."""
     import uuid
     from unittest.mock import patch
-    from src.agent.graph import _get_graph, reset_graph
+    from src.domain.agents.graph import _get_graph, reset_graph
 
     reset_graph()
     q = "Trong khoảng từ 23/09/2026 đến 24/09/2026, phương tiện hay vùng cấm xảy ra nhiều hơn?"
-    with patch("src.agent.generate_sql.use_offline_tools", return_value=True), \
-         patch("src.agent.execute_sql.use_offline_tools", return_value=True), \
-         patch("src.llm.client.use_offline_tools", return_value=True):
+    with patch("src.domain.agents.generate_sql.use_offline_tools", return_value=True), \
+         patch("src.domain.agents.execute_sql.use_offline_tools", return_value=True), \
+         patch("src.infra.llm.client.use_offline_tools", return_value=True):
         state = _get_graph().invoke(
             {"question": q, "events": []},
             config={"configurable": {"thread_id": f"cross_db_respond_{uuid.uuid4().hex}"}},
@@ -1476,7 +1476,7 @@ def test_cross_db_hay_comparison_routes_through_respond_node():
 
 def test_hay_comparison_synthesis_picks_winner():
     """Template so sánh phải kết luận đúng vế nhiều hơn từ số liệu 2 bước."""
-    from src.agent.graph import _try_format_hay_comparison_answer
+    from src.domain.agents.graph import _try_format_hay_comparison_answer
 
     q = "Trong khoảng từ 22/09/2026 đến 24/09/2026, phương tiện hay vùng cấm xảy ra nhiều hơn?"
     steps = [
@@ -1504,7 +1504,7 @@ def test_hay_comparison_synthesis_picks_winner():
 
 def test_hay_comparison_synthesis_less_direction():
     """Câu 'ít hơn' phải kết luận loại có số lượng nhỏ hơn."""
-    from src.agent.graph import _try_format_hay_comparison_answer
+    from src.domain.agents.graph import _try_format_hay_comparison_answer
 
     q = "Trong tháng này, phương tiện hay vùng cấm xảy ra ít hơn?"
     steps = [
@@ -1519,8 +1519,8 @@ def test_hay_comparison_synthesis_less_direction():
 
 def test_orchestrator_multi_answer_passes_guardrail():
     """Số liệu gom đủ bước — check_output không gắn disclaimer oan."""
-    from src.guardrails import check_output
-    from src.agent.graph import _build_orchestrator_query_result
+    from src.shared.guardrails import check_output
+    from src.domain.agents.graph import _build_orchestrator_query_result
 
     question = (
         "Trong khoảng từ 22/09/2026 đến 24/09/2026, phương tiện hay vùng cấm xảy ra nhiều hơn?"
@@ -1544,11 +1544,11 @@ def test_orchestrator_multi_answer_passes_guardrail():
 def test_same_thread_docs_then_stat_clears_respond_mode():
     """Lượt hỏi sau không được kế thừa respond_mode=docs từ checkpointer."""
     from unittest.mock import patch
-    from src.agent.graph import _get_graph, reset_graph
+    from src.domain.agents.graph import _get_graph, reset_graph
 
     reset_graph()
     thread = "docs_then_stat_same_thread"
-    with patch("src.llm.client.use_offline_tools", return_value=True):
+    with patch("src.infra.llm.client.use_offline_tools", return_value=True):
         g = _get_graph()
         r1 = g.invoke(
             {"question": "Làm sao mở Quản Lý Camera trên AIOC?", "events": []},
@@ -1570,7 +1570,7 @@ def test_all_branches_terminate_at_respond_node():
     """Mọi nhánh graph đi qua respond rồi kết thúc tại guardrail_output."""
     import uuid
     from unittest.mock import patch
-    from src.agent.graph import _get_graph, reset_graph
+    from src.domain.agents.graph import _get_graph, reset_graph
 
     reset_graph()
     cases = [
@@ -1588,8 +1588,8 @@ def test_all_branches_terminate_at_respond_node():
         raw = user.replace("Câu hỏi gốc: ", "").strip()
         return RewrittenQuestion(text=raw, sub_questions=[raw])
 
-    with patch("src.llm.client.use_offline_tools", return_value=True), \
-         patch("src.agent.rewrite.invoke_structured", side_effect=_rewrite_passthrough):
+    with patch("src.infra.llm.client.use_offline_tools", return_value=True), \
+         patch("src.domain.agents.rewrite.invoke_structured", side_effect=_rewrite_passthrough):
         for question, expected_subset in cases:
             state = _get_graph().invoke(
                 {"question": question, "events": []},
@@ -1608,14 +1608,14 @@ def test_single_query_after_multi_on_same_thread_not_polluted():
     """Checkpointer không để orchestrator_step_results cũ làm lệch câu đơn."""
     import uuid
     from unittest.mock import patch
-    from src.agent.graph import run_agent, Agent_Input, reset_graph
+    from src.domain.agents.graph import run_agent, Agent_Input, reset_graph
 
     reset_graph()
     thread = f"pollution_{uuid.uuid4().hex}"
     multi_q = "Trong khoảng từ 23/09/2026 đến 24/09/2026, phương tiện hay vùng cấm xảy ra nhiều hơn?"
     single_q = "Hôm nay có cảnh báo cháy hoặc khói không?"
 
-    with patch("src.llm.client.use_offline_tools", return_value=True):
+    with patch("src.infra.llm.client.use_offline_tools", return_value=True):
         multi_res = run_agent(Agent_Input(question=multi_q), session_id=thread)
         single_res = run_agent(Agent_Input(question=single_q), session_id=thread)
 
@@ -1627,7 +1627,7 @@ def test_chart_after_multihop_does_not_leak_zone_from_memory():
     """Memory số liệu multihop không được đưa vào câu trả lời chart phương tiện."""
     import uuid
     from unittest.mock import patch
-    from src.agent.graph import run_agent, Agent_Input, reset_graph
+    from src.domain.agents.graph import run_agent, Agent_Input, reset_graph
 
     reset_graph()
     thread = f"chart_mem_{uuid.uuid4().hex}"
@@ -1644,9 +1644,9 @@ def test_chart_after_multihop_does_not_leak_zone_from_memory():
         "Trong khoảng 22-24/09 có 3034 sự kiện phương tiện và 1689 sự kiện vùng cấm"
     ]
 
-    with patch("src.llm.client.use_offline_tools", return_value=False), \
-         patch("src.memory.longterm.recall_long_term", return_value=memories), \
-         patch("src.llm.client.invoke_text", return_value=bad_llm):
+    with patch("src.infra.llm.client.use_offline_tools", return_value=False), \
+         patch("src.infra.memory.longterm.recall_long_term", return_value=memories), \
+         patch("src.infra.llm.client.invoke_text", return_value=bad_llm):
         run_agent(Agent_Input(question=multi_q), session_id=thread)
         chart_res = run_agent(Agent_Input(question=chart_q), session_id=thread)
 
@@ -1658,13 +1658,13 @@ def test_respond_input_includes_rewritten_question():
     """Node respond phải ghi cả câu hỏi gốc và câu sau rewrite."""
     import uuid
     from unittest.mock import patch
-    from src.agent.graph import _get_graph, reset_graph
+    from src.domain.agents.graph import _get_graph, reset_graph
 
     reset_graph()
     thread = f"respond_rw_{uuid.uuid4().hex}"
     raw_q = "Đồ thị event phương tiện"
 
-    with patch("src.llm.client.use_offline_tools", return_value=True):
+    with patch("src.infra.llm.client.use_offline_tools", return_value=True):
         final = _get_graph().invoke(
             {"question": raw_q, "events": []},
             config={"configurable": {"thread_id": thread}},
@@ -1683,7 +1683,7 @@ def test_respond_input_includes_rewritten_question():
     "Vẽ sơ đồ tất cà các sự kiện trong ngày hôm nay",
 ])
 def test_is_all_events_aggregate_detects_cross_db_chart_question(question):
-    from src.agent.orchestrator import is_all_events_aggregate, is_multi_question, plan_orchestration
+    from src.domain.agents.orchestrator import is_all_events_aggregate, is_multi_question, plan_orchestration
 
     q = question
     assert is_all_events_aggregate(q) is True
@@ -1697,25 +1697,25 @@ def test_is_all_events_aggregate_detects_cross_db_chart_question(question):
 
 
 def test_aioc_diagram_howto_not_all_events():
-    from src.agent.orchestrator import is_all_events_aggregate
+    from src.domain.agents.orchestrator import is_all_events_aggregate
 
     q = "Vẽ sơ đồ các bước đăng nhập AIOC devices"
     assert is_all_events_aggregate(q) is False
 
 
 def test_data_chart_intent_override_not_howto():
-    from src.agent.intent import classify_intent_safe
+    from src.domain.agents.intent import classify_intent_safe
 
     q = "Vẽ sơ đồ số lượng tất cả event ngày hôm nay"
-    with patch("src.llm.client.use_offline_tools", return_value=True):
+    with patch("src.infra.llm.client.use_offline_tools", return_value=True):
         res = classify_intent_safe(q)
     assert res.intent == "query_data"
 
 
 def test_all_events_synthesis_and_chart():
-    from src.agent.graph import _try_format_all_events_answer, _aggregate_all_events_rows
-    from src.agent.orchestrator import _plan_all_events_aggregate
-    from src.llm.schemas import OrchestratorPlan
+    from src.domain.agents.graph import _try_format_all_events_answer, _aggregate_all_events_rows
+    from src.domain.agents.orchestrator import _plan_all_events_aggregate
+    from src.infra.llm.schemas import OrchestratorPlan
 
     q = "Vẽ sơ đồ số lượng tất cả event ngày hôm nay"
     plan = _plan_all_events_aggregate(q)
@@ -1739,14 +1739,14 @@ def test_all_events_synthesis_and_chart():
 def test_all_events_multihop_routes_through_respond_with_template():
     import uuid
     from unittest.mock import patch
-    from src.agent.graph import _get_graph, reset_graph
+    from src.domain.agents.graph import _get_graph, reset_graph
 
     reset_graph()
     q = "Vẽ sơ đồ số lượng tất cả event ngày hôm nay"
 
-    with patch("src.agent.generate_sql.use_offline_tools", return_value=True), \
-         patch("src.agent.execute_sql.use_offline_tools", return_value=True), \
-         patch("src.llm.client.use_offline_tools", return_value=True):
+    with patch("src.domain.agents.generate_sql.use_offline_tools", return_value=True), \
+         patch("src.domain.agents.execute_sql.use_offline_tools", return_value=True), \
+         patch("src.infra.llm.client.use_offline_tools", return_value=True):
         state = _get_graph().invoke(
             {"question": q, "events": []},
             config={"configurable": {"thread_id": f"all_events_{uuid.uuid4().hex}"}},
@@ -1773,7 +1773,7 @@ def test_all_events_multihop_routes_through_respond_with_template():
 
 
 def test_select_relevant_tables_all_events_fallback():
-    from src.db.catalog import select_relevant_tables
+    from src.infra.db.catalog import select_relevant_tables
 
     tables = select_relevant_tables("Thống kê tất cả event hôm nay")
     assert "plate_event" in tables

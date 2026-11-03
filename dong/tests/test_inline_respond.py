@@ -6,10 +6,10 @@ from unittest.mock import patch
 
 import pytest
 
-from src.agent.guardrail_nodes import _build_output_evidence
-from src.agent.inline_respond import generate_inline_response, get_system_time_vietnam
-from src.agent.graph import Agent_Output, respond_inline_node, respond_node
-from src.guardrails import check_output
+from src.domain.agents.guardrail_nodes import _build_output_evidence
+from src.domain.agents.inline_respond import generate_inline_response, get_system_time_vietnam
+from src.domain.agents.graph import Agent_Output, respond_inline_node, respond_node
+from src.shared.guardrails import check_output
 
 
 def test_get_system_time_vietnam():
@@ -22,7 +22,7 @@ def test_get_system_time_vietnam():
 
 def test_generate_inline_response_offline_chat():
     """Offline chat trả về lời chào lịch sự và gợi ý chủ đề VMS."""
-    with patch("src.agent.inline_respond.use_offline_tools", return_value=True):
+    with patch("src.domain.agents.inline_respond.use_offline_tools", return_value=True):
         ans = generate_inline_response("chào bạn", intent="chat")
         assert "Chào bạn" in ans
         assert "VMS KCN Hưng Phú" in ans
@@ -31,7 +31,7 @@ def test_generate_inline_response_offline_chat():
 
 def test_generate_inline_response_offline_out_of_scope_date():
     """Offline out_of_scope câu hỏi ngày giờ trả về ngày hiện tại và định hướng VMS."""
-    with patch("src.agent.inline_respond.use_offline_tools", return_value=True):
+    with patch("src.domain.agents.inline_respond.use_offline_tools", return_value=True):
         ans = generate_inline_response("hôm nay là ngày bao nhiêu", intent="out_of_scope")
         assert "Hôm nay là" in ans
         assert "VMS KCN Hưng Phú" in ans
@@ -40,7 +40,7 @@ def test_generate_inline_response_offline_out_of_scope_date():
 
 def test_generate_inline_response_offline_out_of_scope_general():
     """Offline out_of_scope câu hỏi chung chung trả về định hướng VMS."""
-    with patch("src.agent.inline_respond.use_offline_tools", return_value=True):
+    with patch("src.domain.agents.inline_respond.use_offline_tools", return_value=True):
         ans = generate_inline_response("thời tiết hôm nay thế nào", intent="out_of_scope")
         assert "VMS" in ans
         assert any(kw in ans.lower() for kw in ("xe", "vùng cấm", "khuôn mặt", "aioc"))
@@ -52,16 +52,16 @@ def test_generate_inline_response_online():
         "Hôm nay là ngày 25/09/2026. Chuyên môn chính của tôi là hỗ trợ giám sát camera VMS KCN Hưng Phú. "
         "Bạn có muốn kiểm tra lượng xe vào hôm nay không?"
     )
-    with patch("src.agent.inline_respond.use_offline_tools", return_value=False), \
-         patch("src.agent.inline_respond.invoke_text", return_value=mock_llm_reply):
+    with patch("src.domain.agents.inline_respond.use_offline_tools", return_value=False), \
+         patch("src.domain.agents.inline_respond.invoke_text", return_value=mock_llm_reply):
         ans = generate_inline_response("hôm nay là ngày bao nhiêu", intent="out_of_scope")
         assert ans == mock_llm_reply
 
 
 def test_generate_inline_response_fallback_on_error():
     """Khi LLM gặp ngoại lệ, generate_inline_response tự động fallback sang phản hồi an toàn."""
-    with patch("src.agent.inline_respond.use_offline_tools", return_value=False), \
-         patch("src.agent.inline_respond.invoke_text", side_effect=RuntimeError("LLM connection timeout")):
+    with patch("src.domain.agents.inline_respond.use_offline_tools", return_value=False), \
+         patch("src.domain.agents.inline_respond.invoke_text", side_effect=RuntimeError("LLM connection timeout")):
         ans = generate_inline_response("thời tiết hôm nay thế nào", intent="out_of_scope")
         assert "VMS KCN Hưng Phú" in ans
         assert "Hôm nay là" in ans
@@ -69,7 +69,7 @@ def test_generate_inline_response_fallback_on_error():
 
 def test_respond_inline_node_chat_and_out_of_scope():
     """respond_inline_node gán câu trả lời động và respond_mode tương ứng."""
-    with patch("src.agent.inline_respond.generate_inline_response", return_value="Phản hồi thử nghiệm"):
+    with patch("src.domain.agents.inline_respond.generate_inline_response", return_value="Phản hồi thử nghiệm"):
         res_chat = respond_inline_node({"question": "chào bạn", "intent": "chat"})
         assert res_chat["answer"] == "Phản hồi thử nghiệm"
         assert res_chat["respond_mode"] == "inline"

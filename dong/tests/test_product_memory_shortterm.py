@@ -17,8 +17,8 @@ import pytest
 from langgraph.checkpoint.base import BaseCheckpointSaver, empty_checkpoint
 from langgraph.checkpoint.memory import MemorySaver
 
-from src.config import settings
-from src.memory.shortterm import (
+from src.shared.config import settings
+from src.infra.memory.shortterm import (
     get_checkpointer,
     is_using_postgres_checkpointer,
     reset_checkpointer,
@@ -58,7 +58,7 @@ def test_get_checkpointer_fallback_on_db_exception(monkeypatch):
     monkeypatch.setattr(settings, "db_host", "192.0.2.1")
     monkeypatch.setattr(settings, "db_user", "postgres")
 
-    with patch("src.memory.shortterm._create_postgres_checkpointer", side_effect=Exception("Database down")):
+    with patch("src.infra.memory.shortterm._create_postgres_checkpointer", side_effect=Exception("Database down")):
         cp = get_checkpointer()
         assert cp is not None
         assert isinstance(cp, MemorySaver)
@@ -92,7 +92,7 @@ def test_get_checkpointer_postgres_success(monkeypatch):
 def test_reset_checkpointer_closes_pool_and_resets():
     """reset_checkpointer đóng pool kết nối và dọn sạch singleton."""
     mock_pool = MagicMock()
-    with patch("src.memory.shortterm._pool_instance", mock_pool):
+    with patch("src.infra.memory.shortterm._pool_instance", mock_pool):
         reset_checkpointer()
         mock_pool.close.assert_called_once()
 

@@ -14,7 +14,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from src.main import app
-from src.memory.longterm import clear_long_term, recall_long_term, save_to_long_term
+from src.infra.memory.longterm import clear_long_term, recall_long_term, save_to_long_term
 
 
 @pytest.fixture(autouse=True)
@@ -164,12 +164,12 @@ def test_graceful_degradation_endpoints_when_db_down(client, monkeypatch):
     from unittest.mock import MagicMock
 
     # Giả lập is_postgres_configured=True nhưng connection pool lỗi
-    monkeypatch.setattr("src.memory.longterm.is_postgres_configured", lambda: True)
+    monkeypatch.setattr("src.infra.memory.longterm.is_postgres_configured", lambda: True)
 
     def mock_get_conn(*args, **kwargs):
         raise ConnectionError("Simulated PostgreSQL connection failure")
 
-    monkeypatch.setattr("src.memory.longterm.get_memory_connection", mock_get_conn)
+    monkeypatch.setattr("src.infra.memory.longterm.get_memory_connection", mock_get_conn)
 
     uid = "fallback_user"
     # Lưu và truy xuất qua fallback

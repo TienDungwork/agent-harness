@@ -21,12 +21,12 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from src.agent.generate_sql import extract_sql, generate_sql_node
+from src.domain.agents.generate_sql import extract_sql, generate_sql_node
 
 
 @pytest.fixture(autouse=True)
 def _no_org_sql_scope(monkeypatch):
-    monkeypatch.setattr("src.agent.sql_scope.settings.db_organization_id", 0)
+    monkeypatch.setattr("src.domain.agents.sql_scope.settings.db_organization_id", 0)
 
 
 # ---------------------------------------------------------------------------
@@ -104,7 +104,7 @@ class TestExtractSql:
 class TestOfflineGenerateSql:
     """Offline mode: no LLM call, returns fixed SELECT."""
 
-    @patch("src.agent.generate_sql.use_offline_tools", return_value=True)
+    @patch("src.domain.agents.generate_sql.use_offline_tools", return_value=True)
     def test_offline_basic_select(self, _mock_offline):
         state = {"question": "Có bao nhiêu lượt xe?"}
         result = generate_sql_node(state)
@@ -113,7 +113,7 @@ class TestOfflineGenerateSql:
         assert result["events"]
         assert result["events"][0]["meta"]["offline"] is True
 
-    @patch("src.agent.generate_sql.use_offline_tools", return_value=True)
+    @patch("src.domain.agents.generate_sql.use_offline_tools", return_value=True)
     def test_offline_today_adds_current_date(self, _mock_offline):
         state = {"question": "Hôm nay có bao nhiêu xe vào?"}
         result = generate_sql_node(state)
@@ -121,20 +121,20 @@ class TestOfflineGenerateSql:
         assert "plate_event" in result["sql"]
         assert result["error"] == ""
 
-    @patch("src.agent.generate_sql.use_offline_tools", return_value=True)
+    @patch("src.domain.agents.generate_sql.use_offline_tools", return_value=True)
     def test_offline_english_today(self, _mock_offline):
         state = {"question": "How many vehicles today?"}
         result = generate_sql_node(state)
         assert "CURRENT_DATE" in result["sql"]
 
-    @patch("src.agent.generate_sql.use_offline_tools", return_value=True)
+    @patch("src.domain.agents.generate_sql.use_offline_tools", return_value=True)
     def test_offline_no_today_no_date_filter(self, _mock_offline):
         state = {"question": "Tổng số lượt xe?"}
         result = generate_sql_node(state)
         assert "CURRENT_DATE" not in result["sql"]
         assert result["sql"] == "SELECT count(*) FROM plate_event"
 
-    @patch("src.agent.generate_sql.use_offline_tools", return_value=True)
+    @patch("src.domain.agents.generate_sql.use_offline_tools", return_value=True)
     def test_offline_prefers_rewritten_text(self, _mock_offline):
         rewritten = MagicMock()
         rewritten.text = "hôm nay có bao nhiêu lượt xe"
@@ -142,7 +142,7 @@ class TestOfflineGenerateSql:
         result = generate_sql_node(state)
         assert "CURRENT_DATE" in result["sql"]
 
-    @patch("src.agent.generate_sql.use_offline_tools", return_value=True)
+    @patch("src.domain.agents.generate_sql.use_offline_tools", return_value=True)
     def test_offline_returns_events(self, _mock_offline):
         state = {"question": "test", "user_id": "u1", "session_id": "s1"}
         result = generate_sql_node(state)
@@ -160,8 +160,8 @@ class TestOfflineGenerateSql:
 class TestOnlineGenerateSql:
     """Online mode: LLM call with max_tokens, extract SQL from response."""
 
-    @patch("src.agent.generate_sql.use_offline_tools", return_value=False)
-    @patch("src.agent.generate_sql.invoke_text")
+    @patch("src.domain.agents.generate_sql.use_offline_tools", return_value=False)
+    @patch("src.domain.agents.generate_sql.invoke_text")
     def test_online_extracts_sql(self, mock_invoke, _mock_offline):
         mock_invoke.return_value = "```sql\nSELECT count(*) FROM plate_event\n```"
         state = {
@@ -172,8 +172,8 @@ class TestOnlineGenerateSql:
         assert result["sql"] == "SELECT count(*) FROM plate_event"
         assert result["error"] == ""
 
-    @patch("src.agent.generate_sql.use_offline_tools", return_value=False)
-    @patch("src.agent.generate_sql.invoke_text")
+    @patch("src.domain.agents.generate_sql.use_offline_tools", return_value=False)
+    @patch("src.domain.agents.generate_sql.invoke_text")
     def test_online_passes_max_tokens(self, mock_invoke, _mock_offline):
         mock_invoke.return_value = "```sql\nSELECT 1\n```"
         state = {"question": "test", "schema_excerpt": "..."}
@@ -183,22 +183,22 @@ class TestOnlineGenerateSql:
         call_kwargs = mock_invoke.call_args
         assert call_kwargs.kwargs.get("max_tokens") == settings.sql_generate_max_tokens
 
-    @patch("src.agent.generate_sql.use_offline_tools", return_value=False)
-    @patch("src.agent.generate_sql.invoke_text")
+    @patch("src.domain.agents.generate_sql.use_offline_tools", return_value=False)
+    @patch("src.domain.agents.generate_sql.invoke_text")
     def test_online_custom_max_tokens(self, mock_invoke, _mock_offline, monkeypatch):
         """Custom SQL_GENERATE_MAX_TOKENS is forwarded."""
-        from src.config import settings
+        from src.shared.config import settings
         monkeypatch.setattr(settings, "sql_generate_max_tokens", 500)
         mock_invoke.return_value = "```sql\nSELECT 1\n```"
         state = {"question": "test", "schema_excerpt": "..."}
         generate_sql_node(state)
         assert mock_invoke.call_args.kwargs.get("max_tokens") == 500
 
-    @patch("src.agent.generate_sql.use_offline_tools", return_value=False)
-    @patch("src.agent.generate_sql.invoke_text")
+    @patch("src.domain.agents.generate_sql.use_offline_tools", return_value=False)
+    @patch("src.domain.agents.generate_sql.invoke_text")
     def test_online_self_hosted_prepends_nothink(self, mock_invoke, _mock_offline, monkeypatch):
         """Self-hosted Qwen3 backend prepends /nothink to user prompt."""
-        from src.config import settings
+        from src.shared.config import settings
         monkeypatch.setattr(settings, "llm_backend", "self_hosted")
         monkeypatch.setattr(settings, "model_name", "qwen3-4b")
         mock_invoke.return_value = "```sql\nSELECT 1\n```"
@@ -207,8 +207,8 @@ class TestOnlineGenerateSql:
         user_prompt_sent = mock_invoke.call_args[0][1]
         assert user_prompt_sent.startswith("/nothink")
 
-    @patch("src.agent.generate_sql.use_offline_tools", return_value=False)
-    @patch("src.agent.generate_sql.invoke_text")
+    @patch("src.domain.agents.generate_sql.use_offline_tools", return_value=False)
+    @patch("src.domain.agents.generate_sql.invoke_text")
     def test_online_empty_extract_returns_error(self, mock_invoke, _mock_offline):
         """Empty SQL extraction → error in Vietnamese, sql=''."""
         mock_invoke.return_value = "Tôi không hiểu câu hỏi."
@@ -219,8 +219,8 @@ class TestOnlineGenerateSql:
         # Error in Vietnamese
         assert any(c in result["error"] for c in ("Không", "không", "lỗi", "Lỗi"))
 
-    @patch("src.agent.generate_sql.use_offline_tools", return_value=False)
-    @patch("src.agent.generate_sql.invoke_text")
+    @patch("src.domain.agents.generate_sql.use_offline_tools", return_value=False)
+    @patch("src.domain.agents.generate_sql.invoke_text")
     def test_online_empty_response_returns_error(self, mock_invoke, _mock_offline):
         mock_invoke.return_value = ""
         state = {"question": "test", "schema_excerpt": "..."}
@@ -228,8 +228,8 @@ class TestOnlineGenerateSql:
         assert result["sql"] == ""
         assert result["error"] != ""
 
-    @patch("src.agent.generate_sql.use_offline_tools", return_value=False)
-    @patch("src.agent.generate_sql.invoke_text")
+    @patch("src.domain.agents.generate_sql.use_offline_tools", return_value=False)
+    @patch("src.domain.agents.generate_sql.invoke_text")
     def test_online_uses_registry_sql_agent(self, mock_invoke, _mock_offline):
         """System prompt comes from registry('sql_agent')."""
         mock_invoke.return_value = "```sql\nSELECT 1\n```"
@@ -249,8 +249,8 @@ class TestOnlineGenerateSql:
 class TestHintInjection:
     """Time range and chart hints are injected into user prompt when available."""
 
-    @patch("src.agent.generate_sql.use_offline_tools", return_value=False)
-    @patch("src.agent.generate_sql.invoke_text")
+    @patch("src.domain.agents.generate_sql.use_offline_tools", return_value=False)
+    @patch("src.domain.agents.generate_sql.invoke_text")
     def test_time_range_hint_injected(self, mock_invoke, _mock_offline):
         mock_invoke.return_value = "```sql\nSELECT 1\n```"
         rewritten = MagicMock()
@@ -265,8 +265,8 @@ class TestHintInjection:
         user_prompt = mock_invoke.call_args.args[1]
         assert "time_range" in user_prompt.lower() or "CURRENT_DATE" in user_prompt
 
-    @patch("src.agent.generate_sql.use_offline_tools", return_value=False)
-    @patch("src.agent.generate_sql.invoke_text")
+    @patch("src.domain.agents.generate_sql.use_offline_tools", return_value=False)
+    @patch("src.domain.agents.generate_sql.invoke_text")
     def test_chart_hint_injected_for_chart_question(self, mock_invoke, _mock_offline):
         mock_invoke.return_value = "```sql\nSELECT vehicle_type, count(*) FROM plate_event GROUP BY vehicle_type\n```"
         state = {
@@ -278,8 +278,8 @@ class TestHintInjection:
         # Chart hint should mention GROUP BY or biểu đồ
         assert "GROUP BY" in user_prompt or "biểu đồ" in user_prompt.lower()
 
-    @patch("src.agent.generate_sql.use_offline_tools", return_value=False)
-    @patch("src.agent.generate_sql.invoke_text")
+    @patch("src.domain.agents.generate_sql.use_offline_tools", return_value=False)
+    @patch("src.domain.agents.generate_sql.invoke_text")
     def test_no_hint_for_plain_question(self, mock_invoke, _mock_offline):
         mock_invoke.return_value = "```sql\nSELECT count(*) FROM plate_event\n```"
         state = {
@@ -290,8 +290,8 @@ class TestHintInjection:
         user_prompt = mock_invoke.call_args.args[1]
         assert "Yêu cầu biểu đồ" not in user_prompt
 
-    @patch("src.agent.generate_sql.use_offline_tools", return_value=False)
-    @patch("src.agent.generate_sql.invoke_text")
+    @patch("src.domain.agents.generate_sql.use_offline_tools", return_value=False)
+    @patch("src.domain.agents.generate_sql.invoke_text")
     def test_schema_excerpt_in_user_prompt(self, mock_invoke, _mock_offline):
         mock_invoke.return_value = "```sql\nSELECT 1\n```"
         state = {
@@ -302,8 +302,8 @@ class TestHintInjection:
         user_prompt = mock_invoke.call_args.args[1]
         assert "SPECIAL_SCHEMA_CONTENT" in user_prompt
 
-    @patch("src.agent.generate_sql.use_offline_tools", return_value=False)
-    @patch("src.agent.generate_sql.invoke_text")
+    @patch("src.domain.agents.generate_sql.use_offline_tools", return_value=False)
+    @patch("src.domain.agents.generate_sql.invoke_text")
     def test_question_in_user_prompt(self, mock_invoke, _mock_offline):
         mock_invoke.return_value = "```sql\nSELECT 1\n```"
         state = {
@@ -322,7 +322,7 @@ class TestHintInjection:
 
 def test_config_sql_generate_max_tokens_default():
     """Settings has sql_generate_max_tokens = 384 by default."""
-    from src.config import Settings
+    from src.shared.config import Settings
     s = Settings(OPENAI_API_KEYS="test-key")
     assert s.sql_generate_max_tokens == 384
 
@@ -334,24 +334,24 @@ def test_config_sql_generate_max_tokens_default():
 
 def test_base_llm_max_tokens_override(monkeypatch):
     """base_llm(max_tokens_override=280) passes max_tokens to ChatOpenAI."""
-    from src.config import settings
+    from src.shared.config import settings
     monkeypatch.setattr(settings, "openai_api_keys", "sk-test")
-    from src.llm.client import _pool
+    from src.infra.llm.client import _pool
     _pool.cache_clear()
 
-    from src.llm.client import base_llm
+    from src.infra.llm.client import base_llm
     llm = base_llm(backend_override="openai", max_tokens_override=280)
     assert llm.max_tokens == 280
 
 
 def test_base_llm_no_max_tokens_by_default(monkeypatch):
     """base_llm() without max_tokens_override does not set max_tokens."""
-    from src.config import settings
+    from src.shared.config import settings
     monkeypatch.setattr(settings, "openai_api_keys", "sk-test")
-    from src.llm.client import _pool
+    from src.infra.llm.client import _pool
     _pool.cache_clear()
 
-    from src.llm.client import base_llm
+    from src.infra.llm.client import base_llm
     llm = base_llm(backend_override="openai")
     assert llm.max_tokens is None
 
@@ -366,7 +366,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from src.agent.execute_sql import execute_sql_node
+from src.domain.agents.execute_sql import execute_sql_node
 
 
 
@@ -376,8 +376,8 @@ class TestExecuteSqlNode:
         mock_rows = [{"vehicle_type": "car", "so_luot": 12}]
         sql = "SELECT vehicle_type, count(*) AS so_luot FROM plate_event GROUP BY vehicle_type"
 
-        with patch("src.agent.execute_sql.use_offline_tools", return_value=False), \
-             patch("src.agent.execute_sql.execute_sql", return_value=mock_rows) as mock_db:
+        with patch("src.domain.agents.execute_sql.use_offline_tools", return_value=False), \
+             patch("src.domain.agents.execute_sql.execute_sql", return_value=mock_rows) as mock_db:
             state = {
                 "sql": sql,
                 "params": [],
@@ -398,8 +398,8 @@ class TestExecuteSqlNode:
     def test_revalidate_rejects_ddl_drop(self):
         sql = "DROP TABLE plate_event"
 
-        with patch("src.agent.execute_sql.use_offline_tools", return_value=False), \
-             patch("src.agent.execute_sql.execute_sql") as mock_db:
+        with patch("src.domain.agents.execute_sql.use_offline_tools", return_value=False), \
+             patch("src.domain.agents.execute_sql.execute_sql") as mock_db:
             state = {"sql": sql}
             out = execute_sql_node(state)
 
@@ -413,8 +413,8 @@ class TestExecuteSqlNode:
     def test_revalidate_rejects_dml_delete(self):
         sql = "DELETE FROM plate_event WHERE 1=1"
 
-        with patch("src.agent.execute_sql.use_offline_tools", return_value=False), \
-             patch("src.agent.execute_sql.execute_sql") as mock_db:
+        with patch("src.domain.agents.execute_sql.use_offline_tools", return_value=False), \
+             patch("src.domain.agents.execute_sql.execute_sql") as mock_db:
             state = {"sql": sql}
             out = execute_sql_node(state)
 
@@ -425,8 +425,8 @@ class TestExecuteSqlNode:
     def test_revalidate_rejects_unknown_table(self):
         sql = "SELECT * FROM passwords_table"
 
-        with patch("src.agent.execute_sql.use_offline_tools", return_value=False), \
-             patch("src.agent.execute_sql.execute_sql") as mock_db:
+        with patch("src.domain.agents.execute_sql.use_offline_tools", return_value=False), \
+             patch("src.domain.agents.execute_sql.execute_sql") as mock_db:
             state = {"sql": sql}
             out = execute_sql_node(state)
 
@@ -435,8 +435,8 @@ class TestExecuteSqlNode:
             assert "không nằm trong danh mục cho phép" in out["error"]
 
     def test_revalidate_rejects_empty_sql(self):
-        with patch("src.agent.execute_sql.use_offline_tools", return_value=False), \
-             patch("src.agent.execute_sql.execute_sql") as mock_db:
+        with patch("src.domain.agents.execute_sql.use_offline_tools", return_value=False), \
+             patch("src.domain.agents.execute_sql.execute_sql") as mock_db:
             state = {"sql": "   "}
             out = execute_sql_node(state)
 
@@ -447,8 +447,8 @@ class TestExecuteSqlNode:
     def test_db_exception_caught_and_reported(self):
         sql = "SELECT count(*) FROM plate_event"
 
-        with patch("src.agent.execute_sql.use_offline_tools", return_value=False), \
-             patch("src.agent.execute_sql.execute_sql", side_effect=RuntimeError("Database connection timed out")):
+        with patch("src.domain.agents.execute_sql.use_offline_tools", return_value=False), \
+             patch("src.domain.agents.execute_sql.execute_sql", side_effect=RuntimeError("Database connection timed out")):
             state = {"sql": sql}
             out = execute_sql_node(state)
 
@@ -461,8 +461,8 @@ class TestExecuteSqlNode:
     def test_offline_mode_returns_fallback_rows(self):
         sql = "SELECT count(*) FROM plate_event"
 
-        with patch("src.agent.execute_sql.use_offline_tools", return_value=True), \
-             patch("src.agent.execute_sql.execute_sql") as mock_db:
+        with patch("src.domain.agents.execute_sql.use_offline_tools", return_value=True), \
+             patch("src.domain.agents.execute_sql.execute_sql") as mock_db:
             state = {"sql": sql}
             out = execute_sql_node(state)
 
@@ -483,8 +483,8 @@ from unittest.mock import patch
 
 import pytest
 
-from src.agent.validate_sql import repair_sql_node, validate_sql_node
-from src.config import Settings, settings
+from src.domain.agents.validate_sql import repair_sql_node, validate_sql_node
+from src.shared.config import Settings, settings
 
 
 
@@ -553,7 +553,7 @@ class TestValidateSqlNode:
 
 class TestRepairSqlNode:
     def test_offline_repair_basic(self):
-        with patch("src.agent.validate_sql.use_offline_tools", return_value=True):
+        with patch("src.domain.agents.validate_sql.use_offline_tools", return_value=True):
             state = {
                 "sql": "SELECT bad_col FROM unknown_tbl",
                 "question": "Có bao nhiêu xe vào cổng?",
@@ -568,7 +568,7 @@ class TestRepairSqlNode:
             assert out["events"][0]["node_id"] == "repair_sql"
 
     def test_offline_repair_today_keyword(self):
-        with patch("src.agent.validate_sql.use_offline_tools", return_value=True):
+        with patch("src.domain.agents.validate_sql.use_offline_tools", return_value=True):
             state = {
                 "sql": "SELECT * FROM plate_event",
                 "question": "Hôm nay có bao nhiêu lượt xe qua cổng?",
@@ -586,8 +586,8 @@ class TestRepairSqlNode:
             captured_prompts.append((sys, usr, max_tokens))
             return mock_llm_response
 
-        with patch("src.agent.validate_sql.use_offline_tools", return_value=False), \
-             patch("src.agent.validate_sql.invoke_text", side_effect=mock_invoke):
+        with patch("src.domain.agents.validate_sql.use_offline_tools", return_value=False), \
+             patch("src.domain.agents.validate_sql.invoke_text", side_effect=mock_invoke):
             state = {
                 "sql": "SELECT bad FROM plate_event",
                 "question": "Đếm số xe",
@@ -610,8 +610,8 @@ class TestRepairSqlNode:
             assert max_tokens == settings.sql_generate_max_tokens
 
     def test_online_repair_empty_extract_fallback(self):
-        with patch("src.agent.validate_sql.use_offline_tools", return_value=False), \
-             patch("src.agent.validate_sql.invoke_text", return_value="Xin lỗi tôi không thể sửa câu này."):
+        with patch("src.domain.agents.validate_sql.use_offline_tools", return_value=False), \
+             patch("src.domain.agents.validate_sql.invoke_text", return_value="Xin lỗi tôi không thể sửa câu này."):
             state = {
                 "sql": "SELECT bad FROM plate_event",
                 "question": "Đếm số xe",
@@ -655,8 +655,8 @@ from unittest.mock import patch
 
 import pytest
 
-from src.agent.validate_sql import validate_and_repair_sql
-from src.db.validator import ValidationResult
+from src.domain.agents.validate_sql import validate_and_repair_sql
+from src.infra.db.validator import ValidationResult
 
 
 
@@ -680,8 +680,8 @@ class TestSharedValidateAndRepair:
         initial_sql = "SELECT alert_level FROM plate_event"
         valid_repaired_sql = "SELECT count(*) FROM plate_event"
 
-        with patch("src.agent.validate_sql.use_offline_tools", return_value=False), \
-             patch("src.agent.validate_sql.invoke_text", return_value=f"```sql\n{valid_repaired_sql}\n```"):
+        with patch("src.domain.agents.validate_sql.use_offline_tools", return_value=False), \
+             patch("src.domain.agents.validate_sql.invoke_text", return_value=f"```sql\n{valid_repaired_sql}\n```"):
 
             res_sql, val, count, events = validate_and_repair_sql(
                 sql=initial_sql,
@@ -708,8 +708,8 @@ class TestSharedValidateAndRepair:
             f"```sql\n{final_valid_sql}\n```",
         ]
 
-        with patch("src.agent.validate_sql.use_offline_tools", return_value=False), \
-             patch("src.agent.validate_sql.invoke_text", side_effect=llm_responses):
+        with patch("src.domain.agents.validate_sql.use_offline_tools", return_value=False), \
+             patch("src.domain.agents.validate_sql.invoke_text", side_effect=llm_responses):
 
             res_sql, val, count, events = validate_and_repair_sql(
                 sql=initial_sql,
@@ -727,8 +727,8 @@ class TestSharedValidateAndRepair:
         initial_sql = "DROP TABLE plate_event"
         always_bad_sql = "DROP TABLE plate_event"
 
-        with patch("src.agent.validate_sql.use_offline_tools", return_value=False), \
-             patch("src.agent.validate_sql.invoke_text", return_value=f"```sql\n{always_bad_sql}\n```"):
+        with patch("src.domain.agents.validate_sql.use_offline_tools", return_value=False), \
+             patch("src.domain.agents.validate_sql.invoke_text", return_value=f"```sql\n{always_bad_sql}\n```"):
 
             res_sql, val, count, events = validate_and_repair_sql(
                 sql=initial_sql,
@@ -743,8 +743,8 @@ class TestSharedValidateAndRepair:
     def test_custom_max_repairs_override(self):
         initial_sql = "DROP TABLE plate_event"
 
-        with patch("src.agent.validate_sql.use_offline_tools", return_value=False), \
-             patch("src.agent.validate_sql.invoke_text", return_value="```sql\nDROP TABLE plate_event\n```"):
+        with patch("src.domain.agents.validate_sql.use_offline_tools", return_value=False), \
+             patch("src.domain.agents.validate_sql.invoke_text", return_value="```sql\nDROP TABLE plate_event\n```"):
 
             res_sql, val, count, events = validate_and_repair_sql(
                 sql=initial_sql,
@@ -762,11 +762,11 @@ class TestSharedValidateAndRepair:
 """Tests for organization_id SQL scope injection."""
 
 
-from src.agent.sql_scope import apply_organization_scope
+from src.domain.agents.sql_scope import apply_organization_scope
 
 
 def test_apply_org_scope_adds_where(monkeypatch):
-    monkeypatch.setattr("src.agent.sql_scope.settings.db_organization_id", 103)
+    monkeypatch.setattr("src.domain.agents.sql_scope.settings.db_organization_id", 103)
     sql = "SELECT COUNT(*) FROM plate_event WHERE event_time::date = CURRENT_DATE"
     out = apply_organization_scope(sql)
     assert "organization_id = 103" in out
@@ -774,13 +774,13 @@ def test_apply_org_scope_adds_where(monkeypatch):
 
 
 def test_apply_org_scope_skips_when_present(monkeypatch):
-    monkeypatch.setattr("src.agent.sql_scope.settings.db_organization_id", 103)
+    monkeypatch.setattr("src.domain.agents.sql_scope.settings.db_organization_id", 103)
     sql = "SELECT COUNT(*) FROM plate_event WHERE organization_id = 103"
     assert apply_organization_scope(sql) == sql
 
 
 def test_apply_org_scope_skips_when_org_zero(monkeypatch):
-    monkeypatch.setattr("src.agent.sql_scope.settings.db_organization_id", 0)
+    monkeypatch.setattr("src.domain.agents.sql_scope.settings.db_organization_id", 0)
     sql = "SELECT COUNT(*) FROM plate_event"
     assert apply_organization_scope(sql) == sql
 
@@ -801,10 +801,10 @@ from pathlib import Path
 import pytest
 from fastapi.testclient import TestClient
 
-from src.agent.graph import Agent_Input, run_agent
-from src.db.connection import get_connection
-from src.db.validator import validate_sql
-from src.guardrails import GuardrailViolation, check_input, in_scope
+from src.domain.agents.graph import Agent_Input, run_agent
+from src.infra.db.connection import get_connection
+from src.infra.db.validator import validate_sql
+from src.shared.guardrails import GuardrailViolation, check_input, in_scope
 from src.main import app
 
 client = TestClient(app)
@@ -875,7 +875,7 @@ def test_get_connection_chan_dbname_ngoai_whitelist():
 
 def test_get_connection_sets_session_timezone():
     """Kiểm tra get_connection áp dụng cấu hình DB_TIMEZONE vào session PostgreSQL."""
-    from src.config import settings
+    from src.shared.config import settings
 
     assert settings.db_timezone == "Asia/Ho_Chi_Minh"
     if settings.db_configured:
@@ -955,7 +955,7 @@ import re
 
 import pytest
 
-from src.prompts import registry
+from src.infra.prompts import registry
 
 
 # ---------------------------------------------------------------------------
@@ -1084,8 +1084,8 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from src.agent.graph import Agent_Input, _build_graph, reset_graph, run_agent
-from src.llm.schemas import IntentResult, RewrittenQuestion
+from src.domain.agents.graph import Agent_Input, _build_graph, reset_graph, run_agent
+from src.infra.llm.schemas import IntentResult, RewrittenQuestion
 
 
 @pytest.fixture(autouse=True)
@@ -1100,12 +1100,12 @@ class TestTextToSqlGraphFlow:
         """Happy path: retrieve_schema -> generate_sql -> validate_sql -> execute_sql -> respond."""
         mock_rows = [{"vehicle_type": "truck", "so_luot": 15}]
 
-        with patch("src.agent.graph.classify_intent_safe", return_value=IntentResult(intent="query_data", reason="mock")), \
-             patch("src.agent.generate_sql.use_offline_tools", return_value=False), \
-             patch("src.agent.generate_sql.invoke_text", return_value="```sql\nSELECT vehicle_type, count(*) AS so_luot FROM plate_event GROUP BY vehicle_type\n```"), \
-             patch("src.agent.execute_sql.use_offline_tools", return_value=False), \
-             patch("src.agent.execute_sql.execute_sql", return_value=mock_rows), \
-             patch("src.llm.client.use_offline_tools", return_value=True):  # respond node in offline template mode
+        with patch("src.domain.agents.graph.classify_intent_safe", return_value=IntentResult(intent="query_data", reason="mock")), \
+             patch("src.domain.agents.generate_sql.use_offline_tools", return_value=False), \
+             patch("src.domain.agents.generate_sql.invoke_text", return_value="```sql\nSELECT vehicle_type, count(*) AS so_luot FROM plate_event GROUP BY vehicle_type\n```"), \
+             patch("src.domain.agents.execute_sql.use_offline_tools", return_value=False), \
+             patch("src.domain.agents.execute_sql.execute_sql", return_value=mock_rows), \
+             patch("src.infra.llm.client.use_offline_tools", return_value=True):  # respond node in offline template mode
             
             inp = Agent_Input(question="Thống kê lượt xe theo loại xe")
             res = run_agent(inp)
@@ -1124,15 +1124,15 @@ class TestTextToSqlGraphFlow:
             call_count["repair"] += 1
             return "```sql\nSELECT count(*) AS so_luot FROM plate_event\n```"
 
-        with patch("src.agent.graph.classify_intent_safe", return_value=IntentResult(intent="query_data", reason="mock")), \
-             patch("src.agent.generate_sql.use_offline_tools", return_value=False), \
-             patch("src.agent.generate_sql.invoke_text", return_value="```sql\nSELECT alert_level FROM plate_event\n```"), \
-             patch("src.agent.validate_sql.use_offline_tools", return_value=False), \
-             patch("src.agent.validate_sql.invoke_text", side_effect=mock_repair), \
-             patch("src.agent.execute_sql.use_offline_tools", return_value=False), \
-             patch("src.agent.execute_sql.execute_sql", return_value=mock_rows), \
-             patch("src.llm.client.use_offline_tools", return_value=False), \
-             patch("src.llm.client.invoke_text", return_value="Có 42 lượt xe."):
+        with patch("src.domain.agents.graph.classify_intent_safe", return_value=IntentResult(intent="query_data", reason="mock")), \
+             patch("src.domain.agents.generate_sql.use_offline_tools", return_value=False), \
+             patch("src.domain.agents.generate_sql.invoke_text", return_value="```sql\nSELECT alert_level FROM plate_event\n```"), \
+             patch("src.domain.agents.validate_sql.use_offline_tools", return_value=False), \
+             patch("src.domain.agents.validate_sql.invoke_text", side_effect=mock_repair), \
+             patch("src.domain.agents.execute_sql.use_offline_tools", return_value=False), \
+             patch("src.domain.agents.execute_sql.execute_sql", return_value=mock_rows), \
+             patch("src.infra.llm.client.use_offline_tools", return_value=False), \
+             patch("src.infra.llm.client.invoke_text", return_value="Có 42 lượt xe."):
 
             inp = Agent_Input(question="Đếm tổng số xe")
             res = run_agent(inp)
@@ -1144,13 +1144,13 @@ class TestTextToSqlGraphFlow:
 
     def test_repair_max_limit_routes_to_respond_with_error(self):
         """Repair loop stops after SQL_REPAIR_MAX and routes to respond without crashing."""
-        with patch("src.agent.graph.classify_intent_safe", return_value=IntentResult(intent="query_data", reason="mock")), \
-             patch("src.agent.generate_sql.use_offline_tools", return_value=False), \
-             patch("src.agent.generate_sql.invoke_text", return_value="```sql\nDROP TABLE plate_event\n```"), \
-             patch("src.agent.validate_sql.use_offline_tools", return_value=False), \
-             patch("src.agent.validate_sql.invoke_text", return_value="```sql\nDROP TABLE plate_event\n```"), \
-             patch("src.agent.execute_sql.use_offline_tools", return_value=False), \
-             patch("src.llm.client.use_offline_tools", return_value=True):
+        with patch("src.domain.agents.graph.classify_intent_safe", return_value=IntentResult(intent="query_data", reason="mock")), \
+             patch("src.domain.agents.generate_sql.use_offline_tools", return_value=False), \
+             patch("src.domain.agents.generate_sql.invoke_text", return_value="```sql\nDROP TABLE plate_event\n```"), \
+             patch("src.domain.agents.validate_sql.use_offline_tools", return_value=False), \
+             patch("src.domain.agents.validate_sql.invoke_text", return_value="```sql\nDROP TABLE plate_event\n```"), \
+             patch("src.domain.agents.execute_sql.use_offline_tools", return_value=False), \
+             patch("src.infra.llm.client.use_offline_tools", return_value=True):
 
             inp = Agent_Input(question="Xóa dữ liệu")
             res = run_agent(inp)
@@ -1162,13 +1162,13 @@ class TestTextToSqlGraphFlow:
         """When chart is requested, execute_sql routes to render_chart before respond."""
         mock_rows = [{"vehicle_type": "car", "so_luot": 20}, {"vehicle_type": "truck", "so_luot": 10}]
 
-        with patch("src.agent.graph.classify_intent_safe", return_value=IntentResult(intent="query_data", reason="mock")), \
-             patch("src.agent.generate_sql.use_offline_tools", return_value=False), \
-             patch("src.agent.generate_sql.invoke_text", return_value="```sql\nSELECT vehicle_type, count(*) AS so_luot FROM plate_event GROUP BY vehicle_type\n```"), \
-             patch("src.agent.execute_sql.use_offline_tools", return_value=False), \
-             patch("src.agent.execute_sql.execute_sql", return_value=mock_rows), \
-             patch("src.agent.graph.render_chart", return_value="mock_png_base64_data"), \
-             patch("src.llm.client.use_offline_tools", return_value=True):
+        with patch("src.domain.agents.graph.classify_intent_safe", return_value=IntentResult(intent="query_data", reason="mock")), \
+             patch("src.domain.agents.generate_sql.use_offline_tools", return_value=False), \
+             patch("src.domain.agents.generate_sql.invoke_text", return_value="```sql\nSELECT vehicle_type, count(*) AS so_luot FROM plate_event GROUP BY vehicle_type\n```"), \
+             patch("src.domain.agents.execute_sql.use_offline_tools", return_value=False), \
+             patch("src.domain.agents.execute_sql.execute_sql", return_value=mock_rows), \
+             patch("src.domain.agents.graph.render_chart", return_value="mock_png_base64_data"), \
+             patch("src.infra.llm.client.use_offline_tools", return_value=True):
 
             inp = Agent_Input(question="Vẽ biểu đồ số lượng xe theo loại")
             res = run_agent(inp)
@@ -1195,13 +1195,13 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from src.agent.execute_sql import execute_sql_node
-from src.agent.generate_sql import extract_sql, generate_sql_node
-from src.agent.graph import Agent_Input, _get_graph, reset_graph, run_agent, run_agent_stream
-from src.agent.validate_sql import repair_sql_node, validate_and_repair_sql, validate_sql_node
-from src.config import settings
-from src.db.validator import validate_sql
-from src.llm.schemas import IntentResult, RewrittenQuestion
+from src.domain.agents.execute_sql import execute_sql_node
+from src.domain.agents.generate_sql import extract_sql, generate_sql_node
+from src.domain.agents.graph import Agent_Input, _get_graph, reset_graph, run_agent, run_agent_stream
+from src.domain.agents.validate_sql import repair_sql_node, validate_and_repair_sql, validate_sql_node
+from src.shared.config import settings
+from src.infra.db.validator import validate_sql
+from src.infra.llm.schemas import IntentResult, RewrittenQuestion
 
 
 
@@ -1256,8 +1256,8 @@ class TestBlockDdlDmlSecurity:
         "SELECT 1; DROP TABLE plate_event",
     ])
     def test_execute_node_refuses_to_call_db_for_ddl(self, bad_sql: str):
-        with patch("src.agent.execute_sql.use_offline_tools", return_value=False), \
-             patch("src.agent.execute_sql.execute_sql") as mock_db:
+        with patch("src.domain.agents.execute_sql.use_offline_tools", return_value=False), \
+             patch("src.domain.agents.execute_sql.execute_sql") as mock_db:
             state = {"sql": bad_sql}
             out = execute_sql_node(state)
 
@@ -1267,14 +1267,14 @@ class TestBlockDdlDmlSecurity:
             assert "SQL không hợp lệ" in out["error"]
 
     def test_end_to_end_graph_halts_on_unrepairable_ddl(self):
-        with patch("src.agent.graph.classify_intent_safe", return_value=IntentResult(intent="query_data", reason="mock")), \
-             patch("src.agent.generate_sql.use_offline_tools", return_value=False), \
-             patch("src.agent.generate_sql.invoke_text", return_value="```sql\nDROP TABLE plate_event\n```"), \
-             patch("src.agent.validate_sql.use_offline_tools", return_value=False), \
-             patch("src.agent.validate_sql.invoke_text", return_value="```sql\nDROP TABLE plate_event\n```"), \
-             patch("src.agent.execute_sql.use_offline_tools", return_value=False), \
-             patch("src.agent.execute_sql.execute_sql") as mock_db, \
-             patch("src.llm.client.use_offline_tools", return_value=True):
+        with patch("src.domain.agents.graph.classify_intent_safe", return_value=IntentResult(intent="query_data", reason="mock")), \
+             patch("src.domain.agents.generate_sql.use_offline_tools", return_value=False), \
+             patch("src.domain.agents.generate_sql.invoke_text", return_value="```sql\nDROP TABLE plate_event\n```"), \
+             patch("src.domain.agents.validate_sql.use_offline_tools", return_value=False), \
+             patch("src.domain.agents.validate_sql.invoke_text", return_value="```sql\nDROP TABLE plate_event\n```"), \
+             patch("src.domain.agents.execute_sql.use_offline_tools", return_value=False), \
+             patch("src.domain.agents.execute_sql.execute_sql") as mock_db, \
+             patch("src.infra.llm.client.use_offline_tools", return_value=True):
 
             res = run_agent(Agent_Input(question="Xóa toàn bộ bảng plate_event"))
 
@@ -1293,8 +1293,8 @@ class TestSqlRepairMock:
         initial_bad_sql = "SELECT alert_level FROM plate_event"
         fixed_sql = "SELECT count(*) AS so_luot FROM plate_event"
 
-        with patch("src.agent.validate_sql.use_offline_tools", return_value=False), \
-             patch("src.agent.validate_sql.invoke_text", return_value=f"```sql\n{fixed_sql}\n```"):
+        with patch("src.domain.agents.validate_sql.use_offline_tools", return_value=False), \
+             patch("src.domain.agents.validate_sql.invoke_text", return_value=f"```sql\n{fixed_sql}\n```"):
 
             final_sql, val, count, events = validate_and_repair_sql(
                 sql=initial_bad_sql,
@@ -1316,8 +1316,8 @@ class TestSqlRepairMock:
             f"```sql\n{attempt_2_fixed}\n```",
         ]
 
-        with patch("src.agent.validate_sql.use_offline_tools", return_value=False), \
-             patch("src.agent.validate_sql.invoke_text", side_effect=responses):
+        with patch("src.domain.agents.validate_sql.use_offline_tools", return_value=False), \
+             patch("src.domain.agents.validate_sql.invoke_text", side_effect=responses):
 
             final_sql, val, count, events = validate_and_repair_sql(
                 sql=initial_bad,
@@ -1332,8 +1332,8 @@ class TestSqlRepairMock:
     def test_repair_fails_after_max_repairs_exceeded(self):
         initial_bad = "DROP TABLE plate_event"
 
-        with patch("src.agent.validate_sql.use_offline_tools", return_value=False), \
-             patch("src.agent.validate_sql.invoke_text", return_value="```sql\nDROP TABLE plate_event\n```"):
+        with patch("src.domain.agents.validate_sql.use_offline_tools", return_value=False), \
+             patch("src.domain.agents.validate_sql.invoke_text", return_value="```sql\nDROP TABLE plate_event\n```"):
 
             final_sql, val, count, events = validate_and_repair_sql(
                 sql=initial_bad,
@@ -1352,8 +1352,8 @@ class TestSqlRepairMock:
             captured.append((sys, usr, max_tokens))
             return "```sql\nSELECT count(*) FROM plate_event\n```"
 
-        with patch("src.agent.validate_sql.use_offline_tools", return_value=False), \
-             patch("src.agent.validate_sql.invoke_text", side_effect=mock_invoke):
+        with patch("src.domain.agents.validate_sql.use_offline_tools", return_value=False), \
+             patch("src.domain.agents.validate_sql.invoke_text", side_effect=mock_invoke):
 
             state = {
                 "sql": "SELECT alert_level FROM plate_event",
@@ -1386,8 +1386,8 @@ class TestExecuteMock:
         ]
         sql = "SELECT vehicle_type, count(*) AS so_luot FROM plate_event GROUP BY vehicle_type"
 
-        with patch("src.agent.execute_sql.use_offline_tools", return_value=False), \
-             patch("src.agent.execute_sql.execute_sql", return_value=mock_data) as mock_exec:
+        with patch("src.domain.agents.execute_sql.use_offline_tools", return_value=False), \
+             patch("src.domain.agents.execute_sql.execute_sql", return_value=mock_data) as mock_exec:
 
             state = {"sql": sql, "params": []}
             out = execute_sql_node(state)
@@ -1403,8 +1403,8 @@ class TestExecuteMock:
     def test_execute_node_catches_db_exception_without_crashing(self):
         sql = "SELECT count(*) FROM plate_event"
 
-        with patch("src.agent.execute_sql.use_offline_tools", return_value=False), \
-             patch("src.agent.execute_sql.execute_sql", side_effect=RuntimeError("psycopg2.OperationalError: connection refused")):
+        with patch("src.domain.agents.execute_sql.use_offline_tools", return_value=False), \
+             patch("src.domain.agents.execute_sql.execute_sql", side_effect=RuntimeError("psycopg2.OperationalError: connection refused")):
 
             state = {"sql": sql}
             out = execute_sql_node(state)
@@ -1417,8 +1417,8 @@ class TestExecuteMock:
     def test_execute_node_handles_empty_db_result(self):
         sql = "SELECT * FROM plate_event WHERE event_time > '2099-01-01'"
 
-        with patch("src.agent.execute_sql.use_offline_tools", return_value=False), \
-             patch("src.agent.execute_sql.execute_sql", return_value=[]):
+        with patch("src.domain.agents.execute_sql.use_offline_tools", return_value=False), \
+             patch("src.domain.agents.execute_sql.execute_sql", return_value=[]):
 
             state = {"sql": sql}
             out = execute_sql_node(state)
@@ -1438,12 +1438,12 @@ class TestPipelineStreamIntegration:
     def test_stream_emits_text_to_sql_nodes_in_exact_order(self):
         mock_rows = [{"so_luot": 100}]
 
-        with patch("src.agent.graph.classify_intent_safe", return_value=IntentResult(intent="query_data", reason="mock")), \
-             patch("src.agent.generate_sql.use_offline_tools", return_value=False), \
-             patch("src.agent.generate_sql.invoke_text", return_value="```sql\nSELECT count(*) AS so_luot FROM plate_event\n```"), \
-             patch("src.agent.execute_sql.use_offline_tools", return_value=False), \
-             patch("src.agent.execute_sql.execute_sql", return_value=mock_rows), \
-             patch("src.llm.client.use_offline_tools", return_value=True):
+        with patch("src.domain.agents.graph.classify_intent_safe", return_value=IntentResult(intent="query_data", reason="mock")), \
+             patch("src.domain.agents.generate_sql.use_offline_tools", return_value=False), \
+             patch("src.domain.agents.generate_sql.invoke_text", return_value="```sql\nSELECT count(*) AS so_luot FROM plate_event\n```"), \
+             patch("src.domain.agents.execute_sql.use_offline_tools", return_value=False), \
+             patch("src.domain.agents.execute_sql.execute_sql", return_value=mock_rows), \
+             patch("src.infra.llm.client.use_offline_tools", return_value=True):
 
             inp = Agent_Input(question="Hôm nay có bao nhiêu lượt xe?")
             events = list(run_agent_stream(inp, session_id=f"test_{uuid.uuid4().hex}"))
@@ -1464,7 +1464,7 @@ class TestPipelineStreamIntegration:
 
 class TestCrossDatabaseValidation:
     def test_rejects_subquery_across_different_databases(self):
-        from src.db.validator import validate_sql
+        from src.infra.db.validator import validate_sql
         # plate_event (its) vs zone_event (virtual_fence)
         sql = (
             "SELECT zone_name_cached FROM zone_event "
@@ -1477,7 +1477,7 @@ class TestCrossDatabaseValidation:
         assert "zone_event" in res.reason
 
     def test_allows_single_database_query(self):
-        from src.db.validator import validate_sql
+        from src.infra.db.validator import validate_sql
         sql = "SELECT camera_name, event_time FROM plate_event WHERE license_plate_text = '15C4384'"
         res = validate_sql(sql)
         assert res.ok is True

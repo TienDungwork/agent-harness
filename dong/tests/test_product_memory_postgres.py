@@ -5,7 +5,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from src.memory.db import (
+from src.infra.memory.db import (
     DDL_CREATE_USER_MEMORIES,
     get_memory_connection,
     init_memory_db,
@@ -15,18 +15,18 @@ from src.memory.db import (
 
 def test_is_postgres_configured(monkeypatch):
     """is_postgres_configured returns True only when both DB_HOST and DB_USER are present."""
-    monkeypatch.setattr("src.memory.db.settings.db_host", "localhost")
-    monkeypatch.setattr("src.memory.db.settings.db_user", "postgres")
+    monkeypatch.setattr("src.infra.memory.db.settings.db_host", "localhost")
+    monkeypatch.setattr("src.infra.memory.db.settings.db_user", "postgres")
     assert is_postgres_configured() is True
 
-    monkeypatch.setattr("src.memory.db.settings.db_host", "")
+    monkeypatch.setattr("src.infra.memory.db.settings.db_host", "")
     assert is_postgres_configured() is False
 
 
 def test_get_memory_connection_unconfigured_raises(monkeypatch):
     """get_memory_connection raises RuntimeError if PostgreSQL is not configured."""
-    monkeypatch.setattr("src.memory.db.settings.db_host", "")
-    monkeypatch.setattr("src.memory.db.settings.db_user", "")
+    monkeypatch.setattr("src.infra.memory.db.settings.db_host", "")
+    monkeypatch.setattr("src.infra.memory.db.settings.db_user", "")
 
     with pytest.raises(RuntimeError, match="PostgreSQL chưa được cấu hình"):
         with get_memory_connection():
@@ -35,8 +35,8 @@ def test_get_memory_connection_unconfigured_raises(monkeypatch):
 
 def test_init_memory_db_unconfigured_returns_false(monkeypatch):
     """When PostgreSQL is unconfigured, init_memory_db logs info and returns False safely."""
-    monkeypatch.setattr("src.memory.db.settings.db_host", "")
-    monkeypatch.setattr("src.memory.db.settings.db_user", "")
+    monkeypatch.setattr("src.infra.memory.db.settings.db_host", "")
+    monkeypatch.setattr("src.infra.memory.db.settings.db_user", "")
 
     result = init_memory_db()
     assert result is False
@@ -44,8 +44,8 @@ def test_init_memory_db_unconfigured_returns_false(monkeypatch):
 
 def test_init_memory_db_connect_error_returns_false_safely(monkeypatch):
     """When connection raises an error, init_memory_db catches it, logs warning, returns False."""
-    monkeypatch.setattr("src.memory.db.settings.db_host", "invalid_host")
-    monkeypatch.setattr("src.memory.db.settings.db_user", "postgres")
+    monkeypatch.setattr("src.infra.memory.db.settings.db_host", "invalid_host")
+    monkeypatch.setattr("src.infra.memory.db.settings.db_user", "postgres")
 
     with patch("psycopg2.connect", side_effect=Exception("Connection refused")):
         result = init_memory_db()
@@ -54,8 +54,8 @@ def test_init_memory_db_connect_error_returns_false_safely(monkeypatch):
 
 def test_init_memory_db_success(monkeypatch):
     """When DB is available, init_memory_db executes DDL and returns True."""
-    monkeypatch.setattr("src.memory.db.settings.db_host", "localhost")
-    monkeypatch.setattr("src.memory.db.settings.db_user", "postgres")
+    monkeypatch.setattr("src.infra.memory.db.settings.db_host", "localhost")
+    monkeypatch.setattr("src.infra.memory.db.settings.db_user", "postgres")
 
     mock_conn = MagicMock()
     mock_cursor = MagicMock()
@@ -69,12 +69,12 @@ def test_init_memory_db_success(monkeypatch):
 
 # ── Long-Term Memory & Persistence Tests (Phase 3) ──────────────────────────
 from datetime import datetime, timezone
-from src.memory.longterm import clear_long_term, recall_long_term, save_to_long_term
+from src.infra.memory.longterm import clear_long_term, recall_long_term, save_to_long_term
 
 
 def test_save_and_recall_long_term_postgres(monkeypatch):
     """When PostgreSQL is configured and active, save_to_long_term inserts to DB and recall queries DB."""
-    monkeypatch.setattr("src.memory.longterm.is_postgres_configured", lambda: True)
+    monkeypatch.setattr("src.infra.memory.longterm.is_postgres_configured", lambda: True)
 
     mock_conn = MagicMock()
     mock_cursor = MagicMock()
@@ -87,7 +87,7 @@ def test_save_and_recall_long_term_postgres(monkeypatch):
         ("Tôi phụ trách an ninh ca đêm", now_dt),
     ]
 
-    with patch("src.memory.longterm.get_memory_connection") as mock_get_conn:
+    with patch("src.infra.memory.longterm.get_memory_connection") as mock_get_conn:
         mock_get_conn.return_value.__enter__.return_value = mock_conn
 
         save_to_long_term("user_123", "Tôi thích giám sát camera cổng số 1", category="preference")
@@ -100,7 +100,7 @@ def test_save_and_recall_long_term_postgres(monkeypatch):
 
 def test_user_isolation_strictly_enforced_in_memory(monkeypatch):
     """Facts of user_A must never be leaked or visible to user_B in memory store."""
-    monkeypatch.setattr("src.memory.longterm.is_postgres_configured", lambda: False)
+    monkeypatch.setattr("src.infra.memory.longterm.is_postgres_configured", lambda: False)
     clear_long_term()
 
     save_to_long_term("user_A", "Tôi tên là Nguyễn Văn An")
@@ -117,10 +117,10 @@ def test_user_isolation_strictly_enforced_in_memory(monkeypatch):
 
 def test_fallback_to_in_memory_when_db_down(monkeypatch):
     """When PostgreSQL raises a connection error, save and recall gracefully fallback to in-memory without raising."""
-    monkeypatch.setattr("src.memory.longterm.is_postgres_configured", lambda: True)
+    monkeypatch.setattr("src.infra.memory.longterm.is_postgres_configured", lambda: True)
     clear_long_term()
 
-    with patch("src.memory.longterm.get_memory_connection", side_effect=Exception("DB Connection timeout")):
+    with patch("src.infra.memory.longterm.get_memory_connection", side_effect=Exception("DB Connection timeout")):
         # Must not raise exception
         save_to_long_term("user_fb", "Người dùng ưu tiên xem camera ngã tư")
         facts = recall_long_term("user_fb", "ưu tiên camera gì")
@@ -130,13 +130,13 @@ def test_fallback_to_in_memory_when_db_down(monkeypatch):
 
 def test_clear_long_term_by_user_postgres(monkeypatch):
     """clear_long_term deletes from DB by user_id or all when user_id is None."""
-    monkeypatch.setattr("src.memory.longterm.is_postgres_configured", lambda: True)
+    monkeypatch.setattr("src.infra.memory.longterm.is_postgres_configured", lambda: True)
 
     mock_conn = MagicMock()
     mock_cursor = MagicMock()
     mock_conn.cursor.return_value.__enter__.return_value = mock_cursor
 
-    with patch("src.memory.longterm.get_memory_connection") as mock_get_conn:
+    with patch("src.infra.memory.longterm.get_memory_connection") as mock_get_conn:
         mock_get_conn.return_value.__enter__.return_value = mock_conn
 
         clear_long_term("user_123")
@@ -150,7 +150,7 @@ def test_clear_long_term_by_user_postgres(monkeypatch):
 def test_clean_code_no_qdrant_or_vector():
     """Verify that legacy Qdrant imports and dummy vector=[0.0] are completely eliminated."""
     import inspect
-    import src.memory.longterm as lt_mod
+    import src.infra.memory.longterm as lt_mod
 
     source = inspect.getsource(lt_mod)
     assert "vector=[0.0]" not in source

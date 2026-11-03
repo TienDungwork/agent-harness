@@ -10,22 +10,22 @@ from __future__ import annotations
 
 from unittest.mock import patch
 
-from src.db.dataset_catalog import (
+from src.infra.db.dataset_catalog import (
     clear_dataset_catalog_cache,
     get_case_hints,
     get_table_for_keywords,
     load_dataset_catalog,
 )
-from src.knowledge.answer import _offline_answer_from_cards, answer_from_docs
-from src.knowledge.loader import (
+from src.domain.knowledge.answer import _offline_answer_from_cards, answer_from_docs
+from src.domain.knowledge.loader import (
     aioc_docs_root,
     clear_docs_cache,
     load_aioc_cards,
     load_published_cards,
     load_vms_cards,
 )
-from src.knowledge.retrieval import retrieve_docs
-from src.llm.schemas import DocsAnswer
+from src.domain.knowledge.retrieval import retrieve_docs
+from src.infra.llm.schemas import DocsAnswer
 
 
 def test_aioc_cards_load():
@@ -115,7 +115,7 @@ def test_retrieve_docs_aioc_other_queries():
     assert res_diff[0]["id"] == "aioc.vms_vs_devices"
 
 
-@patch("src.knowledge.answer.use_offline_tools", return_value=True)
+@patch("src.domain.knowledge.answer.use_offline_tools", return_value=True)
 def test_answer_from_docs_offline_case_015(_mock_offline):
     """Offline answer cho case 015 phải chứa 'trực tuyến' từ card content."""
     q = "Trên AIOC devices, trạng thái camera Trực Tuyến / Ngoại Tuyến / Bảo Trì nghĩa là gì và đổi ở đâu?"
@@ -125,7 +125,7 @@ def test_answer_from_docs_offline_case_015(_mock_offline):
     assert "aioc.camera_status" in ans.card_ids
 
 
-@patch("src.knowledge.answer.use_offline_tools", return_value=True)
+@patch("src.domain.knowledge.answer.use_offline_tools", return_value=True)
 def test_answer_from_docs_offline_case_017(_mock_offline):
     """Offline answer cho case 017 phải chứa 'camera' từ card content."""
     q = "Vẽ sơ đồ quy trình thêm một camera mới trên AIOC (từ mở form đến tạo xong)."
@@ -195,17 +195,17 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from src.agent.docs import handle_docs_intent
-from src.knowledge.answer import _offline_answer_from_cards, answer_from_docs
-from src.knowledge.loader import (
+from src.domain.agents.docs import handle_docs_intent
+from src.domain.knowledge.answer import _offline_answer_from_cards, answer_from_docs
+from src.domain.knowledge.loader import (
     clear_docs_cache,
     docs_root,
     load_index,
     load_published_cards,
     load_vms_cards,
 )
-from src.knowledge.retrieval import card_excerpt_for_llm, retrieve_docs
-from src.llm.schemas import DocsAnswer
+from src.domain.knowledge.retrieval import card_excerpt_for_llm, retrieve_docs
+from src.infra.llm.schemas import DocsAnswer
 
 
 def test_docs_root_and_load_published_cards():
@@ -304,8 +304,8 @@ def test_answer_from_docs_offline_empty_cards():
     assert "không tìm thấy hướng dẫn" in ans.answer_vi.lower() or "chưa có thông tin" in ans.answer_vi.lower()
 
 
-@patch("src.knowledge.answer.use_offline_tools", return_value=False)
-@patch("src.knowledge.answer.invoke_structured")
+@patch("src.domain.knowledge.answer.use_offline_tools", return_value=False)
+@patch("src.domain.knowledge.answer.invoke_structured")
 def test_answer_from_docs_online_mock_structured(mock_structured, mock_offline):
     """Kiểm tra answer_from_docs chế độ online gọi invoke_structured đúng schema."""
     expected_answer = DocsAnswer(
@@ -326,8 +326,8 @@ def test_answer_from_docs_online_mock_structured(mock_structured, mock_offline):
     assert any("Bạn là trợ lý hướng dẫn sử dụng hệ thống VMS" in m["content"] for m in messages if m["role"] == "system")
 
 
-@patch("src.knowledge.answer.use_offline_tools", return_value=False)
-@patch("src.knowledge.answer.invoke_structured", side_effect=RuntimeError("LLM API timeout"))
+@patch("src.domain.knowledge.answer.use_offline_tools", return_value=False)
+@patch("src.domain.knowledge.answer.invoke_structured", side_effect=RuntimeError("LLM API timeout"))
 def test_answer_from_docs_online_failure_fallback(mock_structured, mock_offline):
     """Kiểm tra khi invoke_structured lỗi thì fallback sang offline heuristic thay vì crash."""
     cards = retrieve_docs("thêm camera")
@@ -352,20 +352,20 @@ def test_handle_docs_intent_adapter():
 
 def test_how_to_path_does_not_call_db():
     """Kiểm tra nhánh how-to tài liệu VMS hoàn toàn không gọi DB."""
-    with patch("src.db.executor.execute_sql") as mock_exec, \
-         patch("src.db.connection.get_connection") as mock_conn:
+    with patch("src.infra.db.executor.execute_sql") as mock_exec, \
+         patch("src.infra.db.connection.get_connection") as mock_conn:
         ans = handle_docs_intent("Làm thế nào để thêm camera?")
         assert ans != ""
         mock_exec.assert_not_called()
         mock_conn.assert_not_called()
 
     # Thử gọi qua Agent graph v4
-    from src.agent.graph import Agent_Input, run_agent
-    with patch("src.db.executor.execute_sql") as mock_exec, \
-         patch("src.db.connection.get_connection") as mock_conn, \
-         patch("src.agent.intent.use_offline_tools", return_value=False), \
-         patch("src.agent.intent.invoke_structured") as mock_intent:
-        from src.llm.schemas import IntentResult
+    from src.domain.agents.graph import Agent_Input, run_agent
+    with patch("src.infra.db.executor.execute_sql") as mock_exec, \
+         patch("src.infra.db.connection.get_connection") as mock_conn, \
+         patch("src.domain.agents.intent.use_offline_tools", return_value=False), \
+         patch("src.domain.agents.intent.invoke_structured") as mock_intent:
+        from src.infra.llm.schemas import IntentResult
         mock_intent.return_value = IntentResult(intent="how_to", reason="hỏi hướng dẫn")
 
         inp = Agent_Input(question="Cách xem lại camera")
@@ -385,13 +385,13 @@ def test_how_to_path_does_not_call_db():
 
 import pytest
 
-from src.agent.graph import retrieve_schema_node
-from src.db import (
+from src.domain.agents.graph import retrieve_schema_node
+from src.infra.db import (
     build_schema_excerpt,
     get_allowed_tables,
     select_relevant_tables,
 )
-from src.llm.schemas import RewrittenQuestion
+from src.infra.llm.schemas import RewrittenQuestion
 
 
 @pytest.fixture
@@ -400,7 +400,7 @@ def allowed_tables() -> set[str]:
 
 
 def test_import_from_src_db():
-    from src.db import select_relevant_tables as fn
+    from src.infra.db import select_relevant_tables as fn
 
     assert callable(fn)
 
@@ -663,12 +663,12 @@ def test_graph_run_emits_scoped_retrieve_schema_event():
     """Graph execution emits retrieve_schema event containing scoped tables and schema_excerpt."""
     import uuid
     from unittest.mock import patch
-    from src.agent.graph import Agent_Input, run_agent_stream
+    from src.domain.agents.graph import Agent_Input, run_agent_stream
 
     mock_rows = [{"so_luot": 42}]
     inp = Agent_Input(question="Hôm nay có bao nhiêu lượt xe vào?")
-    with patch("src.llm.client.use_offline_tools", return_value=True), \
-         patch("src.agent.graph.execute_sql", return_value=mock_rows):
+    with patch("src.infra.llm.client.use_offline_tools", return_value=True), \
+         patch("src.domain.agents.graph.execute_sql", return_value=mock_rows):
         events = list(run_agent_stream(inp, session_id=f"test_session_{uuid.uuid4().hex}"))
 
     schema_events = [ev for ev in events if ev.get("node_id") == "retrieve_schema" and ev.get("status") == "done"]
@@ -715,10 +715,10 @@ from unittest.mock import patch
 
 import pytest
 
-from src.agent.generate_sql import generate_sql_node
-from src.agent.graph import retrieve_schema_node
-from src.db.catalog import build_schema_excerpt, select_relevant_tables
-from src.llm.schemas import RewrittenQuestion
+from src.domain.agents.generate_sql import generate_sql_node
+from src.domain.agents.graph import retrieve_schema_node
+from src.infra.db.catalog import build_schema_excerpt, select_relevant_tables
+from src.infra.llm.schemas import RewrittenQuestion
 
 
 # ---------------------------------------------------------------------------
@@ -829,8 +829,8 @@ class TestExcerptSmallerThanFullCatalog:
 class TestTimeRangeInContext:
     """Assert time_range hint appears in generate_sql_node user prompt."""
 
-    @patch("src.agent.generate_sql.use_offline_tools", return_value=False)
-    @patch("src.agent.generate_sql.invoke_text", return_value="SELECT count(*) FROM plate_event")
+    @patch("src.domain.agents.generate_sql.use_offline_tools", return_value=False)
+    @patch("src.domain.agents.generate_sql.invoke_text", return_value="SELECT count(*) FROM plate_event")
     def test_time_range_today_in_user_message(self, mock_invoke, _mock_offline):
         """generate_sql online mock: RewrittenQuestion(time_range='today') →
         user prompt contains 'Khoảng thời gian (time_range): today'."""
@@ -855,8 +855,8 @@ class TestTimeRangeInContext:
         assert "today" in user_prompt
         assert "CURRENT_DATE" in user_prompt
 
-    @patch("src.agent.generate_sql.use_offline_tools", return_value=False)
-    @patch("src.agent.generate_sql.invoke_text", return_value="SELECT count(*) FROM plate_event")
+    @patch("src.domain.agents.generate_sql.use_offline_tools", return_value=False)
+    @patch("src.domain.agents.generate_sql.invoke_text", return_value="SELECT count(*) FROM plate_event")
     def test_time_range_yesterday_in_user_message(self, mock_invoke, _mock_offline):
         """generate_sql: time_range='yesterday' → user prompt contains yesterday hint."""
         rewritten = RewrittenQuestion(
@@ -875,8 +875,8 @@ class TestTimeRangeInContext:
         assert "Khoảng thời gian (time_range): yesterday" in user_prompt
         assert "CURRENT_DATE - 1" in user_prompt
 
-    @patch("src.agent.generate_sql.use_offline_tools", return_value=False)
-    @patch("src.agent.generate_sql.invoke_text", return_value="SELECT count(*) FROM plate_event")
+    @patch("src.domain.agents.generate_sql.use_offline_tools", return_value=False)
+    @patch("src.domain.agents.generate_sql.invoke_text", return_value="SELECT count(*) FROM plate_event")
     def test_no_time_range_when_none(self, mock_invoke, _mock_offline):
         """generate_sql: time_range=None → user prompt does NOT contain time_range hint."""
         rewritten = RewrittenQuestion(text="Bao nhiêu xe vào?", time_range=None)
@@ -894,8 +894,8 @@ class TestTimeRangeInContext:
         assert "Table: plate_event" in user_prompt
         assert "Bao nhiêu xe vào?" in user_prompt
 
-    @patch("src.agent.generate_sql.use_offline_tools", return_value=False)
-    @patch("src.agent.generate_sql.invoke_text", return_value="SELECT count(*) FROM plate_event")
+    @patch("src.domain.agents.generate_sql.use_offline_tools", return_value=False)
+    @patch("src.domain.agents.generate_sql.invoke_text", return_value="SELECT count(*) FROM plate_event")
     def test_schema_and_question_always_in_user_message(self, mock_invoke, _mock_offline):
         """Regardless of time_range, schema_excerpt and question text are always present."""
         for tr in ("today", None):
@@ -922,8 +922,8 @@ class TestTimeRangeInContext:
 class TestChartHintInContext:
     """Assert chart hint appears in generate_sql_node user prompt for chart questions."""
 
-    @patch("src.agent.generate_sql.use_offline_tools", return_value=False)
-    @patch("src.agent.generate_sql.invoke_text", return_value="SELECT vehicle_type, count(*) FROM plate_event GROUP BY vehicle_type")
+    @patch("src.domain.agents.generate_sql.use_offline_tools", return_value=False)
+    @patch("src.domain.agents.generate_sql.invoke_text", return_value="SELECT vehicle_type, count(*) FROM plate_event GROUP BY vehicle_type")
     def test_chart_hint_in_user_message_for_bieu_do(self, mock_invoke, _mock_offline):
         """generate_sql online mock: chart question → user prompt contains GROUP BY hint."""
         rewritten = RewrittenQuestion(
@@ -944,8 +944,8 @@ class TestChartHintInContext:
         )
         assert "vehicle_type" in user_prompt
 
-    @patch("src.agent.generate_sql.use_offline_tools", return_value=False)
-    @patch("src.agent.generate_sql.invoke_text", return_value="SELECT count(*) FROM plate_event")
+    @patch("src.domain.agents.generate_sql.use_offline_tools", return_value=False)
+    @patch("src.domain.agents.generate_sql.invoke_text", return_value="SELECT count(*) FROM plate_event")
     def test_no_chart_hint_for_plain_count(self, mock_invoke, _mock_offline):
         """generate_sql: plain count question (no 'biểu đồ') → no chart hint in user prompt."""
         rewritten = RewrittenQuestion(text="Hôm nay có bao nhiêu xe vào?", time_range=None)
@@ -963,8 +963,8 @@ class TestChartHintInContext:
 
     # --- Combined: BOTH time_range + chart hint in the SAME user message ---
 
-    @patch("src.agent.generate_sql.use_offline_tools", return_value=False)
-    @patch("src.agent.generate_sql.invoke_text", return_value="SELECT vehicle_type, count(*) FROM plate_event GROUP BY vehicle_type")
+    @patch("src.domain.agents.generate_sql.use_offline_tools", return_value=False)
+    @patch("src.domain.agents.generate_sql.invoke_text", return_value="SELECT vehicle_type, count(*) FROM plate_event GROUP BY vehicle_type")
     def test_combined_time_range_and_chart_hint_in_user_message(self, mock_invoke, _mock_offline):
         """COMBINED — Both time_range AND chart hint present in user prompt.
         Order must be: time_range hint → chart hint → schema excerpt → question.
@@ -1012,8 +1012,8 @@ class TestChartHintInContext:
         assert pos_chart < pos_schema, "chart hint must appear before schema excerpt"
         assert pos_schema < pos_question, "schema excerpt must appear before question"
 
-    @patch("src.agent.generate_sql.use_offline_tools", return_value=False)
-    @patch("src.agent.generate_sql.invoke_text", return_value="SELECT entity_type, count(*) FROM fire_smoke_event GROUP BY entity_type")
+    @patch("src.domain.agents.generate_sql.use_offline_tools", return_value=False)
+    @patch("src.domain.agents.generate_sql.invoke_text", return_value="SELECT entity_type, count(*) FROM fire_smoke_event GROUP BY entity_type")
     def test_generic_chart_hint_non_vehicle_domain(self, mock_invoke, _mock_offline):
         """Non-vehicle chart question → generic GROUP BY hint (no vehicle_type push)."""
         rewritten = RewrittenQuestion(
@@ -1048,14 +1048,14 @@ class TestGraphLevelOfflineSmoke:
         """Offline graph stream: retrieve_schema event for vehicle question has
         selected_tables ≤ 4 and scoped schema_excerpt (plate_event present,
         unrelated absent)."""
-        from src.agent.graph import Agent_Input, run_agent_stream
+        from src.domain.agents.graph import Agent_Input, run_agent_stream
 
         full_len = len(_full_catalog_excerpt())
         inp = Agent_Input(question="Hôm nay có bao nhiêu lượt xe vào?")
         mock_rows = [{"so_luot": 5}]
         with (
-            patch("src.llm.client.use_offline_tools", return_value=True),
-            patch("src.agent.graph.execute_sql", return_value=mock_rows),
+            patch("src.infra.llm.client.use_offline_tools", return_value=True),
+            patch("src.domain.agents.graph.execute_sql", return_value=mock_rows),
         ):
             events = list(run_agent_stream(inp, session_id=f"smoke-{uuid.uuid4().hex}"))
 
@@ -1084,13 +1084,13 @@ class TestGraphLevelOfflineSmoke:
 
     def test_graph_retrieve_schema_event_scoped_fire(self):
         """Offline graph stream: retrieve_schema for fire question → fire_smoke_event selected."""
-        from src.agent.graph import Agent_Input, run_agent_stream
+        from src.domain.agents.graph import Agent_Input, run_agent_stream
 
         inp = Agent_Input(question="Có cảnh báo cháy nào hôm nay không?")
         mock_rows = [{"so_luot": 0}]
         with (
-            patch("src.llm.client.use_offline_tools", return_value=True),
-            patch("src.agent.graph.execute_sql", return_value=mock_rows),
+            patch("src.infra.llm.client.use_offline_tools", return_value=True),
+            patch("src.domain.agents.graph.execute_sql", return_value=mock_rows),
         ):
             events = list(run_agent_stream(inp, session_id=f"smoke-{uuid.uuid4().hex}"))
 
@@ -1131,9 +1131,9 @@ class TestGraphLevelOfflineSmoke:
 
 from pathlib import Path
 
-from src.config import get_settings
-from src.db.catalog import get_catalog
-from src.prompts.registry import registry
+from src.shared.config import get_settings
+from src.infra.db.catalog import get_catalog
+from src.infra.prompts.registry import registry
 
 
 def test_resource_dirs_exist():

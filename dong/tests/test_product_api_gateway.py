@@ -11,7 +11,7 @@ from __future__ import annotations
 from fastapi.testclient import TestClient
 
 from src.main import app
-from src.guardrails import OUT_OF_SCOPE_REPLY
+from src.shared.guardrails import OUT_OF_SCOPE_REPLY
 
 client = TestClient(app)
 
@@ -57,7 +57,7 @@ def test_api_chat_valid_question_offline():
 
 def test_api_chat_prompt_injection_blocked():
     """Kiểm tra POST /api/chat chặn prompt injection trả 400."""
-    from src.guardrails import INJECTION_REJECT_MESSAGE
+    from src.shared.guardrails import INJECTION_REJECT_MESSAGE
 
     res = client.post(
         "/api/chat",
@@ -135,7 +135,7 @@ def test_format_error_message_sql_validate_does_not_leak_sql():
 def test_api_chat_handles_database_error_gracefully():
     from src.main import _cache
     _cache.clear()
-    with patch("src.agent.graph.run_agent", side_effect=RuntimeError("psycopg2.OperationalError: Connection refused")):
+    with patch("src.domain.agents.graph.run_agent", side_effect=RuntimeError("psycopg2.OperationalError: Connection refused")):
         res = client.post("/api/chat", json={"question": "Hôm nay có bao nhiêu lượt xe vào?"})
         assert res.status_code == 503
         data = res.json()
@@ -145,7 +145,7 @@ def test_api_chat_handles_database_error_gracefully():
 def test_api_chat_handles_model_timeout_gracefully():
     from src.main import _cache
     _cache.clear()
-    with patch("src.agent.graph.run_agent", side_effect=TimeoutError("Model connection timed out")):
+    with patch("src.domain.agents.graph.run_agent", side_effect=TimeoutError("Model connection timed out")):
         res = client.post("/api/chat", json={"question": "Hôm nay có bao nhiêu lượt xe vào?"})
         assert res.status_code == 503
         data = res.json()
@@ -155,7 +155,7 @@ def test_api_chat_handles_model_timeout_gracefully():
 def test_ask_endpoint_handles_error_gracefully():
     from src.main import _cache
     _cache.clear()
-    with patch("src.agent.graph.run_agent", side_effect=RuntimeError("psycopg2.OperationalError: could not connect")):
+    with patch("src.domain.agents.graph.run_agent", side_effect=RuntimeError("psycopg2.OperationalError: could not connect")):
         res = client.post("/ask", json={"question": "Hôm nay có bao nhiêu lượt xe vào?"})
         assert res.status_code == 503
         data = res.json()
@@ -164,7 +164,7 @@ def test_ask_endpoint_handles_error_gracefully():
 
 from fastapi.testclient import TestClient
 
-from src.config import Settings, get_settings
+from src.shared.config import Settings, get_settings
 from src.main import app
 
 client = TestClient(app)
@@ -335,13 +335,13 @@ def test_docker_compose_langfuse_and_network_config():
 
 
 def test_api_agent_stream_smoke(monkeypatch):
-    monkeypatch.setattr("src.monitoring.tracing.settings.monitoring_enabled", False)
+    monkeypatch.setattr("src.infra.monitoring.tracing.settings.monitoring_enabled", False)
     from src.main import _cache
     _cache.clear()
     from unittest.mock import patch
-    from src.agent.graph import Agent_Output
+    from src.domain.agents.graph import Agent_Output
     
-    with patch("src.agent.graph.run_agent_stream") as mock_stream:
+    with patch("src.domain.agents.graph.run_agent_stream") as mock_stream:
         def mock_generator(*args, **kwargs):
             yield {"node_id": "classify_node", "status": "running"}
             yield {"node_id": "classify_node", "status": "done", "input": "test", "output": "query_data"}
@@ -380,7 +380,7 @@ def test_api_stream_answer_emits_before_store_extract(monkeypatch):
     """SSE /api/agent/stream: __answer__ hiện trước store_extract (không chặn UI)."""
     import json
 
-    monkeypatch.setattr("src.monitoring.tracing.settings.monitoring_enabled", False)
+    monkeypatch.setattr("src.infra.monitoring.tracing.settings.monitoring_enabled", False)
     from src.main import _cache
 
     _cache.clear()
@@ -405,16 +405,16 @@ def test_api_stream_answer_emits_before_store_extract(monkeypatch):
 
 def test_api_agent_stream_passes_trace_parent_span(monkeypatch):
     """UI stream phải truyền parent_span từ trace_answer xuống run_agent_stream."""
-    monkeypatch.setattr("src.monitoring.tracing.settings.monitoring_enabled", True)
+    monkeypatch.setattr("src.infra.monitoring.tracing.settings.monitoring_enabled", True)
     from src.main import _cache
     _cache.clear()
     from unittest.mock import MagicMock, patch
-    from src.agent.graph import Agent_Output
+    from src.domain.agents.graph import Agent_Output
 
     mock_span = MagicMock()
-    with patch("src.monitoring.tracing._get_langfuse") as mock_lf:
+    with patch("src.infra.monitoring.tracing._get_langfuse") as mock_lf:
         mock_lf.return_value.start_observation.return_value = mock_span
-        with patch("src.agent.graph.run_agent_stream") as mock_stream:
+        with patch("src.domain.agents.graph.run_agent_stream") as mock_stream:
             mock_stream.side_effect = lambda inp, parent_span=None, **kwargs: iter([
                 {"__final_result__": Agent_Output(question="q", answer="ok", detail="")},
             ])
@@ -434,8 +434,8 @@ def test_api_agent_stream_passes_trace_parent_span(monkeypatch):
 
 def test_api_agent_stream_prompt_injection_blocked():
     """Kiểm tra POST /api/agent/stream chặn prompt injection trả 400."""
-    from src.guardrails import INJECTION_REJECT_MESSAGE
-    from src.sessions.store import clear_sessions_store, create_session
+    from src.shared.guardrails import INJECTION_REJECT_MESSAGE
+    from src.infra.session.store import clear_sessions_store, create_session
 
     clear_sessions_store()
     sess = create_session("user_inj_stream")
@@ -453,12 +453,12 @@ def test_api_agent_stream_prompt_injection_blocked():
     assert body["reason"] == "prompt_injection_detected"
 
 def test_api_agent_stream_handles_exception(monkeypatch):
-    monkeypatch.setattr("src.monitoring.tracing.settings.monitoring_enabled", False)
+    monkeypatch.setattr("src.infra.monitoring.tracing.settings.monitoring_enabled", False)
     from src.main import _cache
     _cache.clear()
     from unittest.mock import patch
     
-    with patch("src.agent.graph.run_agent_stream", side_effect=RuntimeError("clickhouse connect error: connection refused")):
+    with patch("src.domain.agents.graph.run_agent_stream", side_effect=RuntimeError("clickhouse connect error: connection refused")):
         res = client.post("/api/agent/stream", json={"question": "Hôm nay có bao nhiêu lượt xe vào?"})
         assert res.status_code == 200
         text = res.text
@@ -470,21 +470,21 @@ def test_api_agent_stream_running_before_done_timing():
     _cache.clear()
     import time
     from unittest.mock import patch
-    from src.agent.graph import run_agent_stream, Agent_Input
+    from src.domain.agents.graph import run_agent_stream, Agent_Input
     
     events_received = []
     
-    from src.agent.intent import IntentResult
+    from src.domain.agents.intent import IntentResult
     def slow_classify(*args, **kwargs):
         time.sleep(0.5)
         return IntentResult(intent="query_data", reason="")
 
-    from src.llm.schemas import RewrittenQuestion
+    from src.infra.llm.schemas import RewrittenQuestion
     def mock_rewrite(*args, **kwargs):
         return RewrittenQuestion(text="test", intent_hint=None)
 
-    with patch("src.agent.graph.classify_intent_safe", side_effect=slow_classify), \
-         patch("src.agent.graph.rewrite_question", side_effect=mock_rewrite):
+    with patch("src.domain.agents.graph.classify_intent_safe", side_effect=slow_classify), \
+         patch("src.domain.agents.graph.rewrite_question", side_effect=mock_rewrite):
         stream = run_agent_stream(Agent_Input(question="Hôm nay có bao nhiêu lượt xe vào?"))
         
         start_time = time.time()
@@ -532,10 +532,10 @@ def test_api_agent_stream_running_before_done_timing():
             pass
 
 def test_agent_graph_stream_thread_exception():
-    from src.agent.graph import run_agent_stream, Agent_Input
+    from src.domain.agents.graph import run_agent_stream, Agent_Input
     from unittest.mock import patch
     
-    with patch("src.agent.graph._build_graph") as mock_build_graph:
+    with patch("src.domain.agents.graph._build_graph") as mock_build_graph:
         mock_build_graph.return_value.invoke.side_effect = RuntimeError("clickhouse connect error: timeout")
         
         stream = run_agent_stream(Agent_Input(question="Hôm nay có bao nhiêu lượt xe vào?"))
@@ -651,8 +651,8 @@ def test_eval_run_help():
 def test_eval_v5_tool_extraction_from_agent_output():
     """v5: tools set = detail (+ query.tool) — không còn prefix 'tool: '."""
     from eval.run import PipelineResult, check_case
-    from src.agent.graph import Agent_Output
-    from src.llm.schemas import QueryResult
+    from src.domain.agents.graph import Agent_Output
+    from src.infra.llm.schemas import QueryResult
 
     # Simulate what run_pipeline builds after v5 fix
     query = QueryResult(tool="sql_builder", columns=["direction"], rows=[["IN"]], row_count=1)
@@ -691,7 +691,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from src.main import app
-from src.sessions.store import (
+from src.infra.session.store import (
     clear_sessions_store,
     create_session,
     delete_session,
@@ -838,7 +838,7 @@ def test_missing_or_empty_user_id_validation():
 
 
 def test_session_store_direct_unit():
-    """Kiểm tra trực tiếp các hàm logic trong src.sessions.store."""
+    """Kiểm tra trực tiếp các hàm logic trong src.infra.session.store."""
     # List rỗng
     assert list_sessions("u_test") == []
     assert list_sessions("") == []
@@ -877,7 +877,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from src.main import app
-from src.sessions.store import (
+from src.infra.session.store import (
     append_session_messages,
     clear_sessions_store,
     create_session,
@@ -957,11 +957,11 @@ def test_get_messages_api_missing_user_422():
 
 def test_stream_persists_messages(monkeypatch):
     """Stream __answer__ lưu cặp user/assistant vào session store."""
-    from src.agent.graph import Agent_Output
-    from src.llm.schemas import QueryResult
+    from src.domain.agents.graph import Agent_Output
+    from src.infra.llm.schemas import QueryResult
     from src.main import _cache
 
-    monkeypatch.setattr("src.monitoring.tracing.settings.monitoring_enabled", False)
+    monkeypatch.setattr("src.infra.monitoring.tracing.settings.monitoring_enabled", False)
     _cache.clear()
 
     sess = create_session("user_stream", "Stream test")
@@ -977,7 +977,7 @@ def test_stream_persists_messages(monkeypatch):
         )
         yield {"__final_result__": out}
 
-    with patch("src.agent.graph.run_agent_stream", side_effect=_fake_stream):
+    with patch("src.domain.agents.graph.run_agent_stream", side_effect=_fake_stream):
         res = client.post(
             "/api/agent/stream",
             json={
@@ -1019,7 +1019,7 @@ from unittest.mock import patch
 import pytest
 from fastapi.testclient import TestClient
 
-from src.agent.graph import Agent_Output
+from src.domain.agents.graph import Agent_Output
 from src.main import app, _cache
 
 client = TestClient(app)
@@ -1053,10 +1053,10 @@ def _make_mock_stream(answer: str = "Test answer"):
 # ---------------------------------------------------------------------------
 def test_api_agent_stream_accepts_session_and_user_id(monkeypatch):
     """POST with explicit ids — mock run_agent_stream — assert kwargs propagated."""
-    monkeypatch.setattr("src.monitoring.tracing.settings.monitoring_enabled", False)
+    monkeypatch.setattr("src.infra.monitoring.tracing.settings.monitoring_enabled", False)
     _cache.clear()
 
-    with patch("src.agent.graph.run_agent_stream") as mock_stream:
+    with patch("src.domain.agents.graph.run_agent_stream") as mock_stream:
         mock_stream.side_effect = _make_mock_stream()
 
         res = client.post(
@@ -1134,10 +1134,10 @@ def test_api_agent_stream_rejects_empty_user_id():
 # ---------------------------------------------------------------------------
 def test_api_agent_stream_accepts_non_uuid_ids(monkeypatch):
     """Bất kỳ string không rỗng nào đều hợp lệ — không yêu cầu UUID format."""
-    monkeypatch.setattr("src.monitoring.tracing.settings.monitoring_enabled", False)
+    monkeypatch.setattr("src.infra.monitoring.tracing.settings.monitoring_enabled", False)
     _cache.clear()
 
-    with patch("src.agent.graph.run_agent_stream") as mock_stream:
+    with patch("src.domain.agents.graph.run_agent_stream") as mock_stream:
         mock_stream.side_effect = _make_mock_stream()
 
         res = client.post(
@@ -1161,10 +1161,10 @@ def test_api_agent_stream_accepts_non_uuid_ids(monkeypatch):
 # ---------------------------------------------------------------------------
 def test_api_agent_stream_sse_events_present(monkeypatch):
     """SSE response must contain graph node events and __answer__ event."""
-    monkeypatch.setattr("src.monitoring.tracing.settings.monitoring_enabled", False)
+    monkeypatch.setattr("src.infra.monitoring.tracing.settings.monitoring_enabled", False)
     _cache.clear()
 
-    with patch("src.agent.graph.run_agent_stream") as mock_stream:
+    with patch("src.domain.agents.graph.run_agent_stream") as mock_stream:
         mock_stream.side_effect = _make_mock_stream(answer="Có 42 lượt xe.")
 
         res = client.post(

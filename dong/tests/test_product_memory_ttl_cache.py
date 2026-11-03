@@ -18,8 +18,8 @@ from unittest.mock import patch
 
 import pytest
 
-from src.config import settings
-from src.memory.ttl_cache import (
+from src.shared.config import settings
+from src.infra.memory.ttl_cache import (
     cleanup_expired,
     clear_ttl_cache,
     get_cache_size,
@@ -173,7 +173,7 @@ def test_ttl_cache_latency_under_5ms():
 
 def test_ttl_cache_graceful_degradation_corrupted_entry():
     """Khi cấu trúc entry trong cache bị sai lệch, không crash mà fallback miss an toàn."""
-    from src.memory.ttl_cache import _ttl_cache, _ttl_lock
+    from src.infra.memory.ttl_cache import _ttl_cache, _ttl_lock
 
     with _ttl_lock:
         _ttl_cache["bad_key"] = "not_a_dict"  # Sai kiểu dữ liệu

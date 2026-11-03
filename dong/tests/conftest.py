@@ -7,7 +7,7 @@ import pytest
 
 @pytest.fixture(autouse=True)
 def _enable_memory_layers_for_tests(monkeypatch):
-    from src.config import settings
+    from src.shared.config import settings
 
     monkeypatch.setattr(settings, "memory_enabled", True, raising=False)
     monkeypatch.setattr(settings, "memory_short_term_enabled", True, raising=False)

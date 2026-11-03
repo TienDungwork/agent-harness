@@ -1,5 +1,13 @@
 # Change Log — agent dong
 
+## 2026-11-03 — v11: `src/` layout ai_backend (domain / infra / shared / api)
+
+- Di chuyển: `agent` → `domain/agents`, `knowledge` → `domain/knowledge`, technical packages → `infra/*`, root config/guardrails/feedback → `shared/`.
+- API: `routers/`, `models/`, `helpers/`.
+- Import: `src.domain.*`, `src.infra.*`, `src.shared.*`; fix `Path.parents` tới `resource/`.
+
+---
+
 ## 2026-11-03 — v10: tách `graph.py` + fix multi-turn checkpointer
 
 - **`graph.py`** (~90 dòng): facade; nodes → `nodes_*.py`, wiring → `graph_wiring.py`, runner → `graph_run.py`.

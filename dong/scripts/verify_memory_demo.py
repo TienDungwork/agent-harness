@@ -22,14 +22,14 @@ if sys.platform.startswith("win"):
 ROOT_DIR = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT_DIR))
 
-from src.memory.extract import extract_and_store_memory, extract_memories
-from src.memory.longterm import clear_long_term, recall_long_term, save_to_long_term
-from src.memory.context import (
+from src.infra.memory.extract import extract_and_store_memory, extract_memories
+from src.infra.memory.longterm import clear_long_term, recall_long_term, save_to_long_term
+from src.infra.memory.context import (
     compress_tool_result,
     reinject_instructions,
     sliding_window,
 )
-from src.memory.ttl_cache import (
+from src.infra.memory.ttl_cache import (
     clear_ttl_cache,
     get_ttl_cached,
     make_cache_key,
@@ -194,8 +194,8 @@ def run_demo_verification() -> bool:
 
     from unittest.mock import patch
 
-    with patch("src.memory.longterm.get_memory_connection", side_effect=Exception("Database connection timeout")):
-        with patch("src.memory.longterm.is_postgres_configured", return_value=True):
+    with patch("src.infra.memory.longterm.get_memory_connection", side_effect=Exception("Database connection timeout")):
+        with patch("src.infra.memory.longterm.is_postgres_configured", return_value=True):
             # Thử lưu và đọc fact khi DB sập
             save_to_long_term("u_fallback_test", "Thích xem camera cổng chính", "preference")
             fallback_facts = recall_long_term("u_fallback_test", "camera", k=1)

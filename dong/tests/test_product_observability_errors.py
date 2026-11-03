@@ -13,15 +13,15 @@ from unittest.mock import MagicMock, patch
 import pytest
 from langchain_core.messages import AIMessage, ToolMessage
 
-from src.llm.schemas import QueryResult
+from src.infra.llm.schemas import QueryResult
 
-from src.monitoring.tracing import (
+from src.infra.monitoring.tracing import (
     extract_token_usage,
     trace_answer,
     trace_step,
     trace_stream,
 )
-from src.monitoring.tracing import (
+from src.infra.monitoring.tracing import (
     extract_token_usage as be_extract_token_usage,
     trace_answer as be_trace_answer,
     trace_step as be_trace_step,
@@ -55,7 +55,7 @@ def test_extract_token_usage_empty_returns_zeroes():
 
 
 def test_tracing_no_op_when_disabled(monkeypatch):
-    monkeypatch.setattr("src.monitoring.tracing.settings.monitoring_enabled", False)
+    monkeypatch.setattr("src.infra.monitoring.tracing.settings.monitoring_enabled", False)
 
     with trace_answer("chat", "test question") as t:
         t["output"] = {"status": "ok", "answer": "Test answer"}
@@ -70,10 +70,10 @@ def test_tracing_no_op_when_disabled(monkeypatch):
 
 
 def test_trace_answer_and_trace_step_with_langfuse(monkeypatch):
-    monkeypatch.setattr("src.monitoring.tracing.settings.monitoring_enabled", True)
-    monkeypatch.setattr("src.monitoring.tracing.settings.llm_backend", "openai")
-    monkeypatch.setattr("src.monitoring.tracing.settings.llm_model", "gpt-4o-mini")
-    monkeypatch.setattr("src.monitoring.tracing.settings.llm_temperature", 0.0)
+    monkeypatch.setattr("src.infra.monitoring.tracing.settings.monitoring_enabled", True)
+    monkeypatch.setattr("src.infra.monitoring.tracing.settings.llm_backend", "openai")
+    monkeypatch.setattr("src.infra.monitoring.tracing.settings.llm_model", "gpt-4o-mini")
+    monkeypatch.setattr("src.infra.monitoring.tracing.settings.llm_temperature", 0.0)
 
     mock_langfuse = MagicMock()
     mock_parent_span = MagicMock()
@@ -82,7 +82,7 @@ def test_trace_answer_and_trace_step_with_langfuse(monkeypatch):
     mock_langfuse.start_observation.return_value = mock_parent_span
     mock_parent_span.start_observation.return_value = mock_child_span
 
-    with patch("src.monitoring.tracing._get_langfuse", return_value=mock_langfuse):
+    with patch("src.infra.monitoring.tracing._get_langfuse", return_value=mock_langfuse):
         # 1. Trace cha (chat)
         with trace_answer("chat", "Có bao nhiêu xe vào hôm nay?", metadata={"endpoint": "/api/chat"}) as parent_box:
             assert parent_box["_span"] is mock_parent_span
@@ -123,13 +123,13 @@ def test_trace_answer_and_trace_step_with_langfuse(monkeypatch):
 
 
 def test_trace_answer_exception_handling(monkeypatch):
-    monkeypatch.setattr("src.monitoring.tracing.settings.monitoring_enabled", True)
+    monkeypatch.setattr("src.infra.monitoring.tracing.settings.monitoring_enabled", True)
 
     mock_langfuse = MagicMock()
     mock_span = MagicMock()
     mock_langfuse.start_observation.return_value = mock_span
 
-    with patch("src.monitoring.tracing._get_langfuse", return_value=mock_langfuse):
+    with patch("src.infra.monitoring.tracing._get_langfuse", return_value=mock_langfuse):
         with pytest.raises(ValueError, match="Database error"):
             with trace_answer("chat", "invalid query") as t:
                 raise ValueError("Database error")
@@ -140,35 +140,35 @@ def test_trace_answer_exception_handling(monkeypatch):
 
 
 def test_trace_answer_failsafe_when_langfuse_init_fails(monkeypatch):
-    monkeypatch.setattr("src.monitoring.tracing.settings.monitoring_enabled", True)
+    monkeypatch.setattr("src.infra.monitoring.tracing.settings.monitoring_enabled", True)
 
-    with patch("src.monitoring.tracing._get_langfuse", side_effect=ConnectionRefusedError("Langfuse server down")):
+    with patch("src.infra.monitoring.tracing._get_langfuse", side_effect=ConnectionRefusedError("Langfuse server down")):
         with trace_answer("chat", "Có bao nhiêu xe?") as t:
             t["output"] = {"answer": "Có 10 xe"}
             assert t.get("_span") is None
 
 
 def test_trace_answer_failsafe_when_start_observation_fails(monkeypatch):
-    monkeypatch.setattr("src.monitoring.tracing.settings.monitoring_enabled", True)
+    monkeypatch.setattr("src.infra.monitoring.tracing.settings.monitoring_enabled", True)
 
     mock_langfuse = MagicMock()
     mock_langfuse.start_observation.side_effect = TimeoutError("Observation timeout")
 
-    with patch("src.monitoring.tracing._get_langfuse", return_value=mock_langfuse):
+    with patch("src.infra.monitoring.tracing._get_langfuse", return_value=mock_langfuse):
         with trace_answer("chat", "Có bao nhiêu xe?") as t:
             t["output"] = {"answer": "Có 10 xe"}
             assert t.get("_span") is None
 
 
 def test_trace_answer_failsafe_when_flush_fails(monkeypatch):
-    monkeypatch.setattr("src.monitoring.tracing.settings.monitoring_enabled", True)
+    monkeypatch.setattr("src.infra.monitoring.tracing.settings.monitoring_enabled", True)
 
     mock_langfuse = MagicMock()
     mock_span = MagicMock()
     mock_langfuse.start_observation.return_value = mock_span
     mock_langfuse.flush.side_effect = RuntimeError("Network partition on flush")
 
-    with patch("src.monitoring.tracing._get_langfuse", return_value=mock_langfuse):
+    with patch("src.infra.monitoring.tracing._get_langfuse", return_value=mock_langfuse):
         with trace_answer("chat", "Có bao nhiêu xe?") as t:
             t["output"] = {"answer": "Có 10 xe"}
             assert t.get("_span") is mock_span
@@ -187,7 +187,7 @@ def test_trace_step_failsafe_when_child_observation_fails():
 
 def test_full_pipeline_trace_step_tree(monkeypatch):
     """Kiểm tra toàn bộ cây span ReAct: trace cha (chat) -> chon_tool -> chay_tool -> dien_giai."""
-    monkeypatch.setattr("src.monitoring.tracing.settings.monitoring_enabled", True)
+    monkeypatch.setattr("src.infra.monitoring.tracing.settings.monitoring_enabled", True)
 
     mock_langfuse = MagicMock()
     mock_parent = MagicMock()
@@ -198,7 +198,7 @@ def test_full_pipeline_trace_step_tree(monkeypatch):
     mock_langfuse.start_observation.return_value = mock_parent
     mock_parent.start_observation.side_effect = [mock_span_chon, mock_span_chay, mock_span_dien]
 
-    with patch("src.monitoring.tracing._get_langfuse", return_value=mock_langfuse):
+    with patch("src.infra.monitoring.tracing._get_langfuse", return_value=mock_langfuse):
         with trace_answer("chat", "Biển số 65A-123.45 xuất hiện ở đâu?") as parent:
             # Step 1: Chọn tool
             with trace_step(parent["_span"], "chon_tool", input="Biển số 65A-123.45") as s1:
@@ -227,15 +227,15 @@ def test_full_pipeline_trace_step_tree(monkeypatch):
 
 
 def test_trace_answer_with_self_hosted_metadata(monkeypatch):
-    monkeypatch.setattr("src.monitoring.tracing.settings.monitoring_enabled", True)
-    monkeypatch.setattr("src.monitoring.tracing.settings.llm_backend", "self_hosted")
-    monkeypatch.setattr("src.monitoring.tracing.settings.model_name", "qwen3-4b")
+    monkeypatch.setattr("src.infra.monitoring.tracing.settings.monitoring_enabled", True)
+    monkeypatch.setattr("src.infra.monitoring.tracing.settings.llm_backend", "self_hosted")
+    monkeypatch.setattr("src.infra.monitoring.tracing.settings.model_name", "qwen3-4b")
 
     mock_langfuse = MagicMock()
     mock_span = MagicMock()
     mock_langfuse.start_observation.return_value = mock_span
 
-    with patch("src.monitoring.tracing._get_langfuse", return_value=mock_langfuse):
+    with patch("src.infra.monitoring.tracing._get_langfuse", return_value=mock_langfuse):
         with trace_answer("chat", "Thống kê xe") as t:
             t["output"] = {"answer": "100 xe"}
 
@@ -245,13 +245,13 @@ def test_trace_answer_with_self_hosted_metadata(monkeypatch):
 
 
 def test_trace_answer_custom_temperature_and_model_override(monkeypatch):
-    monkeypatch.setattr("src.monitoring.tracing.settings.monitoring_enabled", True)
+    monkeypatch.setattr("src.infra.monitoring.tracing.settings.monitoring_enabled", True)
 
     mock_langfuse = MagicMock()
     mock_span = MagicMock()
     mock_langfuse.start_observation.return_value = mock_span
 
-    with patch("src.monitoring.tracing._get_langfuse", return_value=mock_langfuse):
+    with patch("src.infra.monitoring.tracing._get_langfuse", return_value=mock_langfuse):
         with trace_answer("chat", "Thống kê") as t:
             t["model_name"] = "qwen3-4b-custom"
             t["temperature"] = 0.5
@@ -276,13 +276,13 @@ def test_trace_step_exception_handling():
 
 
 def test_trace_stream_with_langfuse(monkeypatch):
-    monkeypatch.setattr("src.monitoring.tracing.settings.monitoring_enabled", True)
+    monkeypatch.setattr("src.infra.monitoring.tracing.settings.monitoring_enabled", True)
 
     mock_langfuse = MagicMock()
     mock_span = MagicMock()
     mock_langfuse.start_observation.return_value = mock_span
 
-    with patch("src.monitoring.tracing._get_langfuse", return_value=mock_langfuse):
+    with patch("src.infra.monitoring.tracing._get_langfuse", return_value=mock_langfuse):
         tokens = list(trace_stream("stream_test", "câu hỏi", iter(["Hôm ", "nay ", "có ", "10 xe"])))
         assert "".join(tokens) == "Hôm nay có 10 xe"
 
@@ -296,7 +296,7 @@ def test_trace_stream_with_langfuse(monkeypatch):
 
 def test_v5_graph_trace_step_uses_node_event_input(monkeypatch):
     """Langfuse child span input/output lấy từ event node, không lặp câu hỏi gốc."""
-    monkeypatch.setattr("src.monitoring.tracing.settings.monitoring_enabled", True)
+    monkeypatch.setattr("src.infra.monitoring.tracing.settings.monitoring_enabled", True)
 
     mock_langfuse = MagicMock()
     mock_parent = MagicMock()
@@ -325,8 +325,8 @@ def test_v5_graph_trace_step_uses_node_event_input(monkeypatch):
             }],
         }
 
-    with patch("src.monitoring.tracing._get_langfuse", return_value=mock_langfuse):
-        from src.agent.graph import _wrap_node
+    with patch("src.infra.monitoring.tracing._get_langfuse", return_value=mock_langfuse):
+        from src.domain.agents.graph import _wrap_node
 
         wrapped = _wrap_node("respond", fake_respond)
         wrapped({"question": "Hôm nay có bao nhiêu lượt xe vào?", "_trace_span": mock_parent})
@@ -344,7 +344,7 @@ def test_v5_graph_trace_step_uses_node_event_input(monkeypatch):
 
 def test_v5_graph_trace_rewrite_input_not_parent_question(monkeypatch):
     """Span rewrite phải ghi input câu gốc, không lặp question đã rewrite trong state."""
-    monkeypatch.setattr("src.monitoring.tracing.settings.monitoring_enabled", True)
+    monkeypatch.setattr("src.infra.monitoring.tracing.settings.monitoring_enabled", True)
 
     mock_parent = MagicMock()
     mock_child = MagicMock()
@@ -364,8 +364,8 @@ def test_v5_graph_trace_rewrite_input_not_parent_question(monkeypatch):
             }],
         }
 
-    with patch("src.monitoring.tracing._get_langfuse", return_value=mock_langfuse):
-        from src.agent.graph import _wrap_node
+    with patch("src.infra.monitoring.tracing._get_langfuse", return_value=mock_langfuse):
+        from src.domain.agents.graph import _wrap_node
 
         wrapped = _wrap_node("rewrite", fake_rewrite)
         wrapped({
@@ -380,7 +380,7 @@ def test_v5_graph_trace_rewrite_input_not_parent_question(monkeypatch):
 
 def test_graph_node_nested_substeps(monkeypatch):
     """Substep agent/tool lồng dưới span graph node (Langfuse tree)."""
-    monkeypatch.setattr("src.monitoring.tracing.settings.monitoring_enabled", True)
+    monkeypatch.setattr("src.infra.monitoring.tracing.settings.monitoring_enabled", True)
 
     mock_root = MagicMock()
     mock_node_span = MagicMock()
@@ -390,7 +390,7 @@ def test_graph_node_nested_substeps(monkeypatch):
     mock_node_span.start_observation.side_effect = [mock_tool, mock_agent]
 
     def fake_generate(state):
-        from src.monitoring.tracing import trace_substep
+        from src.infra.monitoring.tracing import trace_substep
 
         with trace_substep("build_prompt", kind="tool", input={"question": state["question"]}) as sub:
             sub["output"] = {"user_prompt_len": 42}
@@ -406,8 +406,8 @@ def test_graph_node_nested_substeps(monkeypatch):
             }],
         }
 
-    with patch("src.monitoring.tracing._get_langfuse"):
-        from src.agent.graph import _wrap_node
+    with patch("src.infra.monitoring.tracing._get_langfuse"):
+        from src.domain.agents.graph import _wrap_node
 
         wrapped = _wrap_node("generate_sql", fake_generate)
         wrapped({"question": "Hôm nay có bao nhiêu xe?", "_trace_span": mock_root})
@@ -422,19 +422,19 @@ def test_graph_node_nested_substeps(monkeypatch):
 
 def test_validate_and_repair_sql_nested_validate_substep(monkeypatch):
     """Orchestrator helper validate_and_repair_sql cũng ghi tool:validate_sql substep."""
-    monkeypatch.setattr("src.monitoring.tracing.settings.monitoring_enabled", True)
+    monkeypatch.setattr("src.infra.monitoring.tracing.settings.monitoring_enabled", True)
 
     mock_parent = MagicMock()
     mock_validate = MagicMock()
 
-    from src.monitoring.tracing import trace_active_parent
+    from src.infra.monitoring.tracing import trace_active_parent
 
     with trace_active_parent(mock_parent):
-        from src.agent.validate_sql import validate_and_repair_sql
+        from src.domain.agents.validate_sql import validate_and_repair_sql
 
-        from src.db.validator import ValidationResult
+        from src.infra.db.validator import ValidationResult
 
-        with patch("src.agent.validate_sql.validate_sql", return_value=ValidationResult(ok=True)):
+        with patch("src.domain.agents.validate_sql.validate_sql", return_value=ValidationResult(ok=True)):
             mock_parent.start_observation.return_value = mock_validate
             validate_and_repair_sql("SELECT 1", "test", user_id="u1", session_id="s1")
 
@@ -444,14 +444,14 @@ def test_validate_and_repair_sql_nested_validate_substep(monkeypatch):
 
 
 def test_strip_thinking_removes_qwen_block():
-    from src.agent.graph import _strip_thinking
+    from src.domain.agents.graph import _strip_thinking
 
     raw = "\x3cthink\x3einternal\x3c/think\x3e\nHôm nay có 10 xe vào."
     assert _strip_thinking(raw) == "Hôm nay có 10 xe vào."
 
 
 def test_respond_offline_emits_stat_answer_event():
-    from src.agent.graph import respond_node
+    from src.domain.agents.graph import respond_node
 
     out = respond_node({
         "question": "Hôm nay có bao nhiêu lượt xe vào?",
@@ -472,8 +472,8 @@ def test_backend_monitoring_reexport():
 
 def test_trace_observation_types_agent_vs_tool_vs_retriever(monkeypatch):
     """Kiểm tra trace_step và trace_substep truyền đúng as_type ('agent', 'tool', 'retriever')."""
-    from src.monitoring.tracing import trace_substep, trace_active_parent
-    monkeypatch.setattr("src.monitoring.tracing.settings.monitoring_enabled", True)
+    from src.infra.monitoring.tracing import trace_substep, trace_active_parent
+    monkeypatch.setattr("src.infra.monitoring.tracing.settings.monitoring_enabled", True)
 
     mock_parent = MagicMock()
     mock_child = MagicMock()
@@ -507,14 +507,14 @@ def test_trace_observation_types_agent_vs_tool_vs_retriever(monkeypatch):
 
 
 def test_trace_answer_token_sum_via_contextvar(monkeypatch):
-    monkeypatch.setattr("src.monitoring.tracing.settings.monitoring_enabled", True)
+    monkeypatch.setattr("src.infra.monitoring.tracing.settings.monitoring_enabled", True)
 
     mock_langfuse = MagicMock()
     mock_span = MagicMock()
     mock_langfuse.start_observation.return_value = mock_span
 
-    with patch("src.monitoring.tracing._get_langfuse", return_value=mock_langfuse):
-        from src.monitoring.tracing import add_request_tokens
+    with patch("src.infra.monitoring.tracing._get_langfuse", return_value=mock_langfuse):
+        from src.infra.monitoring.tracing import add_request_tokens
         with trace_answer("chat", "test sum tokens") as t:
             # Mô phỏng gọi LLM 2 lần
             add_request_tokens({"prompt_tokens": 10, "completion_tokens": 5, "total_tokens": 15})
@@ -530,11 +530,11 @@ def test_trace_answer_token_sum_via_contextvar(monkeypatch):
 
 
 from src.main import _cache, chat, ChatRequest
-from src.memory.ttl_cache import clear_ttl_cache
+from src.infra.memory.ttl_cache import clear_ttl_cache
 
 def test_cache_miss_then_hit_skips_run_agent(monkeypatch):
-    from src.agent.graph import Agent_Output
-    from src.llm.schemas import QueryResult
+    from src.domain.agents.graph import Agent_Output
+    from src.infra.llm.schemas import QueryResult
 
     mock_run_agent = MagicMock()
     valid_answer = "Hôm nay có tổng cộng 100 chiếc xe các loại vào cổng KCN."
@@ -559,8 +559,8 @@ def test_cache_miss_then_hit_skips_run_agent(monkeypatch):
     assert resp2.detail.get("cache_hit") is True
 
 def test_cache_expired_entry_misses(monkeypatch):
-    from src.agent.graph import Agent_Output
-    from src.llm.schemas import QueryResult
+    from src.domain.agents.graph import Agent_Output
+    from src.infra.llm.schemas import QueryResult
 
     mock_run_agent = MagicMock()
     valid_answer = "Hôm nay có tổng cộng 100 chiếc xe các loại vào cổng KCN."
@@ -588,8 +588,8 @@ def test_cache_expired_entry_misses(monkeypatch):
     assert valid_answer in resp2.answer
 
 def test_cache_disabled(monkeypatch):
-    from src.agent.graph import Agent_Output
-    from src.llm.schemas import QueryResult
+    from src.domain.agents.graph import Agent_Output
+    from src.infra.llm.schemas import QueryResult
 
     mock_run_agent = MagicMock()
     valid_answer = "Hôm nay có tổng cộng 100 chiếc xe các loại vào cổng KCN."
@@ -615,7 +615,7 @@ def test_cache_disabled(monkeypatch):
 
 def test_every_graph_node_emits_full_input_output_and_session_user_meta():
     """Tất cả node trong graph đều ghi nhận đầy đủ input, output và metadata session/user."""
-    from src.agent.graph import Agent_Input, run_agent_stream
+    from src.domain.agents.graph import Agent_Input, run_agent_stream
 
     user_id = "user-trace-full"
     session_id = "session-trace-full"
@@ -654,7 +654,7 @@ def test_every_graph_node_emits_full_input_output_and_session_user_meta():
 
 def test_trace_observation_receives_session_and_user_metadata(monkeypatch):
     """Langfuse start_observation nhận đầy đủ session_id và user_id từ API."""
-    monkeypatch.setattr("src.monitoring.tracing.settings.monitoring_enabled", True)
+    monkeypatch.setattr("src.infra.monitoring.tracing.settings.monitoring_enabled", True)
 
     mock_langfuse = MagicMock()
     mock_parent_span = MagicMock()
@@ -663,7 +663,7 @@ def test_trace_observation_receives_session_and_user_metadata(monkeypatch):
     mock_langfuse.start_observation.return_value = mock_parent_span
     mock_parent_span.start_observation.return_value = mock_child_span
 
-    with patch("src.monitoring.tracing._get_langfuse", return_value=mock_langfuse):
+    with patch("src.infra.monitoring.tracing._get_langfuse", return_value=mock_langfuse):
         from src.main import app
         from fastapi.testclient import TestClient
 
@@ -715,10 +715,10 @@ from unittest.mock import patch
 import pytest
 from fastapi.testclient import TestClient
 
-from src.agent.graph import Agent_Input, run_agent, run_agent_stream
-from src.agent.intent import classify_intent_safe
-from src.db.validator import ValidationResult
-from src.guardrails import empty_stat_reply
+from src.domain.agents.graph import Agent_Input, run_agent, run_agent_stream
+from src.domain.agents.intent import classify_intent_safe
+from src.infra.db.validator import ValidationResult
+from src.shared.guardrails import empty_stat_reply
 from src.main import USER_ERROR_MAX_LEN, _format_error_message, app
 
 client = TestClient(app)
@@ -732,9 +732,9 @@ def test_sql_repair_max_exhausted_yields_friendly_message_no_crash():
 
     # Mock validate_sql luôn trả về lỗi để hết số lần repair (settings.sql_repair_max)
     with (
-        patch("src.llm.client.use_offline_tools", return_value=True),
+        patch("src.infra.llm.client.use_offline_tools", return_value=True),
         patch(
-            "src.agent.validate_sql.validate_sql",
+            "src.domain.agents.validate_sql.validate_sql",
             return_value=ValidationResult(ok=False, reason="Cú pháp không hợp lệ"),
         ),
     ):
@@ -781,12 +781,12 @@ def test_llm_timeout_and_db_fail_message_no_leak():
 
 def test_classify_error_safe_fallback_not_silent():
     """3. Classify lỗi: fallback an toàn sang query_data, không trả về rỗng hay im lặng."""
-    from src.llm.schemas import RewrittenQuestion
+    from src.infra.llm.schemas import RewrittenQuestion
 
     q = RewrittenQuestion(text="Hôm nay có cảnh báo cháy hoặc khói không?")
     with (
-        patch("src.agent.intent.use_offline_tools", return_value=False),
-        patch("src.agent.intent.invoke_structured", side_effect=Exception("LLM down")),
+        patch("src.domain.agents.intent.use_offline_tools", return_value=False),
+        patch("src.domain.agents.intent.invoke_structured", side_effect=Exception("LLM down")),
     ):
         res = classify_intent_safe(q)
 
@@ -807,7 +807,7 @@ def test_stream_error_emits_friendly_answer_status_error():
     _cache.clear()
 
     with patch(
-        "src.agent.graph.run_agent_stream",
+        "src.domain.agents.graph.run_agent_stream",
         side_effect=RuntimeError("Database connection lost"),
     ):
         res = client.post(
@@ -878,12 +878,12 @@ def test_format_error_messages_short_vietnamese(exc, keyword):
 
 
 def test_stream_db_error_yields_answer_not_crash(monkeypatch):
-    monkeypatch.setattr("src.monitoring.tracing.settings.monitoring_enabled", False)
+    monkeypatch.setattr("src.infra.monitoring.tracing.settings.monitoring_enabled", False)
     from src.main import _cache
 
     _cache.clear()
     with patch(
-        "src.agent.graph.run_agent_stream",
+        "src.domain.agents.graph.run_agent_stream",
         side_effect=RuntimeError("clickhouse connect error: connection refused"),
     ):
         res = client.post(
@@ -905,7 +905,7 @@ def test_stream_db_error_yields_answer_not_crash(monkeypatch):
 
 def test_stream_graph_thread_error_yields_friendly_answer(monkeypatch):
     """Lỗi trong graph thread → __answer__ error, không crash generator."""
-    monkeypatch.setattr("src.monitoring.tracing.settings.monitoring_enabled", False)
+    monkeypatch.setattr("src.infra.monitoring.tracing.settings.monitoring_enabled", False)
     from src.main import _cache
 
     _cache.clear()
@@ -914,7 +914,7 @@ def test_stream_graph_thread_error_yields_friendly_answer(monkeypatch):
         yield {"node_id": "recall", "status": "running"}
         raise RuntimeError("LLM API timeout after 30s")
 
-    with patch("src.agent.graph.run_agent_stream", side_effect=_boom):
+    with patch("src.domain.agents.graph.run_agent_stream", side_effect=_boom):
         res = client.post(
             "/api/agent/stream",
             json={"question": "Hôm nay có bao nhiêu xe vào?"},

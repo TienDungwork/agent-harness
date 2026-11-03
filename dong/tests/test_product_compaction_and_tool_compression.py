@@ -13,7 +13,7 @@ from unittest.mock import patch
 import pytest
 from langchain_core.messages import AIMessage, HumanMessage, RemoveMessage, SystemMessage
 
-from src.memory.context import (
+from src.infra.memory.context import (
     SUMMARY_PREFIX,
     compress_tool_result,
     context_usage,
@@ -23,8 +23,8 @@ from src.memory.context import (
     should_compact_route,
     summarize_old_messages,
 )
-from src.agent.graph import AgentState, answer_from_docs_node, respond_node, rewrite_node
-from src.llm.schemas import RewrittenQuestion
+from src.domain.agents.graph import AgentState, answer_from_docs_node, respond_node, rewrite_node
+from src.infra.llm.schemas import RewrittenQuestion
 
 
 def test_should_compact_mathematical_threshold_40_percent():
@@ -61,7 +61,7 @@ def test_summarize_old_messages_generates_standard_prefix():
 
     assert len(messages) == 15
 
-    with patch("src.memory.context.summarize_text", return_value="Người dùng đã hỏi về các camera cổng 1 và cổng 2."):
+    with patch("src.infra.memory.context.summarize_text", return_value="Người dùng đã hỏi về các camera cổng 1 và cổng 2."):
         compacted = summarize_old_messages(messages, keep_recent=6)
         # 1 summary + 6 recent = 7
         assert len(compacted) == 7
@@ -89,7 +89,7 @@ def test_create_compaction_diff_persists_to_state():
         AIMessage(content="Trả lời 5 (mới nhất)", id="msg-10"),
     ]
 
-    with patch("src.memory.context.summarize_text", return_value="Các lượt trao đổi đầu tiên về camera"):
+    with patch("src.infra.memory.context.summarize_text", return_value="Các lượt trao đổi đầu tiên về camera"):
         diff = create_compaction_diff(messages, keep_recent=6)
         assert "messages" in diff
         diff_msgs = diff["messages"]
@@ -122,7 +122,7 @@ def test_rewrite_node_triggers_compaction_when_exceeding_40_percent():
         "messages": long_history,
     }
 
-    with patch("src.memory.context.use_offline_tools", return_value=True):
+    with patch("src.infra.memory.context.use_offline_tools", return_value=True):
         out = rewrite_node(state)
         messages_out = out["messages"]
         # Phải chứa các RemoveMessage, 1 SystemMessage tóm tắt, và cuối cùng là HumanMessage của lượt hiện tại
@@ -144,7 +144,7 @@ def test_compress_tool_result_skips_short_output():
         "camera_id=CAM_01, total_vehicles=12, time=08:00\n"
         "camera_id=CAM_02, total_vehicles=15, time=08:15\n"
     )
-    with patch("src.memory.context.invoke_text") as mock_llm:
+    with patch("src.infra.memory.context.invoke_text") as mock_llm:
         compressed = compress_tool_result(short_table, query="Thống kê xe theo camera", max_tokens=300)
         assert compressed == short_table
         assert not mock_llm.called
@@ -158,15 +158,15 @@ def test_compress_tool_result_compresses_large_table():
     assert len(large_table) > 1200
 
     # 1. Chế độ offline fallback
-    with patch("src.memory.context.use_offline_tools", return_value=True):
+    with patch("src.infra.memory.context.use_offline_tools", return_value=True):
         offline_compressed = compress_tool_result(large_table, query="Bao nhiêu xe vượt tốc độ?", max_tokens=300)
         assert "[đã nén]" in offline_compressed
         assert len(offline_compressed) <= 300 * 4 + 50
 
     # 2. Chế độ LLM nén thông minh
     mock_llm_summary = "Tổng hợp: 50 lượt xe di chuyển tốc độ 40-59 km/h, không có vi phạm tốc độ."
-    with patch("src.memory.context.use_offline_tools", return_value=False):
-        with patch("src.memory.context.invoke_text", return_value=mock_llm_summary):
+    with patch("src.infra.memory.context.use_offline_tools", return_value=False):
+        with patch("src.infra.memory.context.invoke_text", return_value=mock_llm_summary):
             llm_compressed = compress_tool_result(large_table, query="Bao nhiêu xe vượt tốc độ?", max_tokens=300)
             assert llm_compressed == mock_llm_summary
 
@@ -198,7 +198,7 @@ def test_sql_respond_node_compresses_large_sql_table():
         "session_id": "test_sess",
     }
 
-    with patch("src.llm.client.use_offline_tools", return_value=True):
+    with patch("src.infra.llm.client.use_offline_tools", return_value=True):
         out = respond_node(state)
         ans = out.get("answer", "")
         # Phải kích hoạt nén do bảng SQL vượt quá 300 tokens
@@ -210,7 +210,7 @@ def test_docs_node_compresses_large_docs_answer():
     long_docs_text = "Quy trình kiểm soát an ninh cảng và cổng KCN:\n" + ("Mục điều khoản an ninh chi tiết;\n" * 50)
     assert len(long_docs_text) > 1200
 
-    from src.llm.schemas import DocsAnswer
+    from src.infra.llm.schemas import DocsAnswer
 
     mock_docs_answer = DocsAnswer(
         answer_vi=long_docs_text,
@@ -224,8 +224,8 @@ def test_docs_node_compresses_large_docs_answer():
         "session_id": "test_sess",
     }
 
-    with patch("src.knowledge.answer_from_docs", return_value=mock_docs_answer):
-        with patch("src.memory.context.use_offline_tools", return_value=True):
+    with patch("src.domain.knowledge.answer_from_docs", return_value=mock_docs_answer):
+        with patch("src.infra.memory.context.use_offline_tools", return_value=True):
             out = answer_from_docs_node(state)
             ans = out.get("answer", "")
             assert "[đã nén]" in ans

@@ -9,7 +9,7 @@ from __future__ import annotations
 
 
 import pytest
-from src.guardrails import (
+from src.shared.guardrails import (
     EMPTY_TOOL_REPLY,
     GuardrailViolation,
     OUT_OF_SCOPE_REPLY,
@@ -115,7 +115,7 @@ def test_in_scope_vms_how_to_guide(how_to_text: str):
 
 
 import pytest
-from src.guardrails import (
+from src.shared.guardrails import (
     EMPTY_TOOL_REPLY,
     _DISCLAIMER,
     _FALLBACK,
@@ -207,7 +207,7 @@ def test_check_output_toxic_triggers_fallback():
 
 def test_check_output_max_length_truncation(monkeypatch):
     """Kiểm tra giới hạn độ dài câu trả lời."""
-    monkeypatch.setattr("src.guardrails.settings.guardrails_max_answer_len", 50)
+    monkeypatch.setattr("src.shared.guardrails.settings.guardrails_max_answer_len", 50)
     evidence = ["báo cáo"]
     answer = "A" * 100
     result = check_output(answer, evidence)
@@ -255,8 +255,8 @@ def test_check_output_tool_not_empty_unverified():
 
 import pytest
 
-from src.config import settings
-from src.db.connection import get_connection
+from src.shared.config import settings
+from src.infra.db.connection import get_connection
 
 pytestmark = pytest.mark.skipif(
     not settings.db_configured,
@@ -324,25 +324,25 @@ def test_grant_layer_delete_bi_insufficient_privilege():
             conn.close()
 
 def test_is_tool_empty_none():
-    from src.guardrails import _is_tool_empty
+    from src.shared.guardrails import _is_tool_empty
     assert _is_tool_empty(None) is False
 
 def test_is_tool_empty_string_only_rows():
-    from src.guardrails import _is_tool_empty
+    from src.shared.guardrails import _is_tool_empty
     class DummyQuery:
         row_count = 1
         rows = [["CAM_01", "CAR"]]
     assert _is_tool_empty(DummyQuery()) is False
 
 def test_is_tool_empty_row_count_zero():
-    from src.guardrails import _is_tool_empty
+    from src.shared.guardrails import _is_tool_empty
     class DummyQuery:
         row_count = 0
         rows = []
     assert _is_tool_empty(DummyQuery()) is True
 
 def test_is_tool_empty_all_numeric_zeros():
-    from src.guardrails import _is_tool_empty
+    from src.shared.guardrails import _is_tool_empty
     class DummyQuery:
         row_count = 2
         rows = [["CAM_01", 0], ["CAM_02", 0.0], ["CAM_03", "0"]]
@@ -360,14 +360,14 @@ import json
 import pytest
 from fastapi.testclient import TestClient
 
-from src.guardrails import (
+from src.shared.guardrails import (
     INJECTION_REJECT_MESSAGE,
     OUT_OF_SCOPE_REPLY,
     TOXIC_REJECT_MESSAGE,
     rejection_detail,
 )
 from src.main import app
-from src.sessions.store import clear_sessions_store, create_session
+from src.infra.session.store import clear_sessions_store, create_session
 
 client = TestClient(app)
 
@@ -378,7 +378,7 @@ _TOXIC_Q = "Fuck you"
 
 @pytest.fixture(autouse=True)
 def clean_sessions():
-    from src.memory.ttl_cache import clear_ttl_cache
+    from src.infra.memory.ttl_cache import clear_ttl_cache
 
     clear_sessions_store()
     clear_ttl_cache()

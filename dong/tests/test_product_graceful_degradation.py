@@ -18,18 +18,18 @@ import pytest
 from fastapi.testclient import TestClient
 
 from src.main import app
-from src.memory.db import init_memory_db, is_postgres_configured
-from src.memory.shortterm import (
+from src.infra.memory.db import init_memory_db, is_postgres_configured
+from src.infra.memory.shortterm import (
     get_checkpointer,
     is_using_postgres_checkpointer,
     reset_checkpointer,
 )
-from src.memory.longterm import (
+from src.infra.memory.longterm import (
     clear_long_term,
     recall_long_term,
     save_to_long_term,
 )
-from src.agent.graph import Agent_Input, run_agent
+from src.domain.agents.graph import Agent_Input, run_agent
 
 
 @pytest.fixture(autouse=True)
@@ -49,8 +49,8 @@ def client():
 
 def test_init_memory_db_graceful_degradation_invalid_host(monkeypatch, caplog):
     """Khi DB_HOST=invalid, init_memory_db() bắt lỗi, log warning, trả về False an toàn."""
-    monkeypatch.setattr("src.memory.db.settings.db_host", "invalid_postgres_host_nonexistent")
-    monkeypatch.setattr("src.memory.db.settings.db_user", "postgres")
+    monkeypatch.setattr("src.infra.memory.db.settings.db_host", "invalid_postgres_host_nonexistent")
+    monkeypatch.setattr("src.infra.memory.db.settings.db_user", "postgres")
 
     with caplog.at_level(logging.WARNING):
         result = init_memory_db()
@@ -62,8 +62,8 @@ def test_init_memory_db_graceful_degradation_invalid_host(monkeypatch, caplog):
 
 def test_checkpointer_graceful_degradation_invalid_host(monkeypatch, caplog):
     """Khi DB_HOST=invalid, get_checkpointer() tự động fallback sang MemorySaver."""
-    monkeypatch.setattr("src.config.settings.db_host", "invalid_postgres_host_nonexistent")
-    monkeypatch.setattr("src.config.settings.db_user", "postgres")
+    monkeypatch.setattr("src.shared.config.settings.db_host", "invalid_postgres_host_nonexistent")
+    monkeypatch.setattr("src.shared.config.settings.db_user", "postgres")
 
     # Giả lập connection pool ném lỗi kết nối
     with patch("psycopg_pool.ConnectionPool", side_effect=Exception("could not translate host name")):
@@ -80,12 +80,12 @@ def test_checkpointer_graceful_degradation_invalid_host(monkeypatch, caplog):
 
 def test_longterm_save_and_recall_graceful_degradation_invalid_host(monkeypatch, caplog):
     """Khi DB_HOST=invalid, lưu và đọc facts tự động fallback sang in-memory store."""
-    monkeypatch.setattr("src.memory.longterm.is_postgres_configured", lambda: True)
+    monkeypatch.setattr("src.infra.memory.longterm.is_postgres_configured", lambda: True)
 
     def mock_broken_connection(*args, **kwargs):
         raise ConnectionError("could not translate host name 'invalid'")
 
-    monkeypatch.setattr("src.memory.longterm.get_memory_connection", mock_broken_connection)
+    monkeypatch.setattr("src.infra.memory.longterm.get_memory_connection", mock_broken_connection)
 
     user_id = "user_deg_001"
     with caplog.at_level(logging.WARNING):
@@ -106,12 +106,12 @@ def test_longterm_save_and_recall_graceful_degradation_invalid_host(monkeypatch,
 
 def test_api_memory_get_and_delete_no_500_when_db_down(client, monkeypatch):
     """Endpoint GET & DELETE /api/memory phản hồi 200 (không trả về 500) khi PostgreSQL offline."""
-    monkeypatch.setattr("src.memory.longterm.is_postgres_configured", lambda: True)
+    monkeypatch.setattr("src.infra.memory.longterm.is_postgres_configured", lambda: True)
 
     def mock_broken_connection(*args, **kwargs):
         raise ConnectionError("PostgreSQL connection refused on port 5432")
 
-    monkeypatch.setattr("src.memory.longterm.get_memory_connection", mock_broken_connection)
+    monkeypatch.setattr("src.infra.memory.longterm.get_memory_connection", mock_broken_connection)
 
     user_id = "user_api_fallback_test"
     save_to_long_term(user_id, "Thông tin cá nhân lưu trong fallback")
@@ -139,12 +139,12 @@ def test_api_memory_get_and_delete_no_500_when_db_down(client, monkeypatch):
 
 def test_api_chat_no_500_when_db_down(client, monkeypatch):
     """Endpoint /api/chat không trả về HTTP 500 khi DB memory offline."""
-    monkeypatch.setattr("src.memory.longterm.is_postgres_configured", lambda: True)
+    monkeypatch.setattr("src.infra.memory.longterm.is_postgres_configured", lambda: True)
 
     def mock_broken_connection(*args, **kwargs):
         raise ConnectionError("PostgreSQL connection refused")
 
-    monkeypatch.setattr("src.memory.longterm.get_memory_connection", mock_broken_connection)
+    monkeypatch.setattr("src.infra.memory.longterm.get_memory_connection", mock_broken_connection)
 
     payload = {
         "question": "Chào bạn, tôi tên là Hoàng",
@@ -160,12 +160,12 @@ def test_api_chat_no_500_when_db_down(client, monkeypatch):
 
 def test_api_agent_stream_no_500_when_db_down(client, monkeypatch):
     """Endpoint /api/agent/stream chạy bình thường và phát sự kiện __answer__ khi DB offline."""
-    monkeypatch.setattr("src.memory.longterm.is_postgres_configured", lambda: True)
+    monkeypatch.setattr("src.infra.memory.longterm.is_postgres_configured", lambda: True)
 
     def mock_broken_connection(*args, **kwargs):
         raise ConnectionError("PostgreSQL connection refused")
 
-    monkeypatch.setattr("src.memory.longterm.get_memory_connection", mock_broken_connection)
+    monkeypatch.setattr("src.infra.memory.longterm.get_memory_connection", mock_broken_connection)
 
     payload = {
         "question": "Chào bạn",
@@ -181,12 +181,12 @@ def test_api_agent_stream_no_500_when_db_down(client, monkeypatch):
 
 def test_agent_graph_pipeline_execution_when_db_down(monkeypatch):
     """Toàn bộ pipeline Agent Graph chạy thành công khi DB offline."""
-    monkeypatch.setattr("src.memory.longterm.is_postgres_configured", lambda: True)
+    monkeypatch.setattr("src.infra.memory.longterm.is_postgres_configured", lambda: True)
 
     def mock_broken_connection(*args, **kwargs):
         raise ConnectionError("DB host unreachable")
 
-    monkeypatch.setattr("src.memory.longterm.get_memory_connection", mock_broken_connection)
+    monkeypatch.setattr("src.infra.memory.longterm.get_memory_connection", mock_broken_connection)
 
     inp = Agent_Input(question="Chào bạn, tôi phụ trách an ninh cổng 1")
     out = run_agent(inp, session_id="deg_sess_01", user_id="user_deg_graph")
@@ -198,7 +198,7 @@ def test_agent_graph_pipeline_execution_when_db_down(monkeypatch):
 
 def test_health_endpoint_healthy_when_db_down(client, monkeypatch):
     """Endpoint /api/health trả về 200 và phản hồi cấu hình bình thường khi DB offline."""
-    monkeypatch.setattr("src.config.settings.db_host", "invalid_host")
+    monkeypatch.setattr("src.shared.config.settings.db_host", "invalid_host")
     res = client.get("/api/health")
     assert res.status_code == 200
     assert res.json()["status"] == "ok"

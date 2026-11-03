@@ -19,9 +19,9 @@ import base64
 
 import pytest
 
-from src.agent.graph import Agent_Input, run_agent_stream
-from src.chart import normalize_chart_type, plan_chart, render_chart, should_render_chart
-from src.llm.schemas import ChartSpec
+from src.domain.agents.graph import Agent_Input, run_agent_stream
+from src.infra.chart import normalize_chart_type, plan_chart, render_chart, should_render_chart
+from src.infra.llm.schemas import ChartSpec
 
 
 SAMPLE_ROWS = [
@@ -204,9 +204,9 @@ from unittest.mock import patch
 
 import pytest
 
-from src.agent.generate_sql import generate_sql_node
-from src.agent.pre_sql import build_chart_sql_hint
-from src.llm.schemas import RewrittenQuestion
+from src.domain.agents.generate_sql import generate_sql_node
+from src.domain.agents.pre_sql import build_chart_sql_hint
+from src.infra.llm.schemas import RewrittenQuestion
 
 
 # ── 1. build_chart_sql_hint unit tests ────────────────────────────────────────
@@ -262,8 +262,8 @@ def test_chart_hint_generic_contains_expected_structure():
 
 # ── 2. Online generate_sql_node: chart hint in user prompt ─────────────────────
 
-@patch("src.agent.generate_sql.use_offline_tools", return_value=False)
-@patch("src.agent.generate_sql.invoke_text", return_value="SELECT vehicle_type, count(*) FROM plate_event GROUP BY vehicle_type")
+@patch("src.domain.agents.generate_sql.use_offline_tools", return_value=False)
+@patch("src.domain.agents.generate_sql.invoke_text", return_value="SELECT vehicle_type, count(*) FROM plate_event GROUP BY vehicle_type")
 def test_generate_sql_online_injects_chart_hint_for_bieu_do(mock_invoke, _mock_offline):
     """Câu hỏi có 'biểu đồ' → user prompt của generate_sql_node chứa chart hint."""
     rewritten = RewrittenQuestion(
@@ -290,8 +290,8 @@ def test_generate_sql_online_injects_chart_hint_for_bieu_do(mock_invoke, _mock_o
     assert "Vẽ biểu đồ cột lượt xe theo loại hôm nay" in user_prompt
 
 
-@patch("src.agent.generate_sql.use_offline_tools", return_value=False)
-@patch("src.agent.generate_sql.invoke_text", return_value="SELECT count(*) FROM plate_event")
+@patch("src.domain.agents.generate_sql.use_offline_tools", return_value=False)
+@patch("src.domain.agents.generate_sql.invoke_text", return_value="SELECT count(*) FROM plate_event")
 def test_generate_sql_online_no_chart_hint_for_plain_count(mock_invoke, _mock_offline):
     """Câu hỏi thống kê thông thường (không có từ khóa biểu đồ) → KHÔNG có chart hint."""
     rewritten = RewrittenQuestion(
@@ -333,21 +333,21 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from src.agent.chart_fallback import (
+from src.domain.agents.chart_fallback import (
     fallback_chart_query,
     should_retry_chart_query,
 )
-from src.agent.graph import Agent_Input, AgentState, render_chart_node, reset_graph, respond_node, run_agent
-from src.agent.simple_answer import _fmt_num, try_format_simple_answer
-from src.chart.render import (
+from src.domain.agents.graph import Agent_Input, AgentState, render_chart_node, reset_graph, respond_node, run_agent
+from src.domain.agents.simple_answer import _fmt_num, try_format_simple_answer
+from src.infra.chart.render import (
     _detect_chart_type,
     _format_label,
     plan_chart,
     render_chart,
     should_render_chart,
 )
-from src.config import settings
-from src.llm.schemas import ChartSpec, IntentResult
+from src.shared.config import settings
+from src.infra.llm.schemas import ChartSpec, IntentResult
 
 
 @pytest.fixture(autouse=True)
@@ -442,8 +442,8 @@ class TestSimpleAnswerFormatting:
     def test_respond_node_skips_llm_for_simple_count(self):
         """Khi có simple answer, respond_node không gọi invoke_text và đánh dấu llm_used=False."""
         mock_invoke = MagicMock()
-        with patch("src.llm.client.invoke_text", mock_invoke), \
-             patch("src.llm.client.use_offline_tools", return_value=False):
+        with patch("src.infra.llm.client.invoke_text", mock_invoke), \
+             patch("src.infra.llm.client.use_offline_tools", return_value=False):
 
             state: AgentState = {
                 "question": "Hôm nay có bao nhiêu lượt xe máy?",
@@ -526,7 +526,7 @@ class TestChartFallbackSql:
         sql = "SELECT count(*) FROM plate_event"
         q = "Vẽ biểu đồ các loại xe hôm nay"
 
-        with patch("src.agent.chart_fallback.use_offline_tools", return_value=True):
+        with patch("src.domain.agents.chart_fallback.use_offline_tools", return_value=True):
             res = fallback_chart_query(question=q, sql=sql, rows=rows)
             assert res is not None
             assert len(res["rows"]) >= 2
@@ -539,7 +539,7 @@ class TestChartFallbackSql:
         sql = "SELECT count(*) FROM plate_event"
         q = "Vẽ biểu đồ phương tiện theo loại hôm nay"
 
-        with patch("src.agent.chart_fallback.use_offline_tools", return_value=True):
+        with patch("src.domain.agents.chart_fallback.use_offline_tools", return_value=True):
             state: AgentState = {
                 "question": q,
                 "rows": initial_rows,
@@ -630,8 +630,8 @@ class TestRespondNodeMaxTokensAndDegradation:
     def test_complex_multi_row_calls_llm_with_max_tokens(self):
         mock_invoke = MagicMock(return_value="Theo dữ liệu, xe máy chiếm đa số với 150 lượt.")
 
-        with patch("src.llm.client.invoke_text", mock_invoke), \
-             patch("src.llm.client.use_offline_tools", return_value=False):
+        with patch("src.infra.llm.client.invoke_text", mock_invoke), \
+             patch("src.infra.llm.client.use_offline_tools", return_value=False):
 
             state: AgentState = {
                 "question": "Phân tích chi tiết lưu lượng xe theo từng camera",
@@ -652,8 +652,8 @@ class TestRespondNodeMaxTokensAndDegradation:
 
     def test_empty_rows_returns_empty_stat_reply_without_llm(self):
         mock_invoke = MagicMock()
-        with patch("src.llm.client.invoke_text", mock_invoke), \
-             patch("src.llm.client.use_offline_tools", return_value=False):
+        with patch("src.infra.llm.client.invoke_text", mock_invoke), \
+             patch("src.infra.llm.client.use_offline_tools", return_value=False):
 
             state: AgentState = {
                 "question": "Có bao nhiêu xe biển số 99A-99999 hôm nay?",
@@ -669,8 +669,8 @@ class TestRespondNodeMaxTokensAndDegradation:
 
     def test_error_state_returns_friendly_error_without_llm(self):
         mock_invoke = MagicMock()
-        with patch("src.llm.client.invoke_text", mock_invoke), \
-             patch("src.llm.client.use_offline_tools", return_value=False):
+        with patch("src.infra.llm.client.invoke_text", mock_invoke), \
+             patch("src.infra.llm.client.use_offline_tools", return_value=False):
 
             state: AgentState = {
                 "question": "Đếm xe",
@@ -699,7 +699,7 @@ Tests for:
 - chart_rows included in __chart__ event when render_chart input has rows.
 - chart_rows included in __answer__ detail when chart present.
 
-Mock pattern follows test_api.py: patch src.agent.graph.run_agent_stream.
+Mock pattern follows test_api.py: patch src.domain.agents.graph.run_agent_stream.
 """
 
 
@@ -709,7 +709,7 @@ from unittest.mock import patch
 import pytest
 from fastapi.testclient import TestClient
 
-from src.agent.graph import Agent_Output
+from src.domain.agents.graph import Agent_Output
 from src.main import _build_chart_sse_event, app
 
 client = TestClient(app)
@@ -788,11 +788,11 @@ def _mock_stream_no_chart(*args, **kwargs):
 
 def test_stream_emits_chart_event_on_render_chart(monkeypatch):
     """POST /api/agent/stream phải emit __chart__ event khi render_chart node có chart_png_base64."""
-    monkeypatch.setattr("src.monitoring.tracing.settings.monitoring_enabled", False)
+    monkeypatch.setattr("src.infra.monitoring.tracing.settings.monitoring_enabled", False)
     from src.main import _cache
     _cache.clear()
 
-    with patch("src.agent.graph.run_agent_stream", side_effect=_mock_stream_with_chart):
+    with patch("src.domain.agents.graph.run_agent_stream", side_effect=_mock_stream_with_chart):
         res = client.post(
             "/api/agent/stream",
             json={"question": "Vẽ biểu đồ xe hôm nay", "session_id": "test-chart", "user_id": "tester"},
@@ -814,11 +814,11 @@ def test_stream_emits_chart_event_on_render_chart(monkeypatch):
 
 def test_stream_answer_detail_includes_chart_when_present(monkeypatch):
     """__answer__ SSE event detail phải có chart_type và chart_spec khi chart được render."""
-    monkeypatch.setattr("src.monitoring.tracing.settings.monitoring_enabled", False)
+    monkeypatch.setattr("src.infra.monitoring.tracing.settings.monitoring_enabled", False)
     from src.main import _cache
     _cache.clear()
 
-    with patch("src.agent.graph.run_agent_stream", side_effect=_mock_stream_with_chart):
+    with patch("src.domain.agents.graph.run_agent_stream", side_effect=_mock_stream_with_chart):
         res = client.post(
             "/api/agent/stream",
             json={"question": "Vẽ biểu đồ xe hôm nay", "session_id": "test-chart2", "user_id": "tester"},
@@ -866,11 +866,11 @@ def test_chart_sse_event_schema_fields():
 
 def test_stream_no_chart_event_when_no_chart(monkeypatch):
     """Không có __chart__ event khi stream không có render_chart node với chart_png_base64."""
-    monkeypatch.setattr("src.monitoring.tracing.settings.monitoring_enabled", False)
+    monkeypatch.setattr("src.infra.monitoring.tracing.settings.monitoring_enabled", False)
     from src.main import _cache
     _cache.clear()
 
-    with patch("src.agent.graph.run_agent_stream", side_effect=_mock_stream_no_chart):
+    with patch("src.domain.agents.graph.run_agent_stream", side_effect=_mock_stream_no_chart):
         res = client.post(
             "/api/agent/stream",
             json={"question": "Hôm nay có bao nhiêu xe?", "session_id": "test-no-chart", "user_id": "tester"},
@@ -895,11 +895,11 @@ def test_stream_no_chart_event_when_no_chart(monkeypatch):
 
 def test_stream_chart_event_includes_chart_rows(monkeypatch):
     """__chart__ SSE event phải có chart_rows khi render_chart event input có rows."""
-    monkeypatch.setattr("src.monitoring.tracing.settings.monitoring_enabled", False)
+    monkeypatch.setattr("src.infra.monitoring.tracing.settings.monitoring_enabled", False)
     from src.main import _cache
     _cache.clear()
 
-    with patch("src.agent.graph.run_agent_stream", side_effect=_mock_stream_with_chart):
+    with patch("src.domain.agents.graph.run_agent_stream", side_effect=_mock_stream_with_chart):
         res = client.post(
             "/api/agent/stream",
             json={"question": "Vẽ biểu đồ xe hôm nay", "session_id": "test-chart-rows", "user_id": "tester"},
@@ -922,11 +922,11 @@ def test_stream_chart_event_includes_chart_rows(monkeypatch):
 
 def test_stream_answer_detail_includes_chart_rows(monkeypatch):
     """__answer__ SSE event detail phải có chart_rows khi chart được render với rows."""
-    monkeypatch.setattr("src.monitoring.tracing.settings.monitoring_enabled", False)
+    monkeypatch.setattr("src.infra.monitoring.tracing.settings.monitoring_enabled", False)
     from src.main import _cache
     _cache.clear()
 
-    with patch("src.agent.graph.run_agent_stream", side_effect=_mock_stream_with_chart):
+    with patch("src.domain.agents.graph.run_agent_stream", side_effect=_mock_stream_with_chart):
         res = client.post(
             "/api/agent/stream",
             json={"question": "Vẽ biểu đồ xe hôm nay", "session_id": "test-answer-rows", "user_id": "tester"},
@@ -1453,8 +1453,8 @@ def test_stream_chart_question_emits_chart_and_answer_events():
     ]
 
     with (
-        patch("src.llm.client.use_offline_tools", return_value=True),
-        patch("src.agent.graph.execute_sql", return_value=mock_rows),
+        patch("src.infra.llm.client.use_offline_tools", return_value=True),
+        patch("src.domain.agents.graph.execute_sql", return_value=mock_rows),
     ):
         res = client.post("/api/agent/stream", json=req_body)
 
@@ -1520,7 +1520,7 @@ def test_stream_preserves_session_and_user_ids():
     session_id = "sess-preserve-123"
     user_id = "user-preserve-456"
 
-    with patch("src.llm.client.use_offline_tools", return_value=True):
+    with patch("src.infra.llm.client.use_offline_tools", return_value=True):
         res = client.post(
             "/api/agent/stream",
             json={
@@ -1558,9 +1558,9 @@ from unittest.mock import patch
 import pytest
 from fastapi.testclient import TestClient
 
-from src.agent.graph import respond_node
-from src.llm.schemas import QueryResult
-from src.guardrails import EMPTY_TOOL_REPLY, check_output, empty_stat_reply
+from src.domain.agents.graph import respond_node
+from src.infra.llm.schemas import QueryResult
+from src.shared.guardrails import EMPTY_TOOL_REPLY, check_output, empty_stat_reply
 from src.main import app
 
 client = TestClient(app)
@@ -1606,7 +1606,7 @@ def test_check_output_tool_empty_honest_normalized_to_zero():
 
 
 def test_api_chat_empty_query_answer_has_zero():
-    from src.agent.graph import Agent_Output
+    from src.domain.agents.graph import Agent_Output
 
     empty_out = Agent_Output(
         question="Hôm nay có phát hiện leo trèo không?",
@@ -1615,7 +1615,7 @@ def test_api_chat_empty_query_answer_has_zero():
         detail="query_data",
     )
 
-    with patch("src.agent.graph.run_agent", return_value=empty_out):
+    with patch("src.domain.agents.graph.run_agent", return_value=empty_out):
         res = client.post(
             "/api/chat",
             json={

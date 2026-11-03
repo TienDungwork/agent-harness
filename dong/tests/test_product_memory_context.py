@@ -16,7 +16,7 @@ import pytest
 
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
 
-from src.memory.context import (
+from src.infra.memory.context import (
     REINJECT_PREFIX,
     SUMMARY_PREFIX,
     compress_tool_result,
@@ -103,7 +103,7 @@ def test_summarize_old_messages_creates_summary_message():
 
     assert len(messages) == 15
 
-    with patch("src.memory.context.summarize_text", return_value="Tóm tắt các sự kiện an ninh từ lượt 1 đến 10."):
+    with patch("src.infra.memory.context.summarize_text", return_value="Tóm tắt các sự kiện an ninh từ lượt 1 đến 10."):
         compacted = summarize_old_messages(messages, keep_recent=4)
         assert len(compacted) == 5
         # Message đầu tiên là bản tóm tắt
@@ -130,7 +130,7 @@ def test_summarize_old_messages_short_history_no_compact():
 def test_compress_tool_result_skips_short_output():
     """Kết quả tool ngắn (< 300 token * 4 chars) giữ nguyên bản, không gọi LLM nén."""
     short_table = "| camera | count |\n| C01 | 15 |\n"
-    with patch("src.memory.context.invoke_text") as mock_invoke:
+    with patch("src.infra.memory.context.invoke_text") as mock_invoke:
         result = compress_tool_result(short_table, query="Số xe camera C01?", max_tokens=300)
         assert result == short_table
         assert not mock_invoke.called
@@ -141,8 +141,8 @@ def test_compress_tool_result_compresses_long_output():
     long_raw_data = "Sự kiện chi tiết camera: " + ("ID: 15K, Loại xe: tải, Cổng: 1, Thời gian: 08:30;\n" * 60)
     assert len(long_raw_data) > 1200
 
-    with patch("src.memory.context.invoke_text", return_value="Tổng hợp: 60 lượt xe tải qua Cổng 1 lúc 08:30."):
-        with patch("src.memory.context.use_offline_tools", return_value=False):
+    with patch("src.infra.memory.context.invoke_text", return_value="Tổng hợp: 60 lượt xe tải qua Cổng 1 lúc 08:30."):
+        with patch("src.infra.memory.context.use_offline_tools", return_value=False):
             compressed = compress_tool_result(long_raw_data, query="Bao nhiêu xe tải qua cổng 1?", max_tokens=250)
             assert "Tổng hợp: 60 lượt xe tải" in compressed
 
@@ -196,7 +196,7 @@ def test_langchain_base_messages_compatibility():
 
 def test_latest_human_query_scans_backwards():
     """latest_human_query quét ngược qua các tool message để tìm câu hỏi user gần nhất."""
-    from src.memory.context import latest_human_query, _latest_human_query
+    from src.infra.memory.context import latest_human_query, _latest_human_query
 
     messages = [
         {"role": "user", "content": "Câu hỏi đầu tiên"},
@@ -213,7 +213,7 @@ def test_latest_human_query_scans_backwards():
 
 def test_detect_repetition_detects_infinite_loop():
     """detect_repetition trả về True khi có window tool calls giống hệt nhau liên tiếp."""
-    from src.memory.context import detect_repetition, _detect_repetition, REPETITION_WARNING
+    from src.infra.memory.context import detect_repetition, _detect_repetition, REPETITION_WARNING
 
     # 4 tool calls giống nhau liên tiếp -> bị kẹt vòng lặp
     stuck_messages = [
@@ -240,7 +240,7 @@ def test_detect_repetition_detects_infinite_loop():
 
 def test_create_compaction_diff_persists_to_state():
     """create_compaction_diff tạo danh sách RemoveMessage(id) và 1 summary message."""
-    from src.memory.context import create_compaction_diff
+    from src.infra.memory.context import create_compaction_diff
     from langchain_core.messages import HumanMessage, AIMessage, RemoveMessage, SystemMessage
 
     msgs = [
@@ -254,7 +254,7 @@ def test_create_compaction_diff_persists_to_state():
         AIMessage(content="Trả lời gần 2", id="m-8"),
     ]
 
-    with patch("src.memory.context.use_offline_tools", return_value=True):
+    with patch("src.infra.memory.context.use_offline_tools", return_value=True):
         diff = create_compaction_diff(msgs, keep_recent=4)
         assert "messages" in diff
         diff_msgs = diff["messages"]
@@ -270,7 +270,7 @@ def test_create_compaction_diff_persists_to_state():
 
 def test_should_compact_route_conditional_edge():
     """should_compact_route trả về 'compact' nếu vượt 40% window, ngược lại 'continue'."""
-    from src.memory.context import should_compact_route
+    from src.infra.memory.context import should_compact_route
 
     # Dưới ngưỡng
     short_msgs = [{"role": "user", "content": "A" * 100}]

@@ -15,10 +15,10 @@ import pytest
 from fastapi.testclient import TestClient
 
 from src.main import app
-from src.agent.graph import Agent_Input, recall_node, run_agent
-from src.memory.longterm import clear_long_term, recall_long_term, save_to_long_term
-from src.memory.ttl_cache import clear_ttl_cache, make_cache_key, get_ttl_cached
-from src.sessions import create_session, append_session_messages
+from src.domain.agents.graph import Agent_Input, recall_node, run_agent
+from src.infra.memory.longterm import clear_long_term, recall_long_term, save_to_long_term
+from src.infra.memory.ttl_cache import clear_ttl_cache, make_cache_key, get_ttl_cached
+from src.infra.session import create_session, append_session_messages
 
 
 @pytest.fixture(autouse=True)

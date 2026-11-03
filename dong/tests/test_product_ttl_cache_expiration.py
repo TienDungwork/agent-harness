@@ -15,9 +15,9 @@ from unittest.mock import patch
 import pytest
 from fastapi.testclient import TestClient
 
-from src.config import settings
+from src.shared.config import settings
 from src.main import app
-from src.memory.ttl_cache import (
+from src.infra.memory.ttl_cache import (
     _ttl_cache,
     _ttl_lock,
     cleanup_expired,

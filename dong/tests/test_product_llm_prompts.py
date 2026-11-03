@@ -11,13 +11,13 @@ from __future__ import annotations
 import pytest
 from langchain_openai import ChatOpenAI
 
-from src.llm import (
+from src.infra.llm import (
     _BACKENDS,
     _RotatingKeyPool,
     base_llm,
     use_offline_tools,
 )
-from src.config import settings
+from src.shared.config import settings
 
 
 def test_backends_registry_contains_required_providers():
@@ -45,7 +45,7 @@ def test_base_llm_self_hosted_configuration(monkeypatch):
 def test_base_llm_openai_cloud_configuration(monkeypatch):
     """Kiểm tra khởi tạo ChatOpenAI cho OpenAI Cloud gpt-4o-mini."""
     monkeypatch.setattr(settings, "openai_api_keys", "sk-proj-test1,sk-proj-test2")
-    from src.llm import _pool
+    from src.infra.llm import _pool
     _pool.cache_clear()
 
     llm = base_llm(backend_override="openai")
@@ -82,7 +82,7 @@ from pathlib import Path
 
 import pytest
 
-from src.prompts import PromptRegistry, registry
+from src.infra.prompts import PromptRegistry, registry
 
 
 def test_prompt_registry_default_dir_is_resource():
@@ -146,7 +146,7 @@ def test_each_prompt_name_loads(prompt_name: str):
 def test_render_missing_var_raises_value_error_for_prompt_with_vars(monkeypatch):
     """Kiểm tra render prompt có chứa biến khi thiếu biến sẽ raise ValueError."""
     from unittest.mock import patch
-    from src.prompts.registry import Prompt
+    from src.infra.prompts.registry import Prompt
 
     reg = PromptRegistry()
     fake_prompt = Prompt(name="test_vars", version=1, template="Xin chào {now}, user là {user}")
@@ -187,8 +187,8 @@ import base64
 import pytest
 from pydantic import ValidationError
 
-from src.chart import plan_chart, render_chart, should_render_chart
-from src.llm.schemas import (
+from src.infra.chart import plan_chart, render_chart, should_render_chart
+from src.infra.llm.schemas import (
     ChartSpec,
     DocsAnswer,
     IntentResult,
@@ -196,7 +196,7 @@ from src.llm.schemas import (
     RewrittenQuestion,
     StatAnswer,
 )
-from src.llm.structured import invoke_structured
+from src.infra.llm.structured import invoke_structured
 
 
 def test_rewritten_question_schema_defaults():
@@ -239,7 +239,7 @@ def test_invoke_structured_mock_returns_schema(monkeypatch):
             assert schema is IntentResult
             return _FakeStructured()
 
-    monkeypatch.setattr("src.llm.structured.base_llm", lambda **kwargs: _FakeLLM())
+    monkeypatch.setattr("src.infra.llm.structured.base_llm", lambda **kwargs: _FakeLLM())
 
     result = invoke_structured(
         [{"role": "user", "content": "làm sao thêm camera?"}],
@@ -263,7 +263,7 @@ def test_invoke_structured_coerces_dict_to_schema(monkeypatch):
         def with_structured_output(self, schema):
             return _FakeStructured()
 
-    monkeypatch.setattr("src.llm.structured.base_llm", lambda **kwargs: _FakeLLM())
+    monkeypatch.setattr("src.infra.llm.structured.base_llm", lambda **kwargs: _FakeLLM())
 
     result = invoke_structured([{"role": "user", "content": "xe vào hôm nay"}], RewrittenQuestion)
     assert isinstance(result, RewrittenQuestion)
@@ -280,7 +280,7 @@ def test_invoke_structured_validation_error_is_clear(monkeypatch):
         def with_structured_output(self, schema):
             return _FakeStructured()
 
-    monkeypatch.setattr("src.llm.structured.base_llm", lambda **kwargs: _FakeLLM())
+    monkeypatch.setattr("src.infra.llm.structured.base_llm", lambda **kwargs: _FakeLLM())
 
     with pytest.raises(RuntimeError, match="không khớp schema IntentResult"):
         invoke_structured([{"role": "user", "content": "trời mưa?"}], IntentResult)
@@ -291,7 +291,7 @@ def test_invoke_structured_llm_failure_is_clear(monkeypatch):
         def with_structured_output(self, schema):
             raise ConnectionError("refused")
 
-    monkeypatch.setattr("src.llm.structured.base_llm", lambda **kwargs: _FakeLLM())
+    monkeypatch.setattr("src.infra.llm.structured.base_llm", lambda **kwargs: _FakeLLM())
 
     with pytest.raises(RuntimeError, match="Lỗi LLM structured"):
         invoke_structured([{"role": "user", "content": "hi"}], RewrittenQuestion)
@@ -432,8 +432,8 @@ def test_plan_chart_mock_structured_online(monkeypatch):
             assert schema is ChartSpec
             return _FakeStructured()
 
-    monkeypatch.setattr("src.chart.render.use_offline_tools", lambda: False)
-    monkeypatch.setattr("src.llm.structured.base_llm", lambda **kwargs: _FakeLLM())
+    monkeypatch.setattr("src.infra.chart.render.use_offline_tools", lambda: False)
+    monkeypatch.setattr("src.infra.llm.structured.base_llm", lambda **kwargs: _FakeLLM())
 
     rows = [{"ngay": "2026-09-21", "luot": 100}]
     result = plan_chart(rows, "Vẽ xu hướng lưu lượng")
@@ -449,8 +449,8 @@ def test_plan_chart_llm_failure_falls_back_to_offline(monkeypatch):
         def with_structured_output(self, schema):
             raise RuntimeError("LLM connection timeout")
 
-    monkeypatch.setattr("src.chart.render.use_offline_tools", lambda: False)
-    monkeypatch.setattr("src.llm.structured.base_llm", lambda **kwargs: _FakeLLM())
+    monkeypatch.setattr("src.infra.chart.render.use_offline_tools", lambda: False)
+    monkeypatch.setattr("src.infra.llm.structured.base_llm", lambda **kwargs: _FakeLLM())
 
     rows = [{"vehicle_type": "BUS", "n": 8}]
     result = plan_chart(rows, "Vẽ biểu đồ xe buýt")
@@ -484,7 +484,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from src.main import USER_ERROR_MAX_LEN, _format_error_message, app
-from src.prompts.registry import Prompt, PromptRegistry, registry
+from src.infra.prompts.registry import Prompt, PromptRegistry, registry
 
 client = TestClient(app)
 
@@ -613,13 +613,13 @@ def test_api_chat_prompt_error_returns_503_friendly_message():
 
 def test_api_stream_prompt_error_yields_friendly_answer_sse(monkeypatch):
     """Lỗi prompt trong /api/agent/stream không làm crash generator, trả về __answer__ error."""
-    monkeypatch.setattr("src.monitoring.tracing.settings.monitoring_enabled", False)
+    monkeypatch.setattr("src.infra.monitoring.tracing.settings.monitoring_enabled", False)
     from src.main import _cache
 
     _cache.clear()
 
     with patch(
-        "src.agent.graph.run_agent_stream",
+        "src.domain.agents.graph.run_agent_stream",
         side_effect=ValueError("Prompt 'agent_system' thiếu biến: ['now']"),
     ):
         res = client.post(
@@ -658,7 +658,7 @@ def test_allowed_tables_resource_json_valid():
 
 def test_sql_agent_prompt_strict_no_ramble():
     """Kiểm tra prompt sql_agent có quy tắc cấm suy luận lan man và chỉ xuất 1 khối ```sql."""
-    from src.prompts import registry
+    from src.infra.prompts import registry
     rendered = registry().render("sql_agent")
     assert "CẤM SUY LUẬN LAN MAN" in rendered or "KHÔNG giải thích" in rendered
     assert "```sql" in rendered
@@ -666,7 +666,7 @@ def test_sql_agent_prompt_strict_no_ramble():
 
 def test_invoke_text_passes_stop_words(monkeypatch):
     """Kiểm tra invoke_text truyền đúng tham số stop vào LLM runnable."""
-    from src.llm.client import invoke_text
+    from src.infra.llm.client import invoke_text
     from unittest.mock import MagicMock, patch
 
     mock_llm = MagicMock()
@@ -674,7 +674,7 @@ def test_invoke_text_passes_stop_words(monkeypatch):
     mock_llm.bind.return_value = mock_bound
     mock_bound.invoke.return_value = MagicMock(content="SELECT 1;")
 
-    with patch("src.llm.client.base_llm", return_value=mock_llm):
+    with patch("src.infra.llm.client.base_llm", return_value=mock_llm):
         out = invoke_text(
             "system prompt",
             "user prompt",

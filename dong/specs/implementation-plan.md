@@ -55,6 +55,15 @@
 
 **Done khi:** `graph.py` < ~400 dòng — đạt (~90 dòng facade).
 
+### Phase 11 — Layout `src/` (vn-stock `ai_backend`)
+
+- [x] `domain/` (`agents`, `knowledge`), `infra/` (db, memory, llm, chart, monitoring, prompts, session), `shared/` (config, guardrails, feedback).
+- [x] `api/routers`, `api/models`, `api/helpers`.
+- [x] Sửa path `resource/` sau khi đổi depth (`catalog`, `prompts`, `camera_registry`).
+- [x] Cập nhật import toàn repo + `src/README.md`.
+
+**Done khi:** `from src.main import app` OK; pytest orchestrator + API gateway pass.
+
 ---
 
 ## Tổng quan các Phase

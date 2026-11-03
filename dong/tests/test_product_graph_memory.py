@@ -5,7 +5,7 @@ from __future__ import annotations
 import pytest
 from unittest.mock import MagicMock, patch
 
-from src.agent.graph import (
+from src.domain.agents.graph import (
     Agent_Input,
     Agent_Output,
     _memory_context_block,
@@ -15,8 +15,8 @@ from src.agent.graph import (
     run_agent,
     run_agent_stream,
 )
-from src.agent.inline_respond import generate_inline_response
-from src.memory import (
+from src.domain.agents.inline_respond import generate_inline_response
+from src.infra.memory import (
     clear_long_term,
     clear_ttl_cache,
     recall_long_term,
@@ -83,7 +83,7 @@ def test_extract_memory_node_stores_facts_directly():
 
 def test_sliding_window_prunes_long_history(monkeypatch):
     """Lịch sử hội thoại dài trên 20 tin nhắn được sliding_window thu gọn an toàn."""
-    from src.agent.graph import rewrite_node
+    from src.domain.agents.graph import rewrite_node
 
     long_messages = [HumanMessage(content=f"Câu hỏi số {i}") for i in range(25)]
     state = {
@@ -96,7 +96,7 @@ def test_sliding_window_prunes_long_history(monkeypatch):
 
 def test_compress_tool_result_applied_when_long(monkeypatch):
     """Khi kết quả tool/bảng SQL quá dài (> 1200 chars), compress_tool_result được gọi để nén."""
-    from src.memory.context import compress_tool_result
+    from src.infra.memory.context import compress_tool_result
 
     raw_table = "\n".join(f"camera_{i}=Cổng_{i}, so_luot={i*10}, loai_xe=TRUCK" for i in range(50))
     assert len(raw_table) > 1200
@@ -125,13 +125,13 @@ def test_instruction_reinject_in_respond_prompt(monkeypatch):
         captured_sys.append(sys_prompt)
         return "Kết quả truy vấn xe tải."
 
-    monkeypatch.setattr("src.llm.client.use_offline_tools", lambda: False)
-    monkeypatch.setattr("src.llm.client.invoke_text", mock_invoke)
-    monkeypatch.setattr("src.agent.generate_sql.invoke_text", mock_invoke)
-    monkeypatch.setattr("src.agent.generate_sql.use_offline_tools", lambda: False)
-    monkeypatch.setattr("src.agent.execute_sql.use_offline_tools", lambda: False)
+    monkeypatch.setattr("src.infra.llm.client.use_offline_tools", lambda: False)
+    monkeypatch.setattr("src.infra.llm.client.invoke_text", mock_invoke)
+    monkeypatch.setattr("src.domain.agents.generate_sql.invoke_text", mock_invoke)
+    monkeypatch.setattr("src.domain.agents.generate_sql.use_offline_tools", lambda: False)
+    monkeypatch.setattr("src.domain.agents.execute_sql.use_offline_tools", lambda: False)
     monkeypatch.setattr(
-        "src.agent.execute_sql.execute_sql",
+        "src.domain.agents.execute_sql.execute_sql",
         lambda sql, params=None: ([{"loai_xe": "TRUCK", "so_luot": 25}], ["loai_xe", "so_luot"]),
     )
 

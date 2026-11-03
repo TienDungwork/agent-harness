@@ -17,7 +17,7 @@ from fastapi.testclient import TestClient
 import pytest
 
 from src.main import app
-from src.feedback import FEEDBACK_FILE, ATTACHMENTS_DIR, get_all_feedback
+from src.shared.feedback import FEEDBACK_FILE, ATTACHMENTS_DIR, get_all_feedback
 
 client = TestClient(app)
 
@@ -32,8 +32,8 @@ def test_submit_positive_feedback_ac3(tmp_path, monkeypatch):
     """AC-3: Đánh giá Like (rating: positive) được lưu đầy đủ vào data/feedback.json."""
     custom_fb_file = tmp_path / "feedback.json"
     custom_attach_dir = tmp_path / "attachments"
-    monkeypatch.setattr("src.feedback.FEEDBACK_FILE", custom_fb_file)
-    monkeypatch.setattr("src.feedback.ATTACHMENTS_DIR", custom_attach_dir)
+    monkeypatch.setattr("src.shared.feedback.FEEDBACK_FILE", custom_fb_file)
+    monkeypatch.setattr("src.shared.feedback.ATTACHMENTS_DIR", custom_attach_dir)
 
     payload = {
         "session_id": "sess_test_1",
@@ -64,8 +64,8 @@ def test_submit_negative_feedback_with_image_ac4(tmp_path, monkeypatch):
     """AC-4: Đánh giá Dislike kèm lý do và ảnh được giải mã lưu file và đính kèm đường dẫn."""
     custom_fb_file = tmp_path / "feedback.json"
     custom_attach_dir = tmp_path / "attachments"
-    monkeypatch.setattr("src.feedback.FEEDBACK_FILE", custom_fb_file)
-    monkeypatch.setattr("src.feedback.ATTACHMENTS_DIR", custom_attach_dir)
+    monkeypatch.setattr("src.shared.feedback.FEEDBACK_FILE", custom_fb_file)
+    monkeypatch.setattr("src.shared.feedback.ATTACHMENTS_DIR", custom_attach_dir)
 
     payload = {
         "session_id": "sess_test_2",
@@ -104,8 +104,8 @@ def test_feedback_data_integrity_ac5(tmp_path, monkeypatch):
     """AC-5: File feedback.json là mảng JSON hợp lệ, giữ nguyên ký tự tiếng Việt có dấu."""
     custom_fb_file = tmp_path / "feedback.json"
     custom_attach_dir = tmp_path / "attachments"
-    monkeypatch.setattr("src.feedback.FEEDBACK_FILE", custom_fb_file)
-    monkeypatch.setattr("src.feedback.ATTACHMENTS_DIR", custom_attach_dir)
+    monkeypatch.setattr("src.shared.feedback.FEEDBACK_FILE", custom_fb_file)
+    monkeypatch.setattr("src.shared.feedback.ATTACHMENTS_DIR", custom_attach_dir)
 
     # Gửi nhiều feedback liên tiếp
     for i in range(3):
@@ -228,8 +228,8 @@ def test_feedback_image_save_failure_returns_422(tmp_path, monkeypatch):
     """Khi có image_base64 hợp lệ nhưng ghi file thất bại, API trả 422 (không lưu im lặng)."""
     custom_fb_file = tmp_path / "feedback.json"
     custom_attach_dir = tmp_path / "attachments"
-    monkeypatch.setattr("src.feedback.FEEDBACK_FILE", custom_fb_file)
-    monkeypatch.setattr("src.feedback.ATTACHMENTS_DIR", custom_attach_dir)
+    monkeypatch.setattr("src.shared.feedback.FEEDBACK_FILE", custom_fb_file)
+    monkeypatch.setattr("src.shared.feedback.ATTACHMENTS_DIR", custom_attach_dir)
 
     def _fail_write(_self, _data):
         raise OSError("disk full")
@@ -253,8 +253,8 @@ def test_submit_negative_feedback_with_custom_image_filename(tmp_path, monkeypat
     """Kiểm tra lưu file ảnh với filename tùy chỉnh do người dùng upload."""
     custom_fb_file = tmp_path / "feedback.json"
     custom_attach_dir = tmp_path / "attachments"
-    monkeypatch.setattr("src.feedback.FEEDBACK_FILE", custom_fb_file)
-    monkeypatch.setattr("src.feedback.ATTACHMENTS_DIR", custom_attach_dir)
+    monkeypatch.setattr("src.shared.feedback.FEEDBACK_FILE", custom_fb_file)
+    monkeypatch.setattr("src.shared.feedback.ATTACHMENTS_DIR", custom_attach_dir)
 
     payload = {
         "session_id": "sess_test_custom_fn",
@@ -280,8 +280,8 @@ def test_feedback_sqlite_direct_query(tmp_path, monkeypatch):
     import sqlite3
     custom_fb_file = tmp_path / "feedback.json"
     custom_db_file = tmp_path / "feedback.db"
-    monkeypatch.setattr("src.feedback.FEEDBACK_FILE", custom_fb_file)
-    monkeypatch.setattr("src.feedback.FEEDBACK_DB", custom_db_file)
+    monkeypatch.setattr("src.shared.feedback.FEEDBACK_FILE", custom_fb_file)
+    monkeypatch.setattr("src.shared.feedback.FEEDBACK_DB", custom_db_file)
 
     payload = {
         "session_id": "sess_sqlite_1",
@@ -317,8 +317,8 @@ def test_feedback_sqlite_auto_migration(tmp_path, monkeypatch):
     import sqlite3
     custom_fb_file = tmp_path / "feedback.json"
     custom_db_file = tmp_path / "feedback.db"
-    monkeypatch.setattr("src.feedback.FEEDBACK_FILE", custom_fb_file)
-    monkeypatch.setattr("src.feedback.FEEDBACK_DB", custom_db_file)
+    monkeypatch.setattr("src.shared.feedback.FEEDBACK_FILE", custom_fb_file)
+    monkeypatch.setattr("src.shared.feedback.FEEDBACK_DB", custom_db_file)
 
     # Giả lập file feedback.json cũ có sẵn dữ liệu
     legacy_data = [

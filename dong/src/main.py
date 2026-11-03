@@ -9,34 +9,36 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
-from src.agent.graph import Agent_Input
+from src.domain.agents.graph import Agent_Input
 
 
 def run_agent(inp, parent_span=None, session_id: str = "default", user_id: str | None = None):
-    from src.agent.graph import run_agent as _graph_run_agent
+    from src.domain.agents.graph import run_agent as _graph_run_agent
 
     return _graph_run_agent(inp, parent_span=parent_span, session_id=session_id, user_id=user_id)
 
 
 def run_agent_stream(inp, parent_span=None, session_id: str = "default", user_id: str | None = None):
-    from src.agent.graph import run_agent_stream as _graph_run_agent_stream
+    from src.domain.agents.graph import run_agent_stream as _graph_run_agent_stream
 
     return _graph_run_agent_stream(inp, parent_span=parent_span, session_id=session_id, user_id=user_id)
-from src.api.cache_helpers import lookup_ttl_cache as _lookup_ttl_cache
-from src.api.errors import (
+
+
+from src.api.helpers.cache_helpers import lookup_ttl_cache as _lookup_ttl_cache
+from src.api.helpers.errors import (
     USER_ERROR_MAX_LEN,
     format_error_message as _format_error_message,
     short_user_error as _short_user_error,
 )
-from src.api.routes_agent import ask, chat, router as agent_router, stream_agent
-from src.api.routes_feedback import router as feedback_router
-from src.api.routes_memory import router as memory_router
-from src.api.routes_meta import router as meta_router
-from src.api.routes_sessions import router as sessions_router
-from src.api.schemas import AskRequest, AskResponse, ChatRequest, ChatResponse
-from src.api.sse_helpers import build_chart_sse_event as _build_chart_sse_event
-from src.guardrails import GuardrailViolation, rejection_detail
-from src.memory.ttl_cache import _cache
+from src.api.routers.routes_agent import ask, chat, router as agent_router, stream_agent
+from src.api.routers.routes_feedback import router as feedback_router
+from src.api.routers.routes_memory import router as memory_router
+from src.api.routers.routes_meta import router as meta_router
+from src.api.routers.routes_sessions import router as sessions_router
+from src.api.models.schemas import AskRequest, AskResponse, ChatRequest, ChatResponse
+from src.api.helpers.sse_helpers import build_chart_sse_event as _build_chart_sse_event
+from src.shared.guardrails import GuardrailViolation, rejection_detail
+from src.infra.memory.ttl_cache import _cache
 
 app = FastAPI(
     title="agent_ATIN v3 API",

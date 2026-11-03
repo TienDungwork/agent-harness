@@ -16,14 +16,14 @@ from unittest.mock import MagicMock, patch
 import pytest
 from langchain_core.messages import AIMessage, HumanMessage
 
-from src.memory.extract import (
+from src.infra.memory.extract import (
     _heuristic_extract,
     extract_and_store_memory,
     extract_from_messages,
     extract_memories,
     memory_detail_includes_answer,
 )
-from src.memory.longterm import clear_long_term, recall_long_term
+from src.infra.memory.longterm import clear_long_term, recall_long_term
 
 
 @pytest.fixture(autouse=True)
@@ -91,9 +91,9 @@ def test_extract_memories_skips_realtime_traffic_stats():
 
 def test_extract_memories_online_with_llm(monkeypatch):
     """Khi online và detail=docs: gọi LLM trích xuất thông tin hữu ích."""
-    monkeypatch.setattr("src.memory.extract.use_offline_tools", lambda: False)
+    monkeypatch.setattr("src.infra.memory.extract.use_offline_tools", lambda: False)
     mock_invoke = MagicMock(return_value="- Người dùng phụ trách quản lý camera kho A\n- Lưu ý ca trực từ 6h-14h")
-    monkeypatch.setattr("src.memory.extract.invoke_text", mock_invoke)
+    monkeypatch.setattr("src.infra.memory.extract.invoke_text", mock_invoke)
 
     facts = extract_memories(
         user_id="u_online",

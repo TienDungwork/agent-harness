@@ -19,9 +19,9 @@ from fastapi.testclient import TestClient
 import pytest
 
 from src.main import app, chat, ChatRequest, ask, AskRequest
-from src.agent.graph import Agent_Output
-from src.llm.schemas import QueryResult, RewrittenQuestion
-from src.memory.ttl_cache import (
+from src.domain.agents.graph import Agent_Output
+from src.infra.llm.schemas import QueryResult, RewrittenQuestion
+from src.infra.memory.ttl_cache import (
     clear_ttl_cache,
     get_ttl_cached,
     make_cache_key,
@@ -32,8 +32,8 @@ from src.memory.ttl_cache import (
 @pytest.fixture(autouse=True)
 def setup_ttl_cache(monkeypatch):
     clear_ttl_cache()
-    monkeypatch.setattr("src.config.settings.cache_enabled", True)
-    monkeypatch.setattr("src.config.settings.memory_ttl_seconds", 300)
+    monkeypatch.setattr("src.shared.config.settings.cache_enabled", True)
+    monkeypatch.setattr("src.shared.config.settings.memory_ttl_seconds", 300)
     yield
     clear_ttl_cache()
 
@@ -132,7 +132,7 @@ def test_router_stream_cache_hit_emits_cache_node_and_flag(monkeypatch):
     })
 
     mock_stream = MagicMock()
-    monkeypatch.setattr("src.agent.graph.run_agent_stream", mock_stream)
+    monkeypatch.setattr("src.domain.agents.graph.run_agent_stream", mock_stream)
 
     res = client.post("/api/agent/stream", json={"question": q, "session_id": "s_stream", "user_id": "u_stream"})
     assert res.status_code == 200
@@ -161,7 +161,7 @@ def test_router_stream_cache_miss_populates_cache(monkeypatch):
             )
         }
 
-    monkeypatch.setattr("src.agent.graph.run_agent_stream", fake_stream)
+    monkeypatch.setattr("src.domain.agents.graph.run_agent_stream", fake_stream)
 
     res = client.post("/api/agent/stream", json={"question": q, "session_id": "s_stream_miss", "user_id": "u_stream"})
     assert res.status_code == 200
@@ -186,7 +186,7 @@ def test_router_dual_key_caching_for_raw_and_rewritten_questions(monkeypatch):
         detail="query_data",
     )
     monkeypatch.setattr("src.main.run_agent", mock_run)
-    monkeypatch.setattr("src.agent.rewrite.rewrite_question_safe", lambda _q: RewrittenQuestion(text=rewritten_q))
+    monkeypatch.setattr("src.domain.agents.rewrite.rewrite_question_safe", lambda _q: RewrittenQuestion(text=rewritten_q))
 
     # Lượt 1: hỏi raw_q -> Miss -> run_agent
     resp1 = chat(ChatRequest(question=raw_q, session_id="s1", user_id="u1"))
@@ -195,7 +195,7 @@ def test_router_dual_key_caching_for_raw_and_rewritten_questions(monkeypatch):
 
     # Lượt 2: hỏi lại y hệt raw_q -> Hit ngay trước rewrite!
     mock_rewrite = MagicMock()
-    monkeypatch.setattr("src.agent.rewrite.rewrite_question_safe", mock_rewrite)
+    monkeypatch.setattr("src.domain.agents.rewrite.rewrite_question_safe", mock_rewrite)
 
     resp2 = chat(ChatRequest(question=raw_q, session_id="s1", user_id="u1"))
     assert mock_run.call_count == 1  # Không gọi lại run_agent
@@ -228,7 +228,7 @@ def test_router_identity_questions_bypass_cache(monkeypatch):
 
 def test_router_cache_disabled_bypasses_cache(monkeypatch):
     """Khi CACHE_ENABLED=False, router không đọc và không lưu cache."""
-    monkeypatch.setattr("src.config.settings.cache_enabled", False)
+    monkeypatch.setattr("src.shared.config.settings.cache_enabled", False)
 
     q = "Hôm nay có bao nhiêu lượt xe vào?"
     mock_run = MagicMock()

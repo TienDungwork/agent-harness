@@ -13,7 +13,7 @@ import json
 import re
 from dataclasses import dataclass
 
-from src.llm import invoke_text, use_offline_tools
+from src.infra.llm import invoke_text, use_offline_tools
 
 
 @dataclass

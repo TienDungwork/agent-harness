@@ -16,7 +16,7 @@ import pytest
 import yaml
 from fastapi.testclient import TestClient
 
-from src.config import Settings, settings
+from src.shared.config import Settings, settings
 from src.main import app
 
 client = TestClient(app)
@@ -151,7 +151,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from src.main import app
-from src.memory.ttl_cache import clear_ttl_cache, make_cache_key, set_ttl_cached
+from src.infra.memory.ttl_cache import clear_ttl_cache, make_cache_key, set_ttl_cached
 
 client = TestClient(app)
 
@@ -299,8 +299,8 @@ def test_mock_testclient_session_api_lifecycle():
 def test_mock_testclient_ttl_cache_stream_hit(monkeypatch):
     """Lần 2 cùng câu hỏi stat trong TTL window -> SSE stream kích hoạt node 'cache' và cache_hit=true."""
     clear_ttl_cache()
-    monkeypatch.setattr("src.config.settings.cache_enabled", True)
-    monkeypatch.setattr("src.config.settings.memory_ttl_seconds", 300)
+    monkeypatch.setattr("src.shared.config.settings.cache_enabled", True)
+    monkeypatch.setattr("src.shared.config.settings.memory_ttl_seconds", 300)
 
     question = "Hôm nay có bao nhiêu lượt xe vào?"
     session_id = "smoke_ttl_session"
@@ -320,7 +320,7 @@ def test_mock_testclient_ttl_cache_stream_hit(monkeypatch):
 
     # Đảm bảo run_agent_stream không cần gọi khi đã trúng TTL cache
     mock_stream = MagicMock()
-    monkeypatch.setattr("src.agent.graph.run_agent_stream", mock_stream)
+    monkeypatch.setattr("src.domain.agents.graph.run_agent_stream", mock_stream)
 
     # Gửi request lần 2 tới /api/agent/stream
     res = client.post(
