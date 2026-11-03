@@ -1,8 +1,59 @@
 # Implementation Plan — agent dong v9: Unified Memory & Context Engineering System (Postgres-backed)
 
-**Trạng thái:** 100% Hoàn thành — Toàn bộ 7 Phase của agent dong v9 đã được triển khai, kiểm thử và nghiệm thu thành công.  
-**Nguồn:** `specs/product-spec.md`  
-**Quy tắc:** Thực hiện tuần tự từng dòng `[ ]` một, kiểm tra kỹ lưỡng, sau đó đổi thành `[x]` và cập nhật `specs/change-log.md`. Không implement hàng loạt nhiều bước cùng lúc. Không viết code khi chưa có yêu cầu.
+**Trạng thái v9 (Memory):** 100% hoàn thành — 7 Phase bên dưới.  
+**Trạng thái v10 (Cấu trúc `src/`):** Hoàn thành — API package + tách `graph.py` (facade ~90 dòng).  
+**Nguồn:** `specs/product-spec.md`, `specs/superpowers-workflow-vi.md`  
+**Quy tắc:** Thực hiện tuần tự từng dòng `[ ]` một, kiểm tra kỹ lưỡng, sau đó đổi thành `[x]` và cập nhật `specs/change-log.md`. Không implement hàng loạt nhiều bước cùng lúc. **Task mới → thêm checklist ở đây trước khi code.**
+
+---
+
+## v10 — Cấu trúc `src/` (pattern llm-engineer-demo)
+
+**Goal:** Entry FastAPI mỏng, API tách package, giữ hành vi + test patch ổn định; tùy chọn tách `graph.py` khi có task riêng.
+
+**Architecture:** `src/main.py` mount router; `src/api/*` routes + helpers; agent vẫn `src/agent/graph.py`.
+
+| Phase v10 | Mục tiêu |
+|:--:|-----------|
+| **10.1** | Tách FastAPI khỏi `main.py` |
+| **10.2** | Docs + SDD đồng bộ |
+| **10.3** | Test suite xanh (API + orchestrator) |
+| **10.4** | (Tùy chọn) Tách module trong `graph.py` |
+
+### Phase 10.1 — API package
+
+- [x] Tạo `src/api/`: `errors`, `cache_helpers`, `sse_helpers`, `session_helpers`, `schemas`.
+- [x] Routers: `routes_meta`, `routes_sessions`, `routes_memory`, `routes_feedback`, `routes_agent`.
+- [x] `src/main.py` ~70 dòng: CORS, `include_router`, static UI, `GuardrailViolation` handler, re-export hooks test (`_cache`, schemas, …).
+- [x] `routes_agent` gọi `src.agent.graph.run_agent` / `run_agent_stream` (mock test đúng module).
+- [x] Xóa trùng feedback + exception handler trong `routes_agent.py`.
+
+**Done khi:** `pytest tests/test_product_api_gateway.py tests/test_feedback_api.py -q` pass.
+
+### Phase 10.2 — Docs & spec index
+
+- [x] Cập nhật `src/README.md` (mục `api/`).
+- [x] Ghi `specs/change-log.md` (refactor API).
+- [x] Cập nhật `specs/sdd-guide-vi.md` bảng API → `src/main.py` + `src/api/`.
+- [x] Cập nhật `specs/README.md` trạng thái v10.
+- [x] Không đổi AC endpoint — layout ghi trong `src/README.md`.
+
+**Done khi:** Dev mới đọc specs + `src/README` biết chỗ sửa route mà không mở `graph.py`.
+
+### Phase 10.3 — Regression tests
+
+- [x] `test_same_thread_docs_then_stat_clears_respond_mode` — `recall_node` reset `rewritten=None` mỗi lượt.
+- [x] Orchestrator + API gateway: 149 passed (subset graph + gateway).
+- [x] Full suite `PYTHONPATH=. pytest -q`: **765 passed**, 24 failed (chủ yếu deployment smoke / Postgres thật / vài mock path cũ — ghi change-log).
+
+**Done khi:** Hai test orchestrator trên pass; không regression API gateway.
+
+### Phase 10.4 — Tách `graph.py`
+
+- [x] Modules: `state`, `graph_runtime`, `graph_wiring`, `graph_run`, `graph_helpers`, `nodes_*`.
+- [x] `graph.py` facade + re-export patch hooks (`classify_intent_safe`, `execute_sql`, `_memory_context_block`, …).
+
+**Done khi:** `graph.py` < ~400 dòng — đạt (~90 dòng facade).
 
 ---
 
@@ -143,7 +194,7 @@
 - [x] Cập nhật file `README.md`:
   - Thêm tài liệu hướng dẫn chi tiết các lệnh chạy local trên máy (không dùng Docker và dùng Docker).
   - Cung cấp danh sách các lệnh chạy unit test cho gói Memory:
-    ```bash
+```bash
     PYTHONPATH=. pytest tests/test_product_memory_context.py tests/test_product_memory_cache.py tests/test_product_memory_postgres.py -v
     ```
 

@@ -768,7 +768,7 @@ def test_ttl_get_fails_chat_still_200_when_agent_ok(monkeypatch):
     )
 
     with patch("src.main.get_ttl_cached", side_effect=RuntimeError("Cache connection lost")), \
-         patch("src.main.run_agent", return_value=mock_output):
+         patch("src.agent.graph.run_agent", return_value=mock_output):
         res = client.post("/api/chat", json={"question": "Hôm nay có bao nhiêu xe vào?"})
 
     assert res.status_code == 200
@@ -789,7 +789,7 @@ def test_ttl_set_raises_chat_and_ask_still_return_answer(monkeypatch):
     )
 
     with patch("src.main.set_ttl_cached", side_effect=RuntimeError("Disk full / Cache write failed")), \
-         patch("src.main.run_agent", return_value=mock_output):
+         patch("src.agent.graph.run_agent", return_value=mock_output):
         # /api/chat
         res_chat = client.post("/api/chat", json={"question": "Hôm nay có bao nhiêu xe vào?"})
         assert res_chat.status_code == 200

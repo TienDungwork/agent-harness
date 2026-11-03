@@ -1,4 +1,4 @@
-"""Agent package for VMS KCN Hưng Phú (v7 Text-to-SQL + Chart)."""
+"""LangGraph agent VMS — orchestrator, Text-to-SQL, batch, guardrails (v9)."""
 
 from src.agent.chart_fallback import fallback_chart_query, should_retry_chart_query
 from src.agent.docs import answer_from_docs, handle_docs_intent, retrieve_docs

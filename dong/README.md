@@ -8,11 +8,15 @@ Trợ lý tiếng Việt thông minh cho hệ thống VMS KCN Hưng Phú: truy v
 
 | File | Nội dung |
 |------|----------|
-| [specs/product-spec.md](specs/product-spec.md) | Mục tiêu v9: Hệ thống Memory 3 tầng + Context Engineering Engine, cấu trúc PostgreSQL persistence, tiêu chí nghiệm thu AC-1 đến AC-8 |
-| [specs/implementation-plan.md](specs/implementation-plan.md) | Kế hoạch triển khai tuần tự Phase 1–7 bám sát nguyên tắc Clean Architecture & SDD |
-| [specs/test-plan.md](specs/test-plan.md) | Kế hoạch kiểm thử tự động (Unit tests Context/Postgres/Cache/Short-term) và manual smoke checklist |
-| [specs/change-log.md](specs/change-log.md) | Nhật ký thay đổi và đánh giá qua từng phase phát triển |
-| [AGENTS.md](AGENTS.md) | Quy chuẩn hành vi và nguyên tắc thực thi dành cho AI Coding Agent |
+| [specs/README.md](specs/README.md) | Chỉ mục SDD |
+| [specs/sdd-guide-vi.md](specs/sdd-guide-vi.md) | Quy trình SDD + prompt Cursor |
+| [specs/superpowers-workflow-vi.md](specs/superpowers-workflow-vi.md) | Superpowers + Ponytail + SDD |
+| [src/README.md](src/README.md) | Cấu trúc mã nguồn (như `app/` llm-engineer-demo) |
+| [specs/product-spec.md](specs/product-spec.md) | Hợp đồng sản phẩm (Memory v9, graph agent) |
+| [specs/implementation-plan.md](specs/implementation-plan.md) | Task triển khai |
+| [specs/test-plan.md](specs/test-plan.md) | pytest + smoke |
+| [specs/change-log.md](specs/change-log.md) | Nhật ký thay đổi |
+| [AGENTS.md](AGENTS.md) | Cursor + Antigravity |
 
 ---
 

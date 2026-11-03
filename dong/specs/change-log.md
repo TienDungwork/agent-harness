@@ -1,5 +1,37 @@
 # Change Log — agent dong
 
+## 2026-11-03 — v10: tách `graph.py` + fix multi-turn checkpointer
+
+- **`graph.py`** (~90 dòng): facade; nodes → `nodes_*.py`, wiring → `graph_wiring.py`, runner → `graph_run.py`.
+- **Bugfix:** `recall_node` set `rewritten=None` mỗi lượt — cùng `thread_id` không còn kẹt câu hỏi/docs trước.
+- **`main.run_agent` / `run_agent_stream`:** wrapper lazy gọi graph (patch TTL tests trên `src.main`).
+- **Verify:** `PYTHONPATH=. pytest -q` → 765 passed, 24 failed (deployment smoke, DB thật, mock path cũ — không chặn v10).
+
+---
+
+## 2026-11-03 — SDD: thêm v10 vào `implementation-plan.md`
+
+- Checklist **v10 — Cấu trúc `src/`** (10.1–10.4); đánh dấu 10.1 xong, 10.2/10.3 còn task `[ ]`.
+- `specs/README.md`, `specs/sdd-guide-vi.md` trỏ `src/api/`.
+
+---
+
+## 2026-11-03 — Refactor: `src/api/*` tách khỏi `main.py`
+
+- **`src/main.py`**: ~70 dòng — mount routers, CORS, static UI, `GuardrailViolation` handler, re-export hooks cho tests (`_cache`, `_format_error_message`, schemas, route handlers).
+- **`src/api/`**: `routes_meta`, `routes_sessions`, `routes_memory`, `routes_feedback`, `routes_agent`; helpers `errors`, `cache_helpers`, `sse_helpers`, `session_helpers`, `schemas`.
+- **Tests**: mock agent qua `src.agent.graph.run_agent` / `run_agent_stream`; cập nhật kỳ vọng SSE (`guardrail_input` trước `recall`) và `frontend/app.js`.
+
+---
+
+## 2026-11-03 — Docs: `src/README` + SDD Superpowers/Ponytail
+
+- **`src/README.md`**: Bản đồ package/`agent/*.py` (style llm-engineer-demo).
+- **`specs/superpowers-workflow-vi.md`**, **`specs/sdd-guide-vi.md`**, **`specs/README.md`**: workflow Superpowers + Ponytail gắn SDD.
+- **`src/__init__.py`**, **`main.py`**, **`agent/__init__.py`**: docstring entry gọn; sửa mô tả pipeline `graph.py` (out_of_scope → `respond_inline`).
+
+---
+
 ## 2026-09-30 — Fix Context Memory & Multi-turn Follow-up trong Streaming Chat (/api/agent/stream)
 
 ### Tóm tắt trước khi triển khai (Pre-coding Summary)

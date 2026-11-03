@@ -135,7 +135,7 @@ def test_format_error_message_sql_validate_does_not_leak_sql():
 def test_api_chat_handles_database_error_gracefully():
     from src.main import _cache
     _cache.clear()
-    with patch("src.main.run_agent", side_effect=RuntimeError("psycopg2.OperationalError: Connection refused")):
+    with patch("src.agent.graph.run_agent", side_effect=RuntimeError("psycopg2.OperationalError: Connection refused")):
         res = client.post("/api/chat", json={"question": "Hôm nay có bao nhiêu lượt xe vào?"})
         assert res.status_code == 503
         data = res.json()
@@ -145,7 +145,7 @@ def test_api_chat_handles_database_error_gracefully():
 def test_api_chat_handles_model_timeout_gracefully():
     from src.main import _cache
     _cache.clear()
-    with patch("src.main.run_agent", side_effect=TimeoutError("Model connection timed out")):
+    with patch("src.agent.graph.run_agent", side_effect=TimeoutError("Model connection timed out")):
         res = client.post("/api/chat", json={"question": "Hôm nay có bao nhiêu lượt xe vào?"})
         assert res.status_code == 503
         data = res.json()
@@ -155,7 +155,7 @@ def test_api_chat_handles_model_timeout_gracefully():
 def test_ask_endpoint_handles_error_gracefully():
     from src.main import _cache
     _cache.clear()
-    with patch("src.main.run_agent", side_effect=RuntimeError("psycopg2.OperationalError: could not connect")):
+    with patch("src.agent.graph.run_agent", side_effect=RuntimeError("psycopg2.OperationalError: could not connect")):
         res = client.post("/ask", json={"question": "Hôm nay có bao nhiêu lượt xe vào?"})
         assert res.status_code == 503
         data = res.json()
@@ -487,42 +487,43 @@ def test_api_agent_stream_running_before_done_timing():
          patch("src.agent.graph.rewrite_question", side_effect=mock_rewrite):
         stream = run_agent_stream(Agent_Input(question="Hôm nay có bao nhiêu lượt xe vào?"))
         
-        # Pull the first event (recall running)
         start_time = time.time()
         first_event = next(stream)
         events_received.append(first_event)
-        
-        # It should be "running" and should arrive immediately
-        assert first_event["node_id"] == "recall"
+
+        assert first_event["node_id"] == "guardrail_input"
         assert first_event["status"] == "running"
-        assert time.time() - start_time < 0.2  # Should not have waited 0.5s
-        
-        # Pull the next event (recall done)
+        assert time.time() - start_time < 0.2
+
         second_event = next(stream)
         events_received.append(second_event)
-        assert second_event["node_id"] == "recall"
+        assert second_event["node_id"] == "guardrail_input"
         assert second_event["status"] == "done"
 
-        # Pull next event (rewrite running)
         third_event = next(stream)
-        assert third_event["node_id"] == "rewrite"
+        assert third_event["node_id"] == "recall"
         assert third_event["status"] == "running"
 
-        # Pull next event (rewrite done)
         fourth_event = next(stream)
-        assert fourth_event["node_id"] == "rewrite"
+        assert fourth_event["node_id"] == "recall"
         assert fourth_event["status"] == "done"
 
-        # Pull next event (classify running)
         fifth_event = next(stream)
-        assert fifth_event["node_id"] == "classify"
+        assert fifth_event["node_id"] == "rewrite"
         assert fifth_event["status"] == "running"
 
-        # Pull next event (classify done)
         sixth_event = next(stream)
-        assert sixth_event["node_id"] == "classify"
+        assert sixth_event["node_id"] == "rewrite"
         assert sixth_event["status"] == "done"
-        out = sixth_event["output"]
+
+        seventh_event = next(stream)
+        assert seventh_event["node_id"] == "classify"
+        assert seventh_event["status"] == "running"
+
+        eighth_event = next(stream)
+        assert eighth_event["node_id"] == "classify"
+        assert eighth_event["status"] == "done"
+        out = eighth_event["output"]
         assert (out.get("intent") if isinstance(out, dict) else out) == "query_data"
         assert time.time() - start_time >= 0.4
 
@@ -601,11 +602,11 @@ def test_frontend_app_js_stream():
     assert "event.output" in js
 
     assert "function showNodeIo" in js
-    assert "addEventListener('click', () => showNodeIo" in js
+    assert "addEventListener('click'" in js and "showNodeIo(nodeId)" in js
     assert "addEventListener('mouseenter'" in js
     assert "showNodeIo(nodeId)" in js
     assert "IO_MAX_CHARS" in js or "2000" in js
-    assert "status !== 'done'" in js
+    assert "status === 'done'" in js
 
     handle_send = js.split("function handleSendMessage")[1]
     assert "resetGraph()" in handle_send

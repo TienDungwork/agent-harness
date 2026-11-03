@@ -1615,7 +1615,7 @@ def test_api_chat_empty_query_answer_has_zero():
         detail="query_data",
     )
 
-    with patch("src.main.run_agent", return_value=empty_out):
+    with patch("src.agent.graph.run_agent", return_value=empty_out):
         res = client.post(
             "/api/chat",
             json={
