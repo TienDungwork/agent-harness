@@ -5,9 +5,9 @@ from __future__ import annotations
 import re
 from typing import Any
 
-from src.domain.agents.generate_sql import extract_sql
-from src.domain.agents.pre_sql import get_time_column_for_table, time_range_to_filter
-from src.domain.agents.sql_scope import apply_organization_scope
+from src.domain.agents.sql.generate import extract_sql
+from src.domain.agents.sql.pre_sql import get_time_column_for_table, time_range_to_filter
+from src.domain.agents.sql.scope import apply_organization_scope
 from src.infra.db.executor import execute_sql as db_execute
 from src.infra.db.validator import validate_sql
 

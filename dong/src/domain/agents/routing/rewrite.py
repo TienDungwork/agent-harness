@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from src.domain.agents.intent import is_chat_greeting
+from src.domain.agents.routing.intent import is_chat_greeting
 from src.shared.config import settings
 from src.infra.llm.schemas import RewrittenQuestion
 from src.infra.llm.structured import invoke_structured
@@ -11,7 +11,7 @@ from src.infra.prompts import registry
 
 def _needs_rewrite_llm(cleaned: str) -> bool:
     """Câu ngắn/đơn — passthrough, không gọi LLM (giống decompose_query min_chars)."""
-    from src.domain.agents.orchestrator import _multi_question_heuristics
+    from src.domain.agents.orchestrator.plan import _multi_question_heuristics
 
     if _multi_question_heuristics(cleaned):
         return True

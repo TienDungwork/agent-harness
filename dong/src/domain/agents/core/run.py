@@ -7,10 +7,10 @@ import queue
 import threading
 from typing import Any
 
-from src.domain.agents.graph_wiring import _build_graph, _get_graph
-from src.domain.agents.nodes_memory import run_store_extract
+from src.domain.agents.core.wiring import _build_graph, _get_graph
+from src.domain.agents.nodes.memory import run_store_extract
 from src.domain.agents.state import Agent_Input, Agent_Output
-from src.domain.agents.graph_runtime import _stream_queue
+from src.domain.agents.core.runtime import _stream_queue
 from src.infra.monitoring.tracing import bind_trace_root, reset_trace_root
 
 def _fresh_invoke_state(question: str, inp: Agent_Input, uid: str, session_id: str) -> dict:

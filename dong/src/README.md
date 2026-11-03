@@ -26,11 +26,20 @@ src/
     └── feedback.py
 ```
 
-## `domain/agents/`
+## `domain/agents/` (giống vn-stock: graph + state ở root, package con)
 
-`graph.py` (~90 dòng) facade; chi tiết: `graph_wiring.py`, `graph_run.py`, `nodes_*.py`, `state.py`.
+| Package | Nội dung |
+|---------|----------|
+| `graph.py`, `state.py` | Entry + state (như `ai_backend/domain/agents/graph.py`) |
+| `core/` | wiring, run, runtime, helpers |
+| `nodes/` | memory, rewrite/classify, pipeline, respond, guardrails, io |
+| `orchestrator/` | plan, core node, synth/collect |
+| `sql/` | generate, validate, execute, batch |
+| `routing/` | intent, rewrite, inline_respond |
+| `respond/` | simple_answer, chart_fallback |
+| `adapters/` | docs, camera_registry |
 
-Luồng rút gọn: `guardrail_input → recall → rewrite → classify → orchestrator → … → respond → guardrail_output`.
+Luồng: `guardrail_input → recall → rewrite → classify → orchestrator → … → respond → guardrail_output`.
 
 ## Quy ước import
 

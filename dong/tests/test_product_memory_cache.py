@@ -382,10 +382,10 @@ def test_recall_memories_injected_into_respond_prompt(monkeypatch):
 
     monkeypatch.setattr("src.infra.llm.client.invoke_text", fake_invoke)
     monkeypatch.setattr("src.infra.llm.client.use_offline_tools", lambda: False)
-    monkeypatch.setattr("src.domain.agents.generate_sql.invoke_text", fake_invoke)
-    monkeypatch.setattr("src.domain.agents.generate_sql.use_offline_tools", lambda: False)
-    monkeypatch.setattr("src.domain.agents.execute_sql.use_offline_tools", lambda: False)
-    monkeypatch.setattr("src.domain.agents.execute_sql.execute_sql", lambda sql, params=None: [
+    monkeypatch.setattr("src.domain.agents.sql.generate.invoke_text", fake_invoke)
+    monkeypatch.setattr("src.domain.agents.sql.generate.use_offline_tools", lambda: False)
+    monkeypatch.setattr("src.domain.agents.sql.execute.use_offline_tools", lambda: False)
+    monkeypatch.setattr("src.domain.agents.sql.execute.execute_sql", lambda sql, params=None: [
         {"camera_name": "Cổng 2", "so_luot": 10},
         {"camera_name": "Cổng 1", "so_luot": 20},
     ])
@@ -624,7 +624,7 @@ def test_cache_hit_skips_rewrite_when_llm_fails(monkeypatch):
     def boom(*_args, **_kwargs):
         raise TimeoutError("LLM gateway timeout")
 
-    monkeypatch.setattr("src.domain.agents.rewrite.rewrite_question", boom)
+    monkeypatch.setattr("src.domain.agents.routing.rewrite.rewrite_question", boom)
     mock_run = MagicMock()
     monkeypatch.setattr("src.main.run_agent", mock_run)
 

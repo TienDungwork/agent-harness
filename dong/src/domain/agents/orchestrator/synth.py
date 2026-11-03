@@ -8,11 +8,11 @@ from typing import Any
 
 logger = logging.getLogger(__name__)
 
-from src.domain.agents.node_io import node_event
+from src.domain.agents.nodes.io import node_event
 from src.domain.agents.state import AgentState, Agent_Output
 from src.infra.chart.render import should_render_chart, plan_chart, render_chart, _detect_chart_type
-from src.domain.agents.graph_helpers import memory_context_block, original_question, strip_thinking
-from src.domain.agents.nodes_orchestrator_core import _reset_pipeline_fields
+from src.domain.agents.core.helpers import memory_context_block, original_question, strip_thinking
+from src.domain.agents.orchestrator.core import _reset_pipeline_fields
 from src.shared.config import settings
 from src.infra.llm.schemas import OrchestratorPlan, QueryResult, StatAnswer
 from src.infra.monitoring.tracing import trace_substep
@@ -38,7 +38,7 @@ def _extract_primary_count(rows: list, columns: list) -> float | int | None:
 
 
 def _domain_label_from_sub_question(sub_q: str) -> str:
-    from src.domain.agents.orchestrator import _ALL_EVENT_DOMAIN_LABELS
+    from src.domain.agents.orchestrator.plan import _ALL_EVENT_DOMAIN_LABELS
 
     low = (sub_q or "").lower()
     for label in _ALL_EVENT_DOMAIN_LABELS:
@@ -67,8 +67,8 @@ def _try_format_all_events_answer(
     step_results: list[dict],
     plan: OrchestratorPlan | None,
 ) -> str | None:
-    from src.domain.agents.orchestrator import _time_lead_from_question, is_all_events_plan
-    from src.domain.agents.simple_answer import _fmt_num
+    from src.domain.agents.orchestrator.plan import _time_lead_from_question, is_all_events_plan
+    from src.domain.agents.respond.simple_answer import _fmt_num
 
     if not is_all_events_plan(plan) or len(step_results) < 2:
         return None
@@ -124,8 +124,8 @@ def _comparison_direction(question: str) -> str:
 
 def _try_format_hay_comparison_answer(question: str, step_results: list[dict]) -> str | None:
     """Trả lời trực tiếp câu 'A hay B nhiều/ít hơn' từ 2 bước query_data."""
-    from src.domain.agents.orchestrator import _split_hay_comparison
-    from src.domain.agents.simple_answer import _fmt_num
+    from src.domain.agents.orchestrator.plan import _split_hay_comparison
+    from src.domain.agents.respond.simple_answer import _fmt_num
 
     parts = _split_hay_comparison(question)
     if not parts or len(step_results) != 2:
@@ -243,7 +243,7 @@ def _synthesize_orchestrator_answer(question: str, step_results: list[dict], sta
 
 def orchestrator_collect_step_node(state: AgentState) -> dict:
     """Thu kết quả batch multi-hop; lặp orchestrator hoặc chuyển respond."""
-    from src.domain.agents.orchestrator import is_all_events_plan
+    from src.domain.agents.orchestrator.plan import is_all_events_plan
 
     plan: OrchestratorPlan | None = state.get("orchestrator_plan")
     if not plan or not plan.steps:

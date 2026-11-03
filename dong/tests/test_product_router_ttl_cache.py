@@ -186,7 +186,7 @@ def test_router_dual_key_caching_for_raw_and_rewritten_questions(monkeypatch):
         detail="query_data",
     )
     monkeypatch.setattr("src.main.run_agent", mock_run)
-    monkeypatch.setattr("src.domain.agents.rewrite.rewrite_question_safe", lambda _q: RewrittenQuestion(text=rewritten_q))
+    monkeypatch.setattr("src.domain.agents.routing.rewrite.rewrite_question_safe", lambda _q: RewrittenQuestion(text=rewritten_q))
 
     # Lượt 1: hỏi raw_q -> Miss -> run_agent
     resp1 = chat(ChatRequest(question=raw_q, session_id="s1", user_id="u1"))
@@ -195,7 +195,7 @@ def test_router_dual_key_caching_for_raw_and_rewritten_questions(monkeypatch):
 
     # Lượt 2: hỏi lại y hệt raw_q -> Hit ngay trước rewrite!
     mock_rewrite = MagicMock()
-    monkeypatch.setattr("src.domain.agents.rewrite.rewrite_question_safe", mock_rewrite)
+    monkeypatch.setattr("src.domain.agents.routing.rewrite.rewrite_question_safe", mock_rewrite)
 
     resp2 = chat(ChatRequest(question=raw_q, session_id="s1", user_id="u1"))
     assert mock_run.call_count == 1  # Không gọi lại run_agent

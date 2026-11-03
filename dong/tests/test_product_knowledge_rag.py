@@ -195,7 +195,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from src.domain.agents.docs import handle_docs_intent
+from src.domain.agents.adapters.docs import handle_docs_intent
 from src.domain.knowledge.answer import _offline_answer_from_cards, answer_from_docs
 from src.domain.knowledge.loader import (
     clear_docs_cache,
@@ -363,8 +363,8 @@ def test_how_to_path_does_not_call_db():
     from src.domain.agents.graph import Agent_Input, run_agent
     with patch("src.infra.db.executor.execute_sql") as mock_exec, \
          patch("src.infra.db.connection.get_connection") as mock_conn, \
-         patch("src.domain.agents.intent.use_offline_tools", return_value=False), \
-         patch("src.domain.agents.intent.invoke_structured") as mock_intent:
+         patch("src.domain.agents.routing.intent.use_offline_tools", return_value=False), \
+         patch("src.domain.agents.routing.intent.invoke_structured") as mock_intent:
         from src.infra.llm.schemas import IntentResult
         mock_intent.return_value = IntentResult(intent="how_to", reason="hỏi hướng dẫn")
 
@@ -715,7 +715,7 @@ from unittest.mock import patch
 
 import pytest
 
-from src.domain.agents.generate_sql import generate_sql_node
+from src.domain.agents.sql.generate import generate_sql_node
 from src.domain.agents.graph import retrieve_schema_node
 from src.infra.db.catalog import build_schema_excerpt, select_relevant_tables
 from src.infra.llm.schemas import RewrittenQuestion
@@ -829,8 +829,8 @@ class TestExcerptSmallerThanFullCatalog:
 class TestTimeRangeInContext:
     """Assert time_range hint appears in generate_sql_node user prompt."""
 
-    @patch("src.domain.agents.generate_sql.use_offline_tools", return_value=False)
-    @patch("src.domain.agents.generate_sql.invoke_text", return_value="SELECT count(*) FROM plate_event")
+    @patch("src.domain.agents.sql.generate.use_offline_tools", return_value=False)
+    @patch("src.domain.agents.sql.generate.invoke_text", return_value="SELECT count(*) FROM plate_event")
     def test_time_range_today_in_user_message(self, mock_invoke, _mock_offline):
         """generate_sql online mock: RewrittenQuestion(time_range='today') →
         user prompt contains 'Khoảng thời gian (time_range): today'."""
@@ -855,8 +855,8 @@ class TestTimeRangeInContext:
         assert "today" in user_prompt
         assert "CURRENT_DATE" in user_prompt
 
-    @patch("src.domain.agents.generate_sql.use_offline_tools", return_value=False)
-    @patch("src.domain.agents.generate_sql.invoke_text", return_value="SELECT count(*) FROM plate_event")
+    @patch("src.domain.agents.sql.generate.use_offline_tools", return_value=False)
+    @patch("src.domain.agents.sql.generate.invoke_text", return_value="SELECT count(*) FROM plate_event")
     def test_time_range_yesterday_in_user_message(self, mock_invoke, _mock_offline):
         """generate_sql: time_range='yesterday' → user prompt contains yesterday hint."""
         rewritten = RewrittenQuestion(
@@ -875,8 +875,8 @@ class TestTimeRangeInContext:
         assert "Khoảng thời gian (time_range): yesterday" in user_prompt
         assert "CURRENT_DATE - 1" in user_prompt
 
-    @patch("src.domain.agents.generate_sql.use_offline_tools", return_value=False)
-    @patch("src.domain.agents.generate_sql.invoke_text", return_value="SELECT count(*) FROM plate_event")
+    @patch("src.domain.agents.sql.generate.use_offline_tools", return_value=False)
+    @patch("src.domain.agents.sql.generate.invoke_text", return_value="SELECT count(*) FROM plate_event")
     def test_no_time_range_when_none(self, mock_invoke, _mock_offline):
         """generate_sql: time_range=None → user prompt does NOT contain time_range hint."""
         rewritten = RewrittenQuestion(text="Bao nhiêu xe vào?", time_range=None)
@@ -894,8 +894,8 @@ class TestTimeRangeInContext:
         assert "Table: plate_event" in user_prompt
         assert "Bao nhiêu xe vào?" in user_prompt
 
-    @patch("src.domain.agents.generate_sql.use_offline_tools", return_value=False)
-    @patch("src.domain.agents.generate_sql.invoke_text", return_value="SELECT count(*) FROM plate_event")
+    @patch("src.domain.agents.sql.generate.use_offline_tools", return_value=False)
+    @patch("src.domain.agents.sql.generate.invoke_text", return_value="SELECT count(*) FROM plate_event")
     def test_schema_and_question_always_in_user_message(self, mock_invoke, _mock_offline):
         """Regardless of time_range, schema_excerpt and question text are always present."""
         for tr in ("today", None):
@@ -922,8 +922,8 @@ class TestTimeRangeInContext:
 class TestChartHintInContext:
     """Assert chart hint appears in generate_sql_node user prompt for chart questions."""
 
-    @patch("src.domain.agents.generate_sql.use_offline_tools", return_value=False)
-    @patch("src.domain.agents.generate_sql.invoke_text", return_value="SELECT vehicle_type, count(*) FROM plate_event GROUP BY vehicle_type")
+    @patch("src.domain.agents.sql.generate.use_offline_tools", return_value=False)
+    @patch("src.domain.agents.sql.generate.invoke_text", return_value="SELECT vehicle_type, count(*) FROM plate_event GROUP BY vehicle_type")
     def test_chart_hint_in_user_message_for_bieu_do(self, mock_invoke, _mock_offline):
         """generate_sql online mock: chart question → user prompt contains GROUP BY hint."""
         rewritten = RewrittenQuestion(
@@ -944,8 +944,8 @@ class TestChartHintInContext:
         )
         assert "vehicle_type" in user_prompt
 
-    @patch("src.domain.agents.generate_sql.use_offline_tools", return_value=False)
-    @patch("src.domain.agents.generate_sql.invoke_text", return_value="SELECT count(*) FROM plate_event")
+    @patch("src.domain.agents.sql.generate.use_offline_tools", return_value=False)
+    @patch("src.domain.agents.sql.generate.invoke_text", return_value="SELECT count(*) FROM plate_event")
     def test_no_chart_hint_for_plain_count(self, mock_invoke, _mock_offline):
         """generate_sql: plain count question (no 'biểu đồ') → no chart hint in user prompt."""
         rewritten = RewrittenQuestion(text="Hôm nay có bao nhiêu xe vào?", time_range=None)
@@ -963,8 +963,8 @@ class TestChartHintInContext:
 
     # --- Combined: BOTH time_range + chart hint in the SAME user message ---
 
-    @patch("src.domain.agents.generate_sql.use_offline_tools", return_value=False)
-    @patch("src.domain.agents.generate_sql.invoke_text", return_value="SELECT vehicle_type, count(*) FROM plate_event GROUP BY vehicle_type")
+    @patch("src.domain.agents.sql.generate.use_offline_tools", return_value=False)
+    @patch("src.domain.agents.sql.generate.invoke_text", return_value="SELECT vehicle_type, count(*) FROM plate_event GROUP BY vehicle_type")
     def test_combined_time_range_and_chart_hint_in_user_message(self, mock_invoke, _mock_offline):
         """COMBINED — Both time_range AND chart hint present in user prompt.
         Order must be: time_range hint → chart hint → schema excerpt → question.
@@ -1012,8 +1012,8 @@ class TestChartHintInContext:
         assert pos_chart < pos_schema, "chart hint must appear before schema excerpt"
         assert pos_schema < pos_question, "schema excerpt must appear before question"
 
-    @patch("src.domain.agents.generate_sql.use_offline_tools", return_value=False)
-    @patch("src.domain.agents.generate_sql.invoke_text", return_value="SELECT entity_type, count(*) FROM fire_smoke_event GROUP BY entity_type")
+    @patch("src.domain.agents.sql.generate.use_offline_tools", return_value=False)
+    @patch("src.domain.agents.sql.generate.invoke_text", return_value="SELECT entity_type, count(*) FROM fire_smoke_event GROUP BY entity_type")
     def test_generic_chart_hint_non_vehicle_domain(self, mock_invoke, _mock_offline):
         """Non-vehicle chart question → generic GROUP BY hint (no vehicle_type push)."""
         rewritten = RewrittenQuestion(

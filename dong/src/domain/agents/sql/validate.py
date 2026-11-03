@@ -2,9 +2,9 @@
 
 from __future__ import annotations
 
-from src.domain.agents.generate_sql import extract_sql
-from src.domain.agents.sql_scope import apply_organization_scope
-from src.domain.agents.node_io import node_event
+from src.domain.agents.sql.generate import extract_sql
+from src.domain.agents.sql.scope import apply_organization_scope
+from src.domain.agents.nodes.io import node_event
 from src.shared.config import settings
 from src.infra.db.validator import ValidationResult, validate_sql
 from src.infra.llm.client import invoke_text, use_offline_tools
@@ -25,7 +25,7 @@ def validate_sql_node(state: dict) -> dict:
 
     Returns ``{"sql_validation": {...}, "events": [...]}``.
     """
-    from src.domain.agents.sql_batch import validate_sql_batch
+    from src.domain.agents.sql.batch import validate_sql_batch
 
     sql = state.get("sql") or ""
     user_id = state.get("user_id") or "default"
@@ -85,7 +85,7 @@ def repair_sql_node(state: dict) -> dict:
     sql_batch = state.get("sql_batch") or []
 
     if len(sql_batch) >= 2:
-        from src.domain.agents.sql_batch import build_sql_batch
+        from src.domain.agents.sql.batch import build_sql_batch
 
         subs = [item.get("sub_question", "") for item in sql_batch]
         new_batch = build_sql_batch(subs)

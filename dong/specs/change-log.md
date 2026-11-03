@@ -1,5 +1,13 @@
 # Change Log — agent dong
 
+## 2026-11-03 — v12: `domain/agents/` subpackages (vn-stock style)
+
+- Root giữ `graph.py`, `state.py`; module phẳng → `core/`, `nodes/`, `orchestrator/`, `sql/`, `routing/`, `respond/`, `adapters/`.
+- Import: `src.domain.agents.orchestrator.plan` (heuristics + LLM plan), `orchestrator.core` / `synth`, `sql.execute`, …; tests + `routes_agent` cập nhật.
+- **`src/README.md`**: bảng map package con.
+
+---
+
 ## 2026-11-03 — v11: `src/` layout ai_backend (domain / infra / shared / api)
 
 - Di chuyển: `agent` → `domain/agents`, `knowledge` → `domain/knowledge`, technical packages → `infra/*`, root config/guardrails/feedback → `shared/`.

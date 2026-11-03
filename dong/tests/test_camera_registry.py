@@ -10,7 +10,7 @@ Kiểm tra:
 from __future__ import annotations
 
 from unittest.mock import patch
-from src.domain.agents.camera_registry import (
+from src.domain.agents.adapters.camera_registry import (
     load_camera_registry,
     is_camera_count_query,
     is_camera_list_query,

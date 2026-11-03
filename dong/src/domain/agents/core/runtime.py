@@ -7,7 +7,7 @@ import logging
 import time
 from typing import Any
 
-from src.domain.agents.node_io import json_safe, node_event
+from src.domain.agents.nodes.io import json_safe, node_event
 from src.domain.agents.state import AgentState
 from src.infra.monitoring.tracing import get_trace_parent, trace_active_parent, trace_step
 

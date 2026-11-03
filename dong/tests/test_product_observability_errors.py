@@ -430,11 +430,11 @@ def test_validate_and_repair_sql_nested_validate_substep(monkeypatch):
     from src.infra.monitoring.tracing import trace_active_parent
 
     with trace_active_parent(mock_parent):
-        from src.domain.agents.validate_sql import validate_and_repair_sql
+        from src.domain.agents.sql.validate import validate_and_repair_sql
 
         from src.infra.db.validator import ValidationResult
 
-        with patch("src.domain.agents.validate_sql.validate_sql", return_value=ValidationResult(ok=True)):
+        with patch("src.domain.agents.sql.validate.validate_sql", return_value=ValidationResult(ok=True)):
             mock_parent.start_observation.return_value = mock_validate
             validate_and_repair_sql("SELECT 1", "test", user_id="u1", session_id="s1")
 
@@ -716,7 +716,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from src.domain.agents.graph import Agent_Input, run_agent, run_agent_stream
-from src.domain.agents.intent import classify_intent_safe
+from src.domain.agents.routing.intent import classify_intent_safe
 from src.infra.db.validator import ValidationResult
 from src.shared.guardrails import empty_stat_reply
 from src.main import USER_ERROR_MAX_LEN, _format_error_message, app
@@ -734,7 +734,7 @@ def test_sql_repair_max_exhausted_yields_friendly_message_no_crash():
     with (
         patch("src.infra.llm.client.use_offline_tools", return_value=True),
         patch(
-            "src.domain.agents.validate_sql.validate_sql",
+            "src.domain.agents.sql.validate.validate_sql",
             return_value=ValidationResult(ok=False, reason="Cú pháp không hợp lệ"),
         ),
     ):
@@ -785,8 +785,8 @@ def test_classify_error_safe_fallback_not_silent():
 
     q = RewrittenQuestion(text="Hôm nay có cảnh báo cháy hoặc khói không?")
     with (
-        patch("src.domain.agents.intent.use_offline_tools", return_value=False),
-        patch("src.domain.agents.intent.invoke_structured", side_effect=Exception("LLM down")),
+        patch("src.domain.agents.routing.intent.use_offline_tools", return_value=False),
+        patch("src.domain.agents.routing.intent.invoke_structured", side_effect=Exception("LLM down")),
     ):
         res = classify_intent_safe(q)
 

@@ -8,7 +8,7 @@ from typing import Any
 logger = logging.getLogger(__name__)
 
 
-from src.domain.agents.node_io import node_event
+from src.domain.agents.nodes.io import node_event
 from src.domain.agents.state import AgentState
 from src.infra.chart.render import _detect_chart_type, plan_chart, should_render_chart
 from src.infra.db.catalog import build_schema_excerpt, select_relevant_tables
@@ -66,7 +66,7 @@ def answer_from_docs_node(state: AgentState) -> dict:
     }
 
 def retrieve_schema_node(state: AgentState) -> dict:
-    from src.domain.agents.sql_batch import query_text_for_state
+    from src.domain.agents.sql.batch import query_text_for_state
 
     q = state.get("question", "")
     intent = state.get("intent", "query_data")
@@ -98,7 +98,7 @@ def retrieve_schema_node(state: AgentState) -> dict:
 
 def render_chart_node(state: AgentState) -> dict:
     """Vẽ chart nếu được; nếu kết quả thiếu dòng tự động fallback SQL; lỗi render → bỏ chart, vẫn để respond trả text."""
-    from src.domain.agents.chart_fallback import fallback_chart_query
+    from src.domain.agents.respond.chart_fallback import fallback_chart_query
     rows = list(state.get("rows") or [])
     columns = list(state.get("columns") or [])
     sql = state.get("sql") or ""

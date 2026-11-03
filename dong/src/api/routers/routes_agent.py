@@ -100,8 +100,8 @@ def chat(req: ChatRequest) -> ChatResponse:
                 return response
 
         try:
-            from src.domain.agents.intent import is_chat_greeting
-            from src.domain.agents.rewrite import rewrite_question_safe
+            from src.domain.agents.routing.intent import is_chat_greeting
+            from src.domain.agents.routing.rewrite import rewrite_question_safe
             from src.infra.llm.schemas import RewrittenQuestion
 
             if is_chat_greeting(question):
@@ -212,8 +212,8 @@ def ask(req: AskRequest) -> AskResponse:
             return response
 
         try:
-            from src.domain.agents.intent import is_chat_greeting
-            from src.domain.agents.rewrite import rewrite_question_safe
+            from src.domain.agents.routing.intent import is_chat_greeting
+            from src.domain.agents.routing.rewrite import rewrite_question_safe
             from src.infra.llm.schemas import RewrittenQuestion
 
             if is_chat_greeting(question):
@@ -328,8 +328,8 @@ def stream_agent(req: ChatRequest) -> StreamingResponse:
                     return
 
             try:
-                from src.domain.agents.intent import is_chat_greeting
-                from src.domain.agents.rewrite import rewrite_question_safe
+                from src.domain.agents.routing.intent import is_chat_greeting
+                from src.domain.agents.routing.rewrite import rewrite_question_safe
                 from src.infra.llm.schemas import RewrittenQuestion
 
                 if is_chat_greeting(question):

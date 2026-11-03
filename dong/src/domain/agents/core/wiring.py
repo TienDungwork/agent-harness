@@ -4,26 +4,26 @@ from __future__ import annotations
 
 from langgraph.graph import END, START, StateGraph
 
-from src.domain.agents.graph_runtime import _wrap_node
-from src.domain.agents.nodes_memory import recall_node
-from src.domain.agents.nodes_orchestrator_core import orchestrator_node, route_orchestrator
-from src.domain.agents.nodes_orchestrator_synth import (
+from src.domain.agents.core.runtime import _wrap_node
+from src.domain.agents.nodes.memory import recall_node
+from src.domain.agents.orchestrator.core import orchestrator_node, route_orchestrator
+from src.domain.agents.orchestrator.synth import (
     orchestrator_collect_step_node,
     route_after_orchestrator_collect,
 )
-from src.domain.agents.nodes_pipeline import (
+from src.domain.agents.nodes.pipeline import (
     answer_from_docs_node,
     render_chart_node,
     retrieve_docs_node,
     retrieve_schema_node,
 )
-from src.domain.agents.nodes_respond import respond_node
-from src.domain.agents.nodes_rewrite_classify import (
+from src.domain.agents.nodes.respond import respond_node
+from src.domain.agents.nodes.rewrite_classify import (
     classify_node,
     respond_inline_node,
     rewrite_node,
 )
-from src.domain.agents.intent import is_stat_event_domain
+from src.domain.agents.routing.intent import is_stat_event_domain
 from src.domain.agents.state import AgentState
 from src.infra.chart.render import should_render_chart
 from src.shared.config import settings
@@ -36,7 +36,7 @@ def _build_graph(checkpointer=None):
     if checkpointer is None:
         checkpointer = get_checkpointer()
 
-    from src.domain.agents.guardrail_nodes import (
+    from src.domain.agents.nodes.guardrails import (
         guardrail_input_node,
         guardrail_output_node,
     )
@@ -51,9 +51,9 @@ def _build_graph(checkpointer=None):
     graph.add_node("orchestrator", _wrap_node("orchestrator", orchestrator_node))
     graph.add_node("orchestrator_collect", _wrap_node("orchestrator_collect", orchestrator_collect_step_node))
     graph.add_node("retrieve_schema", _wrap_node("retrieve_schema", retrieve_schema_node))
-    from src.domain.agents.generate_sql import generate_sql_node
-    from src.domain.agents.validate_sql import validate_sql_node, repair_sql_node
-    from src.domain.agents.execute_sql import execute_sql_node
+    from src.domain.agents.sql.generate import generate_sql_node
+    from src.domain.agents.sql.validate import validate_sql_node, repair_sql_node
+    from src.domain.agents.sql.execute import execute_sql_node
     graph.add_node("generate_sql", _wrap_node("generate_sql", generate_sql_node))
     graph.add_node("validate_sql", _wrap_node("validate_sql", validate_sql_node))
     graph.add_node("repair_sql", _wrap_node("repair_sql", repair_sql_node))

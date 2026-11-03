@@ -474,7 +474,7 @@ def test_api_agent_stream_running_before_done_timing():
     
     events_received = []
     
-    from src.domain.agents.intent import IntentResult
+    from src.domain.agents.routing.intent import IntentResult
     def slow_classify(*args, **kwargs):
         time.sleep(0.5)
         return IntentResult(intent="query_data", reason="")

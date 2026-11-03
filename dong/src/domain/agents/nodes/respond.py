@@ -8,13 +8,13 @@ from typing import Any
 logger = logging.getLogger(__name__)
 
 
-from src.domain.agents.graph_runtime import emit_answer_chunks
-from src.domain.agents.node_io import node_event
+from src.domain.agents.core.runtime import emit_answer_chunks
+from src.domain.agents.nodes.io import node_event
 from src.domain.agents.state import AgentState, Agent_Output
 from src.infra.chart.render import _detect_chart_type, plan_chart, should_render_chart
 from src.shared.guardrails import OUT_OF_SCOPE_REPLY
 from src.infra.llm.schemas import QueryResult, StatAnswer
-from src.domain.agents.graph_helpers import (
+from src.domain.agents.core.helpers import (
     effective_question,
     filter_memories_for_stat,
     memory_context_block,
@@ -22,7 +22,7 @@ from src.domain.agents.graph_helpers import (
     respond_event_input,
     strip_thinking,
 )
-from src.domain.agents.nodes_orchestrator_synth import (
+from src.domain.agents.orchestrator.synth import (
     _aggregate_all_events_rows,
     _build_orchestrator_query_result,
     _synthesize_orchestrator_answer,
@@ -50,7 +50,7 @@ def respond_node(state: AgentState) -> dict:
         and (getattr(plan, "is_multi", False) or len(getattr(plan, "steps", []) or []) >= 2)
     )
 
-    from src.domain.agents.simple_answer import try_format_simple_answer
+    from src.domain.agents.respond.simple_answer import try_format_simple_answer
     from src.shared.config import settings
     from src.infra.llm.client import invoke_text, use_offline_tools
 
@@ -90,7 +90,7 @@ def respond_node(state: AgentState) -> dict:
         }
 
     if is_multi_respond:
-        from src.domain.agents.orchestrator import is_all_events_plan
+        from src.domain.agents.orchestrator.plan import is_all_events_plan
 
         ans, answer_source = _synthesize_orchestrator_answer(q, step_results, state)
         check_q = f"{q} {q_original}".lower()
@@ -178,7 +178,7 @@ def respond_node(state: AgentState) -> dict:
             )],
         }
 
-    from src.domain.agents.camera_registry import (
+    from src.domain.agents.adapters.camera_registry import (
         is_camera_count_query,
         is_camera_list_query,
         format_camera_count_answer,

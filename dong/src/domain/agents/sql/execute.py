@@ -4,8 +4,8 @@ from __future__ import annotations
 
 from typing import Any
 
-from src.domain.agents.node_io import node_event
-from src.domain.agents.sql_scope import apply_organization_scope
+from src.domain.agents.nodes.io import node_event
+from src.domain.agents.sql.scope import apply_organization_scope
 from src.infra.db.executor import execute_sql
 from src.infra.db.validator import validate_sql
 from src.infra.llm.client import use_offline_tools
@@ -18,7 +18,7 @@ def execute_sql_node(state: dict[str, Any]) -> dict[str, Any]:
     Returns ``{"rows": list, "columns": list, "error": str, "events": list}``.
     Batch multi-hop: ``sql_batch_results`` — một entry mỗi sub-question.
     """
-    from src.domain.agents.sql_batch import execute_sql_batch
+    from src.domain.agents.sql.batch import execute_sql_batch
 
     sql_batch = state.get("sql_batch") or []
     user_id = state.get("user_id") or "default"

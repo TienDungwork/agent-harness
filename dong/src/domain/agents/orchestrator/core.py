@@ -8,8 +8,8 @@ from typing import Any
 logger = logging.getLogger(__name__)
 
 
-from src.domain.agents.intent import is_stat_event_domain
-from src.domain.agents.node_io import node_event
+from src.domain.agents.routing.intent import is_stat_event_domain
+from src.domain.agents.nodes.io import node_event
 from src.domain.agents.state import AgentState
 from src.infra.llm.schemas import OrchestratorPlan, OrchestratorStep
 
@@ -65,7 +65,7 @@ def _apply_orchestrator_batch(out: dict, plan: OrchestratorPlan, start_idx: int)
 
 
 def orchestrator_node(state: AgentState) -> dict:
-    from src.domain.agents.orchestrator import plan_orchestration
+    from src.domain.agents.orchestrator.plan import plan_orchestration
     from src.infra.llm.client import use_offline_tools
 
     q = state.get("question", "")
@@ -98,7 +98,7 @@ def orchestrator_node(state: AgentState) -> dict:
     sub_questions = list(getattr(rewritten, "sub_questions", None) or [])
     original_q = state.get("original_question") or q
 
-    from src.domain.agents.orchestrator import is_multi_question
+    from src.domain.agents.orchestrator.plan import is_multi_question
     # Fast pass-through nếu là câu đơn, tránh gọi LLM lần 2
     if not is_multi_question(q_text, rewritten=rewritten, original=original_q, intent=intent):
         if is_stat_event_domain(q_text):

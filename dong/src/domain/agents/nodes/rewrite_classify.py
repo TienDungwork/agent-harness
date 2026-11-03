@@ -10,19 +10,19 @@ logger = logging.getLogger(__name__)
 
 from langchain_core.messages import HumanMessage
 
-from src.domain.agents.node_io import node_event
+from src.domain.agents.nodes.io import node_event
 from src.domain.agents.state import AgentState
 from src.shared.config import settings
 
 def rewrite_node(state: AgentState) -> dict:
-    from src.domain.agents.intent import is_chat_greeting
+    from src.domain.agents.routing.intent import is_chat_greeting
 
     q = state.get("question", "")
     user_id = state.get("user_id") or "default"
     session_id = state.get("session_id") or "default"
     rewritten = state.get("rewritten")
     is_chat = is_chat_greeting(q)
-    from src.domain.agents.rewrite import _needs_rewrite_llm
+    from src.domain.agents.routing.rewrite import _needs_rewrite_llm
 
     raw_messages = list(state.get("messages") or [])
     if not rewritten:
@@ -115,7 +115,7 @@ def classify_node(state: AgentState) -> dict:
     return out_state
 
 def respond_inline_node(state: AgentState) -> dict:
-    from src.domain.agents.inline_respond import generate_inline_response
+    from src.domain.agents.routing.inline_respond import generate_inline_response
 
     q = state.get("question", "")
     rewritten = state.get("rewritten")

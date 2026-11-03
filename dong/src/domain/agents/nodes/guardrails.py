@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from src.domain.agents.node_io import node_event
+from src.domain.agents.nodes.io import node_event
 
 AgentState = dict[str, Any]
 from src.shared.guardrails import (

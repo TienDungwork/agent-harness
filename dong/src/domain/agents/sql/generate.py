@@ -4,9 +4,9 @@ from __future__ import annotations
 
 import re
 
-from src.domain.agents.node_io import node_event
-from src.domain.agents.pre_sql import format_time_range_for_prompt, build_chart_sql_hint
-from src.domain.agents.sql_scope import apply_organization_scope, format_org_scope_for_prompt
+from src.domain.agents.nodes.io import node_event
+from src.domain.agents.sql.pre_sql import format_time_range_for_prompt, build_chart_sql_hint
+from src.domain.agents.sql.scope import apply_organization_scope, format_org_scope_for_prompt
 from src.shared.config import settings
 from src.infra.llm.client import invoke_text, use_offline_tools
 from src.infra.monitoring.tracing import trace_substep
@@ -52,7 +52,7 @@ def generate_sql_node(state: dict) -> dict:
 
     Returns ``{sql, error, events}``; multi-hop batch thêm ``sql_batch``.
     """
-    from src.domain.agents.sql_batch import build_sql_batch, query_text_for_state
+    from src.domain.agents.sql.batch import build_sql_batch, query_text_for_state
 
     question = state.get("question", "")
     schema_excerpt = state.get("schema_excerpt", "")

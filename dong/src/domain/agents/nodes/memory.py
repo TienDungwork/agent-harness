@@ -8,7 +8,7 @@ from typing import Any
 logger = logging.getLogger(__name__)
 
 
-from src.domain.agents.node_io import node_event
+from src.domain.agents.nodes.io import node_event
 from src.domain.agents.state import AgentState, Agent_Output
 from src.infra.monitoring.tracing import trace_step
 

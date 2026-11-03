@@ -15,7 +15,7 @@ from src.domain.agents.graph import (
     run_agent,
     run_agent_stream,
 )
-from src.domain.agents.inline_respond import generate_inline_response
+from src.domain.agents.routing.inline_respond import generate_inline_response
 from src.infra.memory import (
     clear_long_term,
     clear_ttl_cache,
@@ -127,11 +127,11 @@ def test_instruction_reinject_in_respond_prompt(monkeypatch):
 
     monkeypatch.setattr("src.infra.llm.client.use_offline_tools", lambda: False)
     monkeypatch.setattr("src.infra.llm.client.invoke_text", mock_invoke)
-    monkeypatch.setattr("src.domain.agents.generate_sql.invoke_text", mock_invoke)
-    monkeypatch.setattr("src.domain.agents.generate_sql.use_offline_tools", lambda: False)
-    monkeypatch.setattr("src.domain.agents.execute_sql.use_offline_tools", lambda: False)
+    monkeypatch.setattr("src.domain.agents.sql.generate.invoke_text", mock_invoke)
+    monkeypatch.setattr("src.domain.agents.sql.generate.use_offline_tools", lambda: False)
+    monkeypatch.setattr("src.domain.agents.sql.execute.use_offline_tools", lambda: False)
     monkeypatch.setattr(
-        "src.domain.agents.execute_sql.execute_sql",
+        "src.domain.agents.sql.execute.execute_sql",
         lambda sql, params=None: ([{"loai_xe": "TRUCK", "so_luot": 25}], ["loai_xe", "so_luot"]),
     )
 

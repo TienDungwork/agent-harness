@@ -23,7 +23,7 @@ def strip_thinking(text: str) -> str:
 
 
 def domains_in_text(text: str) -> set[str]:
-    from src.domain.agents.orchestrator import _DOMAIN_PHRASES
+    from src.domain.agents.orchestrator.plan import _DOMAIN_PHRASES
 
     low = (text or "").lower()
     return {tbl for phrases, tbl in _DOMAIN_PHRASES if any(p in low for p in phrases)}

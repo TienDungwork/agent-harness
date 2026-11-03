@@ -204,8 +204,8 @@ from unittest.mock import patch
 
 import pytest
 
-from src.domain.agents.generate_sql import generate_sql_node
-from src.domain.agents.pre_sql import build_chart_sql_hint
+from src.domain.agents.sql.generate import generate_sql_node
+from src.domain.agents.sql.pre_sql import build_chart_sql_hint
 from src.infra.llm.schemas import RewrittenQuestion
 
 
@@ -262,8 +262,8 @@ def test_chart_hint_generic_contains_expected_structure():
 
 # ── 2. Online generate_sql_node: chart hint in user prompt ─────────────────────
 
-@patch("src.domain.agents.generate_sql.use_offline_tools", return_value=False)
-@patch("src.domain.agents.generate_sql.invoke_text", return_value="SELECT vehicle_type, count(*) FROM plate_event GROUP BY vehicle_type")
+@patch("src.domain.agents.sql.generate.use_offline_tools", return_value=False)
+@patch("src.domain.agents.sql.generate.invoke_text", return_value="SELECT vehicle_type, count(*) FROM plate_event GROUP BY vehicle_type")
 def test_generate_sql_online_injects_chart_hint_for_bieu_do(mock_invoke, _mock_offline):
     """Câu hỏi có 'biểu đồ' → user prompt của generate_sql_node chứa chart hint."""
     rewritten = RewrittenQuestion(
@@ -290,8 +290,8 @@ def test_generate_sql_online_injects_chart_hint_for_bieu_do(mock_invoke, _mock_o
     assert "Vẽ biểu đồ cột lượt xe theo loại hôm nay" in user_prompt
 
 
-@patch("src.domain.agents.generate_sql.use_offline_tools", return_value=False)
-@patch("src.domain.agents.generate_sql.invoke_text", return_value="SELECT count(*) FROM plate_event")
+@patch("src.domain.agents.sql.generate.use_offline_tools", return_value=False)
+@patch("src.domain.agents.sql.generate.invoke_text", return_value="SELECT count(*) FROM plate_event")
 def test_generate_sql_online_no_chart_hint_for_plain_count(mock_invoke, _mock_offline):
     """Câu hỏi thống kê thông thường (không có từ khóa biểu đồ) → KHÔNG có chart hint."""
     rewritten = RewrittenQuestion(
@@ -333,12 +333,12 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from src.domain.agents.chart_fallback import (
+from src.domain.agents.respond.chart_fallback import (
     fallback_chart_query,
     should_retry_chart_query,
 )
 from src.domain.agents.graph import Agent_Input, AgentState, render_chart_node, reset_graph, respond_node, run_agent
-from src.domain.agents.simple_answer import _fmt_num, try_format_simple_answer
+from src.domain.agents.respond.simple_answer import _fmt_num, try_format_simple_answer
 from src.infra.chart.render import (
     _detect_chart_type,
     _format_label,
@@ -526,7 +526,7 @@ class TestChartFallbackSql:
         sql = "SELECT count(*) FROM plate_event"
         q = "Vẽ biểu đồ các loại xe hôm nay"
 
-        with patch("src.domain.agents.chart_fallback.use_offline_tools", return_value=True):
+        with patch("src.domain.agents.respond.chart_fallback.use_offline_tools", return_value=True):
             res = fallback_chart_query(question=q, sql=sql, rows=rows)
             assert res is not None
             assert len(res["rows"]) >= 2
@@ -539,7 +539,7 @@ class TestChartFallbackSql:
         sql = "SELECT count(*) FROM plate_event"
         q = "Vẽ biểu đồ phương tiện theo loại hôm nay"
 
-        with patch("src.domain.agents.chart_fallback.use_offline_tools", return_value=True):
+        with patch("src.domain.agents.respond.chart_fallback.use_offline_tools", return_value=True):
             state: AgentState = {
                 "question": q,
                 "rows": initial_rows,
