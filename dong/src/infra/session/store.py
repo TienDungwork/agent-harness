@@ -1,99 +1,147 @@
-"""In-memory Session Store for agent dong v6."""
+"""Session store — PostgreSQL (chat_sessions + chat_session_messages)."""
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
-import threading
-from typing import Any
+import json
 import uuid
+from datetime import datetime, timezone
+from typing import Any
 
-_lock = threading.Lock()
-# Structure: {user_id: {session_id: session_dict}}
-_SESSIONS_STORE: dict[str, dict[str, dict[str, Any]]] = {}
+from src.infra.memory.db import AgentStorageError, get_memory_connection, init_agent_storage, is_postgres_configured
 
 
 def _now_iso() -> str:
-    """Trả về timestamp hiện tại dạng chuẩn ISO8601 UTC."""
     return datetime.now(timezone.utc).isoformat()
 
 
+def _ensure_storage() -> None:
+    if not is_postgres_configured():
+        raise AgentStorageError("PostgreSQL chưa cấu hình cho sessions.")
+
+
 def clear_sessions_store() -> None:
-    """Xóa sạch session store phục vụ unit tests và resets."""
-    with _lock:
-        _SESSIONS_STORE.clear()
+    _ensure_storage()
+    with get_memory_connection(autocommit=True) as conn:
+        with conn.cursor() as cur:
+            cur.execute("DELETE FROM chat_session_messages;")
+            cur.execute("DELETE FROM chat_sessions;")
 
 
 def list_sessions(user_id: str) -> list[dict[str, Any]]:
-    """Liệt kê danh sách phiên chat của user_id, sắp xếp theo updated_at giảm dần."""
     if not user_id:
         return []
-    with _lock:
-        user_sessions = _SESSIONS_STORE.get(user_id, {})
-        sessions = [dict(s) for s in user_sessions.values()]
-    sessions.sort(key=lambda s: s.get("updated_at", ""), reverse=True)
-    return sessions
+    _ensure_storage()
+    uid = user_id.strip()
+    with get_memory_connection(autocommit=True) as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                SELECT id, user_id, title, preview, created_at, updated_at
+                FROM chat_sessions
+                WHERE user_id = %s
+                ORDER BY updated_at DESC;
+                """,
+                (uid,),
+            )
+            rows = cur.fetchall()
+    out: list[dict[str, Any]] = []
+    for r in rows:
+        out.append({
+            "id": r[0],
+            "user_id": r[1],
+            "title": r[2],
+            "preview": r[3] or "",
+            "messages": [],
+            "created_at": r[4].isoformat() if hasattr(r[4], "isoformat") else str(r[4]),
+            "updated_at": r[5].isoformat() if hasattr(r[5], "isoformat") else str(r[5]),
+        })
+    return out
 
 
 def create_session(user_id: str, title: str | None = None) -> dict[str, Any]:
-    """Tạo phiên chat mới cho user_id."""
     if not user_id or not user_id.strip():
         raise ValueError("user_id is required")
+    _ensure_storage()
+    uid = user_id.strip()
     now = _now_iso()
     session_id = str(uuid.uuid4())
-    session_data: dict[str, Any] = {
+    sess_title = title.strip() if (title and title.strip()) else "Phiên chat mới"
+    with get_memory_connection(autocommit=True) as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                INSERT INTO chat_sessions (id, user_id, title, preview, created_at, updated_at)
+                VALUES (%s, %s, %s, '', %s::timestamptz, %s::timestamptz);
+                """,
+                (session_id, uid, sess_title, now, now),
+            )
+    return {
         "id": session_id,
-        "user_id": user_id.strip(),
-        "title": title.strip() if (title and title.strip()) else "Phiên chat mới",
+        "user_id": uid,
+        "title": sess_title,
         "preview": "",
         "messages": [],
         "updated_at": now,
         "created_at": now,
     }
-    with _lock:
-        if user_id.strip() not in _SESSIONS_STORE:
-            _SESSIONS_STORE[user_id.strip()] = {}
-        _SESSIONS_STORE[user_id.strip()][session_id] = session_data
-        return dict(session_data)
 
 
 def get_session(session_id: str, user_id: str | None = None) -> dict[str, Any] | None:
-    """Lấy thông tin phiên chat theo session_id (và tuỳ chọn user_id)."""
-    if not session_id:
+    if not session_id or not user_id:
         return None
-    with _lock:
-        if user_id:
-            sess = _SESSIONS_STORE.get(user_id, {}).get(session_id)
-            return dict(sess) if sess else None
-        for _u_id, sessions in _SESSIONS_STORE.items():
-            if session_id in sessions:
-                return dict(sessions[session_id])
-    return None
+    _ensure_storage()
+    with get_memory_connection(autocommit=True) as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                SELECT id, user_id, title, preview, created_at, updated_at
+                FROM chat_sessions WHERE id = %s AND user_id = %s;
+                """,
+                (session_id.strip(), user_id.strip()),
+            )
+            r = cur.fetchone()
+    if not r:
+        return None
+    return {
+        "id": r[0],
+        "user_id": r[1],
+        "title": r[2],
+        "preview": r[3] or "",
+        "messages": [],
+        "created_at": r[4].isoformat() if hasattr(r[4], "isoformat") else str(r[4]),
+        "updated_at": r[5].isoformat() if hasattr(r[5], "isoformat") else str(r[5]),
+    }
 
 
 def delete_session(session_id: str, user_id: str) -> bool:
-    """Xóa phiên chat theo session_id và user_id.
-    
-    Trả về True nếu tìm thấy và xóa thành công, False nếu không tồn tại hoặc sai user_id.
-    """
     if not session_id or not user_id:
         return False
-    with _lock:
-        user_sessions = _SESSIONS_STORE.get(user_id)
-        if user_sessions is not None and session_id in user_sessions:
-            del user_sessions[session_id]
-            return True
-    return False
+    _ensure_storage()
+    with get_memory_connection(autocommit=True) as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                "DELETE FROM chat_sessions WHERE id = %s AND user_id = %s;",
+                (session_id.strip(), user_id.strip()),
+            )
+            return cur.rowcount > 0
 
 
 def get_session_messages(session_id: str, user_id: str) -> list[dict[str, Any]] | None:
-    """Lấy lịch sử tin nhắn của phiên; None nếu session không tồn tại."""
-    sess = get_session(session_id, user_id)
-    if not sess:
+    if get_session(session_id, user_id) is None:
         return None
-    messages = sess.get("messages")
-    if not isinstance(messages, list):
-        return []
-    return [dict(m) for m in messages]
+    _ensure_storage()
+    with get_memory_connection(autocommit=True) as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                SELECT payload FROM chat_session_messages
+                WHERE session_id = %s AND user_id = %s
+                ORDER BY id ASC;
+                """,
+                (session_id.strip(), user_id.strip()),
+            )
+            rows = cur.fetchall()
+    return [dict(r[0]) if isinstance(r[0], dict) else json.loads(r[0]) for r in rows]
 
 
 def append_session_messages(
@@ -101,45 +149,68 @@ def append_session_messages(
     user_id: str,
     new_messages: list[dict[str, Any]],
 ) -> dict[str, Any] | None:
-    """Append tin nhắn vào phiên; cập nhật preview/title khi cần (tự khởi tạo nếu chưa có)."""
     if not session_id or not user_id or not new_messages:
         return None
+    _ensure_storage()
     uid = user_id.strip()
     sid = session_id.strip()
     now = _now_iso()
-    with _lock:
-        if uid not in _SESSIONS_STORE:
-            _SESSIONS_STORE[uid] = {}
-        if sid not in _SESSIONS_STORE[uid]:
-            _SESSIONS_STORE[uid][sid] = {
-                "id": sid,
-                "user_id": uid,
-                "title": "Phiên chat mới",
-                "preview": "",
-                "messages": [],
-                "updated_at": now,
-                "created_at": now,
-            }
-        sess = _SESSIONS_STORE[uid][sid]
-        if not isinstance(sess.get("messages"), list):
-            sess["messages"] = []
-        sess["messages"].extend(new_messages)
-        sess["updated_at"] = now
+    sess = get_session(sid, uid)
+    if sess is None:
+        with get_memory_connection(autocommit=True) as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    """
+                    INSERT INTO chat_sessions (id, user_id, title, preview, created_at, updated_at)
+                    VALUES (%s, %s, 'Phiên chat mới', '', %s::timestamptz, %s::timestamptz)
+                    ON CONFLICT (id) DO NOTHING;
+                    """,
+                    (sid, uid, now, now),
+                )
+        sess = get_session(sid, uid) or {"id": sid, "user_id": uid, "title": "Phiên chat mới", "preview": ""}
 
-        if sess.get("title") == "Phiên chat mới":
+    with get_memory_connection(autocommit=True) as conn:
+        with conn.cursor() as cur:
             for msg in new_messages:
-                if msg.get("role") == "user" and msg.get("content"):
-                    text = str(msg["content"])
-                    sess["title"] = text[:32] + "…" if len(text) > 32 else text
+                cur.execute(
+                    """
+                    INSERT INTO chat_session_messages (session_id, user_id, payload)
+                    VALUES (%s, %s, %s::jsonb);
+                    """,
+                    (sid, uid, json.dumps(msg, ensure_ascii=False)),
+                )
+
+            title = sess.get("title") or "Phiên chat mới"
+            if title == "Phiên chat mới":
+                for msg in new_messages:
+                    if msg.get("role") == "user" and msg.get("content"):
+                        text = str(msg["content"])
+                        title = text[:32] + "…" if len(text) > 32 else text
+                        break
+
+            preview = sess.get("preview") or ""
+            all_msgs = get_session_messages(sid, uid) or []
+            for msg in reversed(all_msgs):
+                if msg.get("role") == "assistant" and msg.get("content"):
+                    preview = str(msg["content"]).replace("\n", " ").strip()
+                    preview = preview[:45] + "…" if len(preview) > 45 else preview
                     break
 
-        for msg in reversed(sess["messages"]):
-            if msg.get("role") == "assistant" and msg.get("content"):
-                preview = str(msg["content"]).replace("\n", " ").strip()
-                sess["preview"] = preview[:45] + "…" if len(preview) > 45 else preview
-                break
+            cur.execute(
+                """
+                UPDATE chat_sessions
+                SET title = %s, preview = %s, updated_at = %s::timestamptz
+                WHERE id = %s AND user_id = %s;
+                """,
+                (title, preview, now, sid, uid),
+            )
 
-        return dict(sess)
+    sess = get_session(sid, uid) or {}
+    sess["messages"] = get_session_messages(sid, uid) or []
+    sess["title"] = title
+    sess["preview"] = preview
+    sess["updated_at"] = now
+    return sess
 
 
 def update_session_meta(
@@ -149,17 +220,52 @@ def update_session_meta(
     preview: str | None = None,
     updated_at: str | None = None,
 ) -> dict[str, Any] | None:
-    """Cập nhật tiêu đề hoặc preview hoặc updated_at của session."""
     if not session_id or not user_id:
         return None
-    with _lock:
-        user_sessions = _SESSIONS_STORE.get(user_id)
-        if not user_sessions or session_id not in user_sessions:
-            return None
-        sess = user_sessions[session_id]
-        if title is not None:
-            sess["title"] = title
-        if preview is not None:
-            sess["preview"] = preview
-        sess["updated_at"] = updated_at or _now_iso()
-        return dict(sess)
+    _ensure_storage()
+    if get_session(session_id, user_id) is None:
+        return None
+    now = updated_at or _now_iso()
+    with get_memory_connection(autocommit=True) as conn:
+        with conn.cursor() as cur:
+            if title is not None and preview is not None:
+                cur.execute(
+                    """
+                    UPDATE chat_sessions SET title = %s, preview = %s, updated_at = %s::timestamptz
+                    WHERE id = %s AND user_id = %s;
+                    """,
+                    (title, preview, now, session_id.strip(), user_id.strip()),
+                )
+            elif title is not None:
+                cur.execute(
+                    """
+                    UPDATE chat_sessions SET title = %s, updated_at = %s::timestamptz
+                    WHERE id = %s AND user_id = %s;
+                    """,
+                    (title, now, session_id.strip(), user_id.strip()),
+                )
+            elif preview is not None:
+                cur.execute(
+                    """
+                    UPDATE chat_sessions SET preview = %s, updated_at = %s::timestamptz
+                    WHERE id = %s AND user_id = %s;
+                    """,
+                    (preview, now, session_id.strip(), user_id.strip()),
+                )
+            else:
+                cur.execute(
+                    """
+                    UPDATE chat_sessions SET updated_at = %s::timestamptz
+                    WHERE id = %s AND user_id = %s;
+                    """,
+                    (now, session_id.strip(), user_id.strip()),
+                )
+    sess = get_session(session_id, user_id)
+    if sess:
+        sess["messages"] = get_session_messages(session_id, user_id) or []
+    return sess
+
+
+def ensure_session_storage() -> None:
+    """Gọi lúc startup — DDL sessions + messages."""
+    init_agent_storage()

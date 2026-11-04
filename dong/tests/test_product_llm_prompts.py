@@ -24,21 +24,21 @@ def test_backends_registry_contains_required_providers():
     """Kiểm tra registry chứa đầy đủ 'openai' và 'self_hosted'."""
     assert "openai" in _BACKENDS
     assert "self_hosted" in _BACKENDS
-    assert _BACKENDS["self_hosted"].default_base_url == "http://192.168.1.196:18083/v1"
+    assert _BACKENDS["self_hosted"].default_base_url == "http://192.168.1.198:18083/v1"
     assert _BACKENDS["self_hosted"].requires_real_key is False
 
 
 def test_base_llm_self_hosted_configuration(monkeypatch):
     """Kiểm tra khởi tạo ChatOpenAI cho model tự host qwen3-4b."""
     monkeypatch.setattr(settings, "llm_backend", "self_hosted")
-    monkeypatch.setattr(settings, "model_base_url", "http://192.168.1.196:18083/v1")
+    monkeypatch.setattr(settings, "model_base_url", "http://192.168.1.198:18083/v1")
     monkeypatch.setattr(settings, "model_name", "qwen3-4b")
     monkeypatch.setattr(settings, "model_api_key", "test-qwen-key")
 
     llm = base_llm(backend_override="self_hosted")
     assert isinstance(llm, ChatOpenAI)
     assert llm.model_name == "qwen3-4b"
-    assert str(llm.openai_api_base).rstrip("/") == "http://192.168.1.196:18083/v1"
+    assert str(llm.openai_api_base).rstrip("/") == "http://192.168.1.198:18083/v1"
     assert llm.openai_api_key.get_secret_value() == "test-qwen-key"
 
 

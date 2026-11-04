@@ -48,28 +48,13 @@ def recall_node(state: AgentState) -> dict:
                 meta={"user_id": user_id, "session_id": session_id, "recalled_count": 0, "disabled": True},
             )],
         }
-    try:
-        memories = recall_long_term(user_id, q, k=3)
-        ev_output: dict[str, Any] = {"recalled_memories": memories}
-        ev_meta: dict[str, Any] = {
-            "user_id": user_id,
-            "session_id": session_id,
-            "recalled_count": len(memories),
-        }
-    except Exception as exc:
-        logger.warning("recall_long_term failed, degrading safely: %s", exc)
-        memories = []
-        ev_output = {
-            "recalled_memories": [],
-            "degraded": True,
-            "error": str(exc)[:200],
-        }
-        ev_meta = {
-            "user_id": user_id,
-            "session_id": session_id,
-            "recalled_count": 0,
-            "degraded": True,
-        }
+    memories = recall_long_term(user_id, q, k=3)
+    ev_output: dict[str, Any] = {"recalled_memories": memories}
+    ev_meta: dict[str, Any] = {
+        "user_id": user_id,
+        "session_id": session_id,
+        "recalled_count": len(memories),
+    }
     return {
         "user_id": user_id,
         "session_id": session_id,
@@ -124,13 +109,9 @@ def extract_memory_node(state: AgentState) -> dict:
     detail = res.detail if res else (state.get("respond_mode") or state.get("intent") or "")
     include_answer = memory_detail_includes_answer(detail)
 
-    try:
-        extracted = extract_and_store_memory(
-            uid, q, ans if include_answer else "", detail=detail, include_answer=include_answer
-        )
-    except Exception as exc:
-        logger.warning("extract_memory_node failed, degrading safely: %s", exc)
-        extracted = []
+    extracted = extract_and_store_memory(
+        uid, q, ans if include_answer else "", detail=detail, include_answer=include_answer
+    )
 
     return {
         "extracted_memories": extracted,
@@ -175,53 +156,27 @@ def run_store_extract(
 
     import time
     t0 = time.perf_counter()
-    try:
-        with trace_step(
-            parent_span,
-            "store_extract",
-            metadata={"user_id": uid, "session_id": sid},
-        ) as step:
-            try:
-                extracted = extract_and_store_memory(
-                    uid, q, ans if include_answer else "", detail=detail, include_answer=include_answer
-                )
-                dur_ms = round((time.perf_counter() - t0) * 1000, 1)
-                ev = node_event(
-                    "store_extract",
-                    input=input_payload,
-                    output={"extracted_memories": extracted},
-                    meta={"user_id": uid, "session_id": sid, "extracted_count": len(extracted), "duration_ms": dur_ms},
-                )
-            except Exception as exc:
-                dur_ms = round((time.perf_counter() - t0) * 1000, 1)
-                logger.warning("extract_and_store_memory failed, degrading safely: %s", exc)
-                err_msg = str(exc)[:200]
-                ev = node_event(
-                    "store_extract",
-                    input=input_payload,
-                    output={"extracted_memories": [], "degraded": True, "error": err_msg},
-                    meta={"user_id": uid, "session_id": sid, "extracted_count": 0, "degraded": True, "duration_ms": dur_ms},
-                )
-            step["input"] = ev["input"]
-            step["output"] = ev["output"]
-            step["metadata"] = ev["meta"]
-
-        return [
-            {"node_id": "store_extract", "status": "running"},
-            {"node_id": "store_extract", "status": "done", "duration_ms": dur_ms, **{k: ev[k] for k in ("input", "output", "meta")}},
-        ]
-    except Exception as exc:
+    with trace_step(
+        parent_span,
+        "store_extract",
+        metadata={"user_id": uid, "session_id": sid},
+        as_type="chain",
+    ) as step:
+        extracted = extract_and_store_memory(
+            uid, q, ans if include_answer else "", detail=detail, include_answer=include_answer
+        )
         dur_ms = round((time.perf_counter() - t0) * 1000, 1)
-        logger.warning("run_store_extract failed, degrading safely: %s", exc)
-        err_msg = str(exc)[:200]
-        return [
-            {"node_id": "store_extract", "status": "running"},
-            {
-                "node_id": "store_extract",
-                "status": "done",
-                "duration_ms": dur_ms,
-                "input": input_payload,
-                "output": {"extracted_memories": [], "degraded": True, "error": err_msg},
-                "meta": {"user_id": uid, "session_id": sid, "extracted_count": 0, "degraded": True, "duration_ms": dur_ms},
-            },
-        ]
+        ev = node_event(
+            "store_extract",
+            input=input_payload,
+            output={"extracted_memories": extracted},
+            meta={"user_id": uid, "session_id": sid, "extracted_count": len(extracted), "duration_ms": dur_ms},
+        )
+        step["input"] = ev["input"]
+        step["output"] = ev["output"]
+        step["metadata"] = ev["meta"]
+
+    return [
+        {"node_id": "store_extract", "status": "running"},
+        {"node_id": "store_extract", "status": "done", "duration_ms": dur_ms, **{k: ev[k] for k in ("input", "output", "meta")}},
+    ]

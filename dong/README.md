@@ -93,7 +93,7 @@ Trước khi cài đặt và chạy ứng dụng, hãy đảm bảo môi trườ
 - **Docker & Docker Compose (tùy chọn):** Docker Engine `>= 20.10`, Docker Compose v2.
 - **Dịch vụ phụ trợ:**
   - **PostgreSQL Database:** Lưu trữ dữ liệu nghiệp vụ VMS và dữ liệu Memory dài hạn (`user_memories`). *Ghi chú: Nếu tạm thời không có DB, hệ thống tự động fallback an toàn sang in-memory.*
-  - **LLM Backend:** LiteLLM self-hosted gateway nội bộ (`http://192.168.1.196:18083/v1`) hoặc tài khoản OpenAI API Key (`sk-...`).
+  - **LLM Backend:** LiteLLM self-hosted gateway nội bộ (`http://192.168.1.198:18083/v1`) hoặc tài khoản OpenAI API Key (`sk-...`).
 
 ---
 
@@ -122,7 +122,7 @@ cp .env.example .env
 | | `DB_PASSWORD` | *(Mật khẩu)* | Mật khẩu database |
 | | `DB_NAME_ITS` | `its` | Database phương tiện VMS & lưu trữ `user_memories` |
 | **LLM Backend** | `LLM_BACKEND` | `self_hosted` (hoặc `openai`) | Lựa chọn backend LLM chính |
-| | `MODEL_BASE_URL` | `http://192.168.1.196:18083/v1` | Endpoint gateway nội bộ |
+| | `MODEL_BASE_URL` | `http://192.168.1.198:18083/v1` | Endpoint gateway nội bộ |
 | | `MODEL_NAME` | `qwen3-4b` | Tên mô hình chạy trên gateway |
 | | `OPENAI_API_KEYS` | `sk-...` | Danh sách API Key OpenAI nếu dùng cloud |
 | **Cổng mạng (Ports)** | `BACKEND_PORT` | `8000` | Cổng Backend API FastAPI |

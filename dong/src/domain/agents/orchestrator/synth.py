@@ -15,7 +15,7 @@ from src.domain.agents.core.helpers import memory_context_block, original_questi
 from src.domain.agents.orchestrator.core import _reset_pipeline_fields
 from src.shared.config import settings
 from src.infra.llm.schemas import OrchestratorPlan, QueryResult, StatAnswer
-from src.infra.monitoring.tracing import trace_substep
+from src.infra.monitoring.tracing import current_span, trace_step
 from src.infra.prompts import registry
 
 
@@ -221,7 +221,7 @@ def _synthesize_orchestrator_answer(question: str, step_results: list[dict], sta
             sys_prompt = registry().render("respond_stat")
             sys_prompt = f"{sys_prompt}\n\n[Nhắc lại chỉ dẫn]: {safety_instruction}"
 
-            with trace_substep("respond_stat", kind="agent", input={"multi_hop": True}):
+            with trace_step(current_span(), "respond_stat", input={"multi_hop": True}, as_type="generation"):
                 raw = invoke_text(
                     sys_prompt,
                     (

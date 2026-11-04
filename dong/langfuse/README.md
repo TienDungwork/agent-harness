@@ -27,7 +27,7 @@ docker compose up -d
 
 ## Đăng nhập UI
 
-- URL: http://localhost:3000
+- URL: http://localhost:3001 (host; map `3001:3000` nếu cổng 3000 bận)
 - Email: `admin@agent-atin.local`
 - Mật khẩu: `Atin@123#`
 - Project: **agent_ATIN**

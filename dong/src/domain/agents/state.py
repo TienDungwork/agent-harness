@@ -64,4 +64,3 @@ class AgentState(TypedDict, total=False):
     events: Annotated[list[dict], operator.add]
     result: Agent_Output
     guardrail_in_scope: bool
-    _trace_span: Any

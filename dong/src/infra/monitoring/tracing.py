@@ -1,13 +1,11 @@
-"""Monitoring hooks — Phase 5 (Langfuse Observability & Token Metrics).
+"""Monitoring — Langfuse SDK trực tiếp (vn-stock style).
 
-Tối thiểu: 1 trace cho mỗi lượt gọi `/api/chat` hoặc `/ask`, gắn question/answer/output/token/latency/lỗi.
-Nested child spans: `chon_tool` / `chay_tool` / `dien_giai` qua `trace_step`.
-KHÔNG bọc qua LangChain callback handlers — dùng Langfuse SDK trực tiếp để kiểm soát chính xác payload.
+* ``trace_answer`` — root một lượt chat/ask.
+* ``current_span()`` — span đang mở (``_current`` hoặc LangGraph ``trace_span``).
+* ``trace_step(current_span(), name, as_type=...)`` — bước con; lồng sâu: ``_current.set(box["_span"])`` trong node graph.
+* ``trace_stream`` — gom token dưới parent / ``current_span()``.
 
-Cơ chế Fail-safe & No-op:
-- Mặc định tắt (`MONITORING_ENABLED=false`): Toàn bộ hàm no-op, không tạo kết nối mạng.
-- Khi bật (`MONITORING_ENABLED=true`): Nếu Langfuse server tạm thời down, timeout hoặc lỗi kết nối,
-  hệ thống tự động bắt lỗi an toàn (fail-safe) và tiếp tục trả lời bình thường, KHÔNG làm crash API.
+``MONITORING_ENABLED=false`` → no-op. Langfuse lỗi → fail-safe, không crash API.
 """
 
 from __future__ import annotations
@@ -16,95 +14,87 @@ import contextvars
 import logging
 import time
 from collections.abc import Iterator
-from contextlib import contextmanager
-from typing import Any
+from contextlib import contextmanager, nullcontext
+from typing import Any, Literal
 
 from src.shared.config import settings
+from src.shared.guardrails import redact_pii
 
 logger = logging.getLogger(__name__)
 
+_REDACT_MAX_DEPTH = 8
+
+
+def _redact_deep(value: Any, _depth: int = 0) -> Any:
+    if _depth >= _REDACT_MAX_DEPTH:
+        return "[QUÁ SÂU — BỎ QUA]"
+    if isinstance(value, str):
+        return redact_pii(value)
+    if isinstance(value, dict):
+        return {k: _redact_deep(v, _depth + 1) for k, v in value.items()}
+    if isinstance(value, list):
+        return [_redact_deep(v, _depth + 1) for v in value]
+    return value
+
+_current: contextvars.ContextVar[Any] = contextvars.ContextVar("langfuse_current_span", default=None)
 _request_tokens = contextvars.ContextVar("request_tokens", default=None)
-_trace_root_var = contextvars.ContextVar("trace_root", default=None)
-_trace_active_parent_var = contextvars.ContextVar("trace_active_parent", default=None)
+
+ObservationType = Literal[
+    "span",
+    "generation",
+    "embedding",
+    "agent",
+    "tool",
+    "chain",
+    "retriever",
+    "evaluator",
+    "guardrail",
+]
+
+
+_langfuse_client: Any = None
+
+
+def _get_langfuse():
+    global _langfuse_client
+    if _langfuse_client is not None:
+        return _langfuse_client
+    from langfuse import Langfuse
+
+    _langfuse_client = Langfuse(
+        public_key=settings.langfuse_public_key,
+        secret_key=settings.langfuse_secret_key,
+        host=settings.langfuse_host,
+        mask=lambda *, data, **_: _redact_deep(data),
+    )
+    return _langfuse_client
+
+
+def current_span() -> Any:
+    span = _current.get()
+    if span is not None:
+        return span
+    try:
+        from langgraph.runtime import get_runtime
+
+        return (get_runtime().context or {}).get("trace_span")
+    except Exception:  # noqa: BLE001
+        return None
 
 
 def bind_trace_root(span: Any):
-    """Gắn span gốc (từ trace_answer) cho pipeline hiện tại."""
-    return _trace_root_var.set(span)
+    """Gắn span gốc (từ ``trace_answer``) cho pipeline / graph invoke."""
+    return _current.set(span)
 
 
 def reset_trace_root(token: contextvars.Token) -> None:
     try:
-        _trace_root_var.reset(token)
+        _current.reset(token)
     except ValueError:
         pass
 
 
-def get_trace_parent() -> Any:
-    """Span cha cho substep: ưu tiên node đang chạy, rồi trace gốc."""
-    active = _trace_active_parent_var.get()
-    if active is not None:
-        return active
-    return _trace_root_var.get()
-
-
-@contextmanager
-def trace_active_parent(span: Any) -> Iterator[None]:
-    """Đặt span node graph làm parent cho trace_substep bên trong node."""
-    if span is None:
-        yield
-        return
-    token = _trace_active_parent_var.set(span)
-    try:
-        yield
-    finally:
-        try:
-            _trace_active_parent_var.reset(token)
-        except ValueError:
-            pass
-
-
-@contextmanager
-def trace_substep(
-    name: str,
-    *,
-    kind: str = "tool",
-    input: Any = None,
-    metadata: dict[str, Any] | None = None,
-    as_type: str | None = None,
-) -> Iterator[dict[str, Any]]:
-    """Substep lồng trong graph node — phân tách agent (LLM) vs tool (code/DB).
-
-    Tên span: ``agent:<name>`` hoặc ``tool:<name>`` (trừ khi ``name`` đã có prefix).
-    Biểu tượng Langfuse:
-    - kind="agent": Icon Agent 🤖 (as_type='agent')
-    - kind="tool": Icon Tool 🛠️ (as_type='tool')
-    - kind="retriever": Icon Retriever 🔍 (as_type='retriever')
-    """
-    if not settings.monitoring_enabled:
-        yield {}
-        return
-    parent = get_trace_parent()
-    if parent is None:
-        yield {}
-        return
-    step_name = name if ":" in name else f"{kind}:{name}"
-    obs_type = as_type
-    if not obs_type:
-        if kind == "agent" or step_name.startswith("agent:"):
-            obs_type = "agent"
-        elif kind == "tool" or step_name.startswith("tool:"):
-            obs_type = "tool"
-        elif kind == "retriever" or step_name.startswith("retriever:"):
-            obs_type = "retriever"
-        else:
-            obs_type = "span"
-
-    with trace_step(parent, step_name, input=input, metadata=metadata, as_type=obs_type) as box:
-        yield box
-
-def add_request_tokens(usage: dict[str, int]):
-    """Cộng dồn token vào request hiện tại."""
+def add_request_tokens(usage: dict[str, int]) -> None:
     tokens = _request_tokens.get()
     if tokens is not None and isinstance(usage, dict):
         tokens["prompt_tokens"] += usage.get("prompt_tokens", 0)
@@ -112,31 +102,10 @@ def add_request_tokens(usage: dict[str, int]):
         tokens["total_tokens"] += usage.get("total_tokens", 0)
 
 
-def _get_langfuse():
-    """Lazy import + lazy client — tránh phụ thuộc cứng vào package
-    `langfuse` khi `MONITORING_ENABLED=false`, và tránh tạo client ở
-    import-time."""
-    from langfuse import Langfuse
-
-    return Langfuse(
-        public_key=settings.langfuse_public_key,
-        secret_key=settings.langfuse_secret_key,
-        host=settings.langfuse_host,
-    )
-
-
 def extract_token_usage(response: Any) -> dict[str, int]:
-    """Trích xuất prompt_tokens, completion_tokens, total_tokens từ response của LLM.
-
-    Hỗ trợ:
-    - LangChain AIMessage (usage_metadata hoặc response_metadata['token_usage'])
-    - Dictionary response (keys: usage, usage_metadata, token_usage)
-    - Đối tượng phản hồi chuẩn OpenAI ChatCompletions
-    """
     if not response:
         return {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0}
 
-    # 1. Kiểm tra usage_metadata (LangChain AIMessage chuẩn)
     usage_meta = getattr(response, "usage_metadata", None)
     if isinstance(usage_meta, dict):
         p = usage_meta.get("input_tokens") or usage_meta.get("prompt_tokens") or 0
@@ -144,7 +113,6 @@ def extract_token_usage(response: Any) -> dict[str, int]:
         tot = usage_meta.get("total_tokens") or (p + c)
         return {"prompt_tokens": int(p), "completion_tokens": int(c), "total_tokens": int(tot)}
 
-    # 2. Kiểm tra response_metadata['token_usage']
     resp_meta = getattr(response, "response_metadata", None)
     if isinstance(resp_meta, dict):
         tu = resp_meta.get("token_usage")
@@ -154,7 +122,6 @@ def extract_token_usage(response: Any) -> dict[str, int]:
             tot = tu.get("total_tokens") or (p + c)
             return {"prompt_tokens": int(p), "completion_tokens": int(c), "total_tokens": int(tot)}
 
-    # 3. Fallback nếu response là dict
     if isinstance(response, dict):
         usage = response.get("usage") or response.get("usage_metadata") or response.get("token_usage")
         if isinstance(usage, dict):
@@ -166,127 +133,153 @@ def extract_token_usage(response: Any) -> dict[str, int]:
     return {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0}
 
 
+def _langfuse_propagate(meta: dict[str, Any]):
+    """Langfuse 5: user/session trên root span (gọi **bên trong** ``start_as_current_observation``)."""
+    from langfuse import propagate_attributes
+
+    kw: dict[str, Any] = {}
+    if meta.get("user_id"):
+        kw["user_id"] = str(meta["user_id"])[:200]
+    if meta.get("session_id"):
+        kw["session_id"] = str(meta["session_id"])[:200]
+    if not kw:
+        return nullcontext()
+    return propagate_attributes(**kw)
+
+
+def _start_observation(parent_or_client: Any, **kwargs: Any) -> Any | None:
+    try:
+        return parent_or_client.start_observation(**kwargs)
+    except TypeError:
+        kwargs.pop("as_type", None)
+        try:
+            return parent_or_client.start_observation(**kwargs)
+        except Exception as exc:
+            logger.warning("Langfuse start_observation fail-safe: %s", exc)
+            return None
+    except Exception as exc:
+        logger.warning("Langfuse start_observation fail-safe: %s", exc)
+        return None
+
+
 @contextmanager
-def trace_answer(name: str, question: str, metadata: dict[str, Any] | None = None):
-    """Bọc quanh 1 lượt gọi pipeline `/ask` hoặc `/api/chat`.
-
-    Dùng như:
-        with trace_answer("chat", question, metadata={"endpoint": "/api/chat"}) as t:
-            result = ...
-            t["output"] = result
-
-    `t["_span"]` là span cha đang mở — truyền xuống cho `trace_step()` để
-    tạo nested span. Ghi nhận đầy đủ output, token metrics (prompt_tokens,
-    completion_tokens, total_tokens), model_name, temperature, latency_s.
-
-    Fail-safe: Nếu Langfuse server tạm thời down hoặc lỗi kết nối,
-    hệ thống bắt lỗi an toàn và tiếp tục pipeline bình thường, không crash API.
-    """
+def trace_answer(
+    name: str,
+    question: str,
+    metadata: dict[str, Any] | None = None,
+    as_type: ObservationType = "agent",
+):
     if not settings.monitoring_enabled:
         yield {}
         return
 
-    span = None
     langfuse = None
     start = time.perf_counter()
     box: dict[str, Any] = {}
     meta = dict(metadata or {})
-    
     token_counter = {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0}
     token_var_token = _request_tokens.set(token_counter)
+    cur_token = None
 
     try:
         langfuse = _get_langfuse()
-        kwargs: dict[str, Any] = {"name": name, "as_type": "agent", "input": question, "metadata": meta}
-        if "session_id" in meta and meta["session_id"]:
-            kwargs["session_id"] = str(meta["session_id"])
-        if "user_id" in meta and meta["user_id"]:
-            kwargs["user_id"] = str(meta["user_id"])
-        span = langfuse.start_observation(**kwargs)
-        box["_span"] = span
-    except TypeError:
-        try:
-            kwargs.pop("as_type", None)
-            span = langfuse.start_observation(name=name, input=question, metadata=meta)
-            box["_span"] = span
-        except Exception as exc:
-            logger.warning("Không thể khởi tạo Langfuse trace (fail-safe active): %s", exc)
-            span = None
     except Exception as exc:
-        logger.warning("Không thể khởi tạo Langfuse trace (fail-safe active): %s", exc)
-        span = None
+        logger.warning("Không thể khởi tạo Langfuse trace (fail-safe): %s", exc)
+        try:
+            yield box
+        finally:
+            try:
+                _request_tokens.reset(token_var_token)
+            except ValueError:
+                pass
+        return
 
     try:
-        yield box
-    except Exception as exc:
-        if span is not None:
-            try:
-                if "output" not in box or box.get("output") is None:
-                    box["output"] = {"error": str(exc)}
-                span.update(level="ERROR", status_message=str(exc))
-            except Exception as update_exc:
-                logger.warning("Lỗi cập nhật Langfuse ERROR span: %s", update_exc)
-        raise
+        with langfuse.start_as_current_observation(
+            name=name,
+            as_type=as_type,
+            input=question,
+            metadata=meta,
+        ) as span:
+            with _langfuse_propagate(meta):
+                box["_span"] = span
+                cur_token = _current.set(span)
+                try:
+                    yield box
+                except Exception as exc:
+                    try:
+                        if box.get("output") is None:
+                            box["output"] = {"error": str(exc)}
+                        span.update(level="ERROR", status_message=str(exc))
+                    except Exception as update_exc:
+                        logger.warning("Lỗi cập nhật Langfuse ERROR span: %s", update_exc)
+                    raise
+                finally:
+                    if "usage" not in box:
+                        box["usage"] = {}
+                    box["usage"]["prompt_tokens"] = box["usage"].get("prompt_tokens", 0) + token_counter["prompt_tokens"]
+                    box["usage"]["completion_tokens"] = (
+                        box["usage"].get("completion_tokens", 0) + token_counter["completion_tokens"]
+                    )
+                    box["usage"]["total_tokens"] = box["usage"].get("total_tokens", 0) + token_counter["total_tokens"]
+                    try:
+                        latency_s = time.perf_counter() - start
+                        out = box.get("output")
+                        if out is None:
+                            out = {
+                                "status": "incomplete",
+                                "reason": "no_output_recorded",
+                                "question_preview": (question or "")[:500],
+                            }
+                        model_name = box.get("model_name") or meta.get("model_name") or (
+                            settings.model_name if settings.llm_backend == "self_hosted" else settings.llm_model
+                        )
+                        temperature = box.get("temperature", meta.get("temperature", settings.llm_temperature))
+                        usage = box.get("usage") or {}
+                        p_tokens = int(usage.get("prompt_tokens", meta.get("prompt_tokens", 0)))
+                        c_tokens = int(usage.get("completion_tokens", meta.get("completion_tokens", 0)))
+                        tot_tokens = int(usage.get("total_tokens", meta.get("total_tokens", p_tokens + c_tokens)))
+                        meta.update({
+                            "latency_s": latency_s,
+                            "model_name": model_name,
+                            "temperature": temperature,
+                            "prompt_tokens": p_tokens,
+                            "completion_tokens": c_tokens,
+                            "total_tokens": tot_tokens,
+                        })
+                        update_kwargs: dict[str, Any] = {
+                            "name": name,
+                            "input": question,
+                            "output": out,
+                            "metadata": meta,
+                            "model": model_name,
+                            "model_parameters": {"temperature": temperature},
+                        }
+                        if isinstance(out, dict) and out.get("status") in ("error", "incomplete"):
+                            update_kwargs["level"] = "ERROR"
+                            update_kwargs["status_message"] = str(
+                                out.get("error") or out.get("reason") or out.get("status")
+                            )[:500]
+                        if tot_tokens > 0 or p_tokens > 0 or c_tokens > 0:
+                            update_kwargs["usage_details"] = {
+                                "input": p_tokens,
+                                "output": c_tokens,
+                                "total": tot_tokens,
+                            }
+                        span.update(**update_kwargs)
+                    except Exception as update_exc:
+                        logger.warning("Lỗi kết thúc Langfuse span: %s", update_exc)
+                    if cur_token is not None:
+                        reset_trace_root(cur_token)
     finally:
-        if "usage" not in box:
-            box["usage"] = {}
-        box["usage"]["prompt_tokens"] = box["usage"].get("prompt_tokens", 0) + token_counter["prompt_tokens"]
-        box["usage"]["completion_tokens"] = box["usage"].get("completion_tokens", 0) + token_counter["completion_tokens"]
-        box["usage"]["total_tokens"] = box["usage"].get("total_tokens", 0) + token_counter["total_tokens"]
         try:
             _request_tokens.reset(token_var_token)
         except ValueError:
-            pass  # SSE chạy qua threadpool — context khác, vẫn phải end span
-
-        if span is not None:
-            try:
-                latency_s = time.perf_counter() - start
-                out = box.get("output")
-                if out is None:
-                    out = {"status": "completed"}
-
-                model_name = box.get("model_name") or meta.get("model_name") or (
-                    settings.model_name if settings.llm_backend == "self_hosted" else settings.llm_model
-                )
-                temperature = box.get("temperature", meta.get("temperature", settings.llm_temperature))
-
-                usage = box.get("usage") or {}
-                p_tokens = int(usage.get("prompt_tokens", meta.get("prompt_tokens", 0)))
-                c_tokens = int(usage.get("completion_tokens", meta.get("completion_tokens", 0)))
-                tot_tokens = int(usage.get("total_tokens", meta.get("total_tokens", p_tokens + c_tokens)))
-
-                meta.update({
-                    "latency_s": latency_s,
-                    "model_name": model_name,
-                    "temperature": temperature,
-                    "prompt_tokens": p_tokens,
-                    "completion_tokens": c_tokens,
-                    "total_tokens": tot_tokens,
-                })
-
-                update_kwargs: dict[str, Any] = {
-                    "output": out,
-                    "metadata": meta,
-                    "model": model_name,
-                    "model_parameters": {"temperature": temperature},
-                }
-                if tot_tokens > 0 or p_tokens > 0 or c_tokens > 0:
-                    update_kwargs["usage_details"] = {
-                        "input": p_tokens,
-                        "output": c_tokens,
-                        "total": tot_tokens,
-                    }
-
-                span.update(**update_kwargs)
-                span.end()
-            except Exception as update_exc:
-                logger.warning("Lỗi kết thúc Langfuse span: %s", update_exc)
-
-            try:
-                if langfuse is not None:
-                    langfuse.flush()
-            except Exception as flush_exc:
-                logger.warning("Lỗi flush Langfuse: %s", flush_exc)
+            pass
+        try:
+            langfuse.flush()
+        except Exception as flush_exc:
+            logger.warning("Lỗi flush Langfuse: %s", flush_exc)
 
 
 @contextmanager
@@ -295,17 +288,9 @@ def trace_step(
     name: str,
     input: Any = None,
     metadata: dict[str, Any] | None = None,
-    as_type: str | None = None,
+    as_type: ObservationType = "span",
 ):
-    """Nested child span/observation dưới `parent_span`.
-
-    Phân biệt loại observation (`as_type`):
-    - "agent": Bước agent / LLM (icon Agent 🤖)
-    - "tool": Bước gọi tool / function / DB (icon Tool 🛠️)
-    - "retriever": Bước truy xuất tri thức / schema (icon Retriever 🔍)
-    - "span": Khối span tổng quát (icon <->)
-    """
-    if parent_span is None:
+    if parent_span is None or not settings.monitoring_enabled:
         yield {}
         return
 
@@ -314,52 +299,17 @@ def trace_step(
     box: dict[str, Any] = {}
     meta = dict(metadata or {})
 
-    obs_type = as_type
-    if not obs_type:
-        if name.startswith("agent:") or name in (
-            "classify",
-            "orchestrator",
-            "respond_stat",
-            "generate_sql",
-            "repair_sql",
-            "answer_from_docs",
-            "orchestrator_collect",
-            "respond",
-        ):
-            obs_type = "agent"
-        elif name.startswith("tool:") or name in ("execute_sql", "validate_sql", "render_chart"):
-            obs_type = "tool"
-        elif name in ("recall", "retrieve_schema", "retrieve_docs"):
-            obs_type = "retriever"
-        else:
-            obs_type = "span"
-
-    try:
-        kwargs: dict[str, Any] = {"name": name, "as_type": obs_type, "input": input, "metadata": meta}
-        if "session_id" in meta and meta["session_id"]:
-            kwargs["session_id"] = str(meta["session_id"])
-        if "user_id" in meta and meta["user_id"]:
-            kwargs["user_id"] = str(meta["user_id"])
-        span = parent_span.start_observation(**kwargs)
+    kwargs: dict[str, Any] = {"name": name, "as_type": as_type, "input": input, "metadata": meta}
+    span = _start_observation(parent_span, **kwargs)
+    if span is not None:
         box["_span"] = span
-    except TypeError:
-        try:
-            kwargs.pop("as_type", None)
-            span = parent_span.start_observation(name=name, input=input, metadata=meta)
-            box["_span"] = span
-        except Exception as exc:
-            logger.warning("Không thể tạo Langfuse child span '%s' (fail-safe active): %s", name, exc)
-            span = None
-    except Exception as exc:
-        logger.warning("Không thể tạo Langfuse child span '%s' (fail-safe active): %s", name, exc)
-        span = None
 
     try:
         yield box
     except Exception as exc:
         if span is not None:
             try:
-                if "output" not in box or box.get("output") is None:
+                if box.get("output") is None:
                     box["output"] = {"error": str(exc)}
                 span.update(level="ERROR", status_message=str(exc))
             except Exception as update_exc:
@@ -369,14 +319,10 @@ def trace_step(
         if span is not None:
             try:
                 latency_s = time.perf_counter() - start
-                out = box.get("output")
-                if out is None:
-                    out = {"status": "completed"}
+                out = box.get("output") or {"status": "completed"}
                 trace_in = box.get("input", input)
-
                 model_name = box.get("model_name") or meta.get("model_name")
                 temperature = box.get("temperature", meta.get("temperature"))
-
                 meta["latency_s"] = latency_s
                 if model_name:
                     meta["model_name"] = model_name
@@ -384,46 +330,40 @@ def trace_step(
                     meta["temperature"] = temperature
                 if box.get("metadata"):
                     meta.update(box["metadata"])
-
                 usage = box.get("usage") or {}
                 p_tokens = int(usage.get("prompt_tokens", meta.get("prompt_tokens", 0)))
                 c_tokens = int(usage.get("completion_tokens", meta.get("completion_tokens", 0)))
                 tot_tokens = int(usage.get("total_tokens", meta.get("total_tokens", p_tokens + c_tokens)))
-
                 if tot_tokens > 0 or p_tokens > 0 or c_tokens > 0:
                     meta["prompt_tokens"] = p_tokens
                     meta["completion_tokens"] = c_tokens
                     meta["total_tokens"] = tot_tokens
-
-                update_kwargs: dict[str, Any] = {
-                    "input": trace_in,
-                    "output": out,
-                    "metadata": meta,
-                }
+                update_kwargs: dict[str, Any] = {"input": trace_in, "output": out, "metadata": meta}
                 if model_name:
                     update_kwargs["model"] = model_name
                 if temperature is not None:
                     update_kwargs["model_parameters"] = {"temperature": temperature}
                 if tot_tokens > 0 or p_tokens > 0 or c_tokens > 0:
-                    update_kwargs["usage_details"] = {
-                        "input": p_tokens,
-                        "output": c_tokens,
-                        "total": tot_tokens,
-                    }
-
+                    update_kwargs["usage_details"] = {"input": p_tokens, "output": c_tokens, "total": tot_tokens}
                 span.update(**update_kwargs)
                 span.end()
             except Exception as update_exc:
                 logger.warning("Lỗi kết thúc child span: %s", update_exc)
 
 
-def trace_stream(name: str, question: str, tokens: Iterator[str]) -> Iterator[str]:
-    """Bọc quanh answer dạng stream: trace toàn bộ output ghép lại sau
-    khi stream kết thúc. Fail-safe khi Langfuse down."""
-    if not settings.monitoring_enabled:
+def trace_stream(
+    name: str,
+    question: str,
+    tokens: Iterator[str],
+    parent: Any = None,
+    as_type: ObservationType = "generation",
+) -> Iterator[str]:
+    parent_span = parent if parent is not None else current_span()
+    if not settings.monitoring_enabled or parent_span is None:
         yield from tokens
         return
 
+    langfuse = None
     start = time.perf_counter()
     chunks: list[str] = []
     try:
@@ -433,13 +373,17 @@ def trace_stream(name: str, question: str, tokens: Iterator[str]) -> Iterator[st
     finally:
         try:
             langfuse = _get_langfuse()
-            span = langfuse.start_observation(
+            span = _start_observation(
+                parent_span,
                 name=name,
+                as_type=as_type,
                 input=question,
                 output="".join(chunks),
                 metadata={"latency_s": time.perf_counter() - start, "streamed": True},
             )
-            span.end()
-            langfuse.flush()
+            if span is not None:
+                span.end()
+            if langfuse is not None:
+                langfuse.flush()
         except Exception as exc:
-            logger.warning("Lỗi ghi nhận stream trace (fail-safe active): %s", exc)
+            logger.warning("Lỗi ghi stream trace (fail-safe): %s", exc)

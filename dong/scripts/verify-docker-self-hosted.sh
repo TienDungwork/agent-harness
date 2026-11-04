@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # ==============================================================================
-# Script verify Docker stack with LLM_BACKEND=self_hosted (192.168.1.196:18083)
+# Script verify Docker stack with LLM_BACKEND=self_hosted (192.168.1.198:18083)
 # ==============================================================================
 
 set -euo pipefail
@@ -33,7 +33,7 @@ echo "OK (llm_backend=${LLM_BACKEND}, active_model=${ACTIVE_MODEL})"
 echo -n "[2/2] Kiểm tra /api/llm/ping... "
 PING_RESP=$(curl -sf "${BASE_URL}/api/llm/ping" 2>&1) || {
     echo "FAIL"
-    echo "LỖI: Gọi ${BASE_URL}/api/llm/ping thất bại. Gateway 192.168.1.196:18083 không phản hồi hoặc MODEL_API_KEY chưa hợp lệ."
+    echo "LỖI: Gọi ${BASE_URL}/api/llm/ping thất bại. Gateway 192.168.1.198:18083 không phản hồi hoặc MODEL_API_KEY chưa hợp lệ."
     exit 1
 }
 

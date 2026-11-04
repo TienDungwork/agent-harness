@@ -9,7 +9,7 @@ from src.domain.agents.sql.scope import apply_organization_scope
 from src.infra.db.executor import execute_sql
 from src.infra.db.validator import validate_sql
 from src.infra.llm.client import use_offline_tools
-from src.infra.monitoring.tracing import trace_substep
+from src.infra.monitoring.tracing import current_span, trace_step
 
 
 def execute_sql_node(state: dict[str, Any]) -> dict[str, Any]:
@@ -43,11 +43,11 @@ def execute_sql_node(state: dict[str, Any]) -> dict[str, Any]:
     sql = (state.get("sql") or "").strip()
     params = state.get("params") or []
 
-    with trace_substep("apply_org_scope", kind="tool", input={"sql": sql}) as sub:
+    with trace_step(current_span(), "apply_org_scope", input={"sql": sql}, as_type="tool") as sub:
         sql = apply_organization_scope(sql)
         sub["output"] = {"sql": sql}
 
-    with trace_substep("revalidate_sql", kind="tool", input={"sql": sql}) as sub:
+    with trace_step(current_span(), "revalidate_sql", input={"sql": sql}, as_type="tool") as sub:
         val = validate_sql(sql)
         sub["output"] = val.to_dict()
 
@@ -67,28 +67,8 @@ def execute_sql_node(state: dict[str, Any]) -> dict[str, Any]:
             ],
         }
 
-    if use_offline_tools():
-        if "CROWD_DETECTION" in sql or "crowd" in sql.lower() or "đám đông" in sql.lower():
-            offline_rows = [{"count": 0}]
-        else:
-            offline_rows = [{"count": 42}]
-        columns = list(offline_rows[0].keys())
-        return {
-            "rows": offline_rows,
-            "columns": columns,
-            "error": "",
-            "events": [
-                node_event(
-                    "execute_sql",
-                    input={"sql": sql, "params": params, "offline": True},
-                    output={"rows": offline_rows, "columns": columns, "row_count": len(offline_rows)},
-                    meta={"user_id": user_id, "session_id": session_id, "offline": True},
-                )
-            ],
-        }
-
     try:
-        with trace_substep("postgres_query", kind="tool", input={"sql": sql, "params": params}) as sub:
+        with trace_step(current_span(), "postgres_query", input={"sql": sql, "params": params}, as_type="tool") as sub:
             result = execute_sql(sql, params)
             if isinstance(result, tuple) and len(result) == 2:
                 rows, db_columns = result

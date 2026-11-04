@@ -9,7 +9,7 @@ from src.domain.agents.sql.pre_sql import format_time_range_for_prompt, build_ch
 from src.domain.agents.sql.scope import apply_organization_scope, format_org_scope_for_prompt
 from src.shared.config import settings
 from src.infra.llm.client import invoke_text, use_offline_tools
-from src.infra.monitoring.tracing import trace_substep
+from src.infra.monitoring.tracing import current_span, trace_step
 from src.infra.prompts import registry
 
 # ── SQL extraction ────────────────────────────────────────────────────────────
@@ -138,7 +138,7 @@ def generate_sql_node(state: dict) -> dict:
     system_prompt = registry().render("sql_agent")
     rewritten = state.get("rewritten")
 
-    with trace_substep("build_prompt", kind="tool", input={"question": q_text}) as sub:
+    with trace_step(current_span(), "build_prompt", input={"question": q_text}, as_type="tool") as sub:
         user_parts: list[str] = []
         time_range = None
         if rewritten is not None:
@@ -172,7 +172,7 @@ def generate_sql_node(state: dict) -> dict:
         substep="generate_sql",
     )
 
-    with trace_substep("extract_sql", kind="tool", input={"raw_len": len(raw)}) as sub:
+    with trace_step(current_span(), "extract_sql", input={"raw_len": len(raw)}, as_type="tool") as sub:
         sql = extract_sql(raw)
         sub["output"] = {"sql_len": len(sql), "empty": not bool(sql)}
 
@@ -192,7 +192,7 @@ def generate_sql_node(state: dict) -> dict:
             )],
         }
 
-    with trace_substep("apply_org_scope", kind="tool", input={"sql": sql}) as sub:
+    with trace_step(current_span(), "apply_org_scope", input={"sql": sql}, as_type="tool") as sub:
         sql = apply_organization_scope(sql)
         sub["output"] = {"sql": sql}
 

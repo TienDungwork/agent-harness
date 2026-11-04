@@ -18,3 +18,7 @@ eval/results/*
 # Feedback attachments
 data/feedback/attachments/*
 !data/feedback/attachments/.gitkeep
+
+# Agent Postgres (bind mount under resource/db/agent)
+resource/db/agent/data/pgdata/
+resource/db/agent/data/qdrant/

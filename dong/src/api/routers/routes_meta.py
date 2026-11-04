@@ -25,18 +25,35 @@ def health():
 
 @router.get("/api/models")
 def get_available_models():
+    supported = [
+        {"id": "gpt-4o-mini", "name": "OpenAI Cloud (gpt-4o-mini)", "provider": "openai"},
+    ]
+    if settings.llm_backend == "self_hosted":
+        from src.infra.llm.gateway import fetch_gateway_catalog, gateway_model_ids
+
+        catalog = fetch_gateway_catalog()
+        limits = catalog.get("limits") or {}
+        endpoint = settings.model_endpoint or f"{settings.model_base_url.rstrip('/')}/chat/completions"
+        for mid in gateway_model_ids():
+            supported.append({
+                "id": mid,
+                "name": f"Gateway ({mid})",
+                "provider": "self_hosted",
+                "endpoint": endpoint,
+                "limits": limits,
+            })
+        if not gateway_model_ids():
+            supported.append({
+                "id": settings.model_name,
+                "name": f"Gateway ({settings.model_name})",
+                "provider": "self_hosted",
+                "endpoint": endpoint,
+            })
     return {
         "active_backend": settings.llm_backend,
         "active_model": settings.effective_model,
-        "supported_models": [
-            {"id": "gpt-4o-mini", "name": "OpenAI Cloud (gpt-4o-mini)", "provider": "openai"},
-            {
-                "id": "qwen3-4b",
-                "name": "Self-hosted Qwen3-4B",
-                "provider": "self_hosted",
-                "endpoint": settings.model_base_url,
-            },
-        ],
+        "chat_completions_endpoint": settings.model_endpoint,
+        "supported_models": supported,
     }
 
 
@@ -59,7 +76,8 @@ def get_config():
     return {
         "llm_backend": settings.llm_backend,
         "active_model": settings.effective_model,
-        "self_hosted_endpoint": settings.model_base_url,
+        "self_hosted_base_url": settings.model_base_url,
+        "self_hosted_chat_endpoint": settings.model_endpoint,
         "self_hosted_model": settings.model_name,
         "monitoring_enabled": settings.monitoring_enabled,
         "supported_domains": [

@@ -12,6 +12,7 @@ eval/results/*
 tests/
 *.md
 !resource/**
+resource/db/agent/data/pgdata/
 langfuse/
 docker-compose*.yml
 Dockerfile

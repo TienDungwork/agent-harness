@@ -130,12 +130,9 @@ def answer_from_docs(
         cards = retrieve_docs(question)
 
     if not cards:
-        return _empty_cards_fallback(question)
+        raise ValueError("Không tìm thấy task cards phù hợp trong DOCS_ROOT.")
 
-    if use_offline_tools():
-        return _offline_answer_from_cards(question, cards)
-
-    # Online mode: invoke_structured
+    # invoke_structured
     card_excerpts = [card_excerpt_for_llm(c) for c in cards]
     user_content = (
         f"Câu hỏi của người dùng:\n{question}\n\n"

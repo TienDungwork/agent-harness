@@ -1,8 +1,4 @@
-"""Human Feedback persistence module — VMS KCN Hưng Phú (dong v8).
-
-Lưu trữ đánh giá tốt/xấu kèm lý do, ảnh đính kèm và agent trace vào SQLite (data/feedback.db).
-Đồng thời hỗ trợ đồng bộ xuất data/feedback.json để đảm bảo tính tương thích ngược.
-"""
+"""Human Feedback — Postgres agent DB (production); SQLite file khi test/offline."""
 
 from __future__ import annotations
 
@@ -28,17 +24,25 @@ FEEDBACK_FILE = DATA_DIR / "feedback.json"
 ATTACHMENTS_DIR = DATA_DIR / "feedback" / "attachments"
 
 _lock = threading.Lock()
+_pg_migrate_done = False
 
 
 def _get_target_db_path() -> Path:
-    """Trả về đường dẫn database SQLite tương ứng (hỗ trợ monkeypatch trong test)."""
     if FEEDBACK_FILE.name != "feedback.json" or FEEDBACK_FILE.parent != DATA_DIR:
         return FEEDBACK_FILE.with_suffix(".db")
     return FEEDBACK_DB
 
 
+def _use_postgres() -> bool:
+    from src.infra.feedback.store import postgres_feedback_enabled
+
+    if not postgres_feedback_enabled():
+        return False
+    # pytest monkeypatch FEEDBACK_* ra khỏi data/ → giữ SQLite file
+    return FEEDBACK_DB.parent == DATA_DIR and FEEDBACK_FILE.parent == DATA_DIR
+
+
 def _get_connection(db_path: Path | None = None) -> sqlite3.Connection:
-    """Khởi tạo kết nối SQLite với timeout và WAL mode."""
     target_db = db_path or _get_target_db_path()
     conn = sqlite3.connect(str(target_db), timeout=10.0, check_same_thread=False)
     conn.row_factory = sqlite3.Row
@@ -49,8 +53,7 @@ def _get_connection(db_path: Path | None = None) -> sqlite3.Connection:
     return conn
 
 
-def _init_db(conn: sqlite3.Connection) -> None:
-    """Tạo bảng feedback và chỉ mục nếu chưa tồn tại."""
+def _init_sqlite_db(conn: sqlite3.Connection) -> None:
     conn.execute(
         """
         CREATE TABLE IF NOT EXISTS feedback (
@@ -68,21 +71,12 @@ def _init_db(conn: sqlite3.Connection) -> None:
         );
         """
     )
-    conn.execute(
-        """
-        CREATE INDEX IF NOT EXISTS idx_feedback_timestamp ON feedback (timestamp);
-        """
-    )
-    conn.execute(
-        """
-        CREATE INDEX IF NOT EXISTS idx_feedback_rating ON feedback (rating);
-        """
-    )
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_feedback_timestamp ON feedback (timestamp);")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_feedback_rating ON feedback (rating);")
     conn.commit()
 
 
 def _migrate_json_to_sqlite(conn: sqlite3.Connection) -> None:
-    """Tự động migrate dữ liệu từ file feedback.json cũ sang SQLite (nếu có)."""
     if not FEEDBACK_FILE.exists():
         return
     try:
@@ -92,7 +86,6 @@ def _migrate_json_to_sqlite(conn: sqlite3.Connection) -> None:
         records = json.loads(content)
         if not isinstance(records, list) or not records:
             return
-
         cursor = conn.cursor()
         migrated = 0
         for rec in records:
@@ -130,25 +123,12 @@ def _migrate_json_to_sqlite(conn: sqlite3.Connection) -> None:
             migrated += 1
         if migrated > 0:
             conn.commit()
-            logger.info("Đã migrate thành công %d bản ghi từ feedback.json sang SQLite feedback.db", migrated)
+            logger.info("Đã migrate %d bản ghi từ feedback.json sang SQLite.", migrated)
     except Exception as exc:
-        logger.warning("Không thể tự động migrate feedback.json sang SQLite: %s", exc)
+        logger.warning("Không thể migrate feedback.json sang SQLite: %s", exc)
 
 
-def _ensure_dirs() -> None:
-    """Đảm bảo các thư mục lưu trữ data/feedback/attachments và DB SQLite đã khởi tạo."""
-    DATA_DIR.mkdir(parents=True, exist_ok=True)
-    ATTACHMENTS_DIR.mkdir(parents=True, exist_ok=True)
-    target_db = _get_target_db_path()
-    target_db.parent.mkdir(parents=True, exist_ok=True)
-    with _lock:
-        with _get_connection(target_db) as conn:
-            _init_db(conn)
-            _migrate_json_to_sqlite(conn)
-
-
-def _fetch_all_records(conn: sqlite3.Connection) -> list[dict[str, Any]]:
-    """Lấy danh sách tất cả các bản ghi feedback theo thứ tự thời gian từ SQLite."""
+def _fetch_all_sqlite(conn: sqlite3.Connection) -> list[dict[str, Any]]:
     cursor = conn.cursor()
     cursor.execute(
         """
@@ -158,9 +138,8 @@ def _fetch_all_records(conn: sqlite3.Connection) -> list[dict[str, Any]]:
         ORDER BY timestamp ASC
         """
     )
-    rows = cursor.fetchall()
     results: list[dict[str, Any]] = []
-    for r in rows:
+    for r in cursor.fetchall():
         trace_obj = None
         if r["agent_trace"]:
             try:
@@ -184,12 +163,74 @@ def _fetch_all_records(conn: sqlite3.Connection) -> list[dict[str, Any]]:
     return results
 
 
-def save_feedback_record(req: FeedbackRequest) -> dict[str, Any]:
-    """Lưu bản ghi human feedback vào SQLite (data/feedback.db) và ảnh vào attachments.
+def load_legacy_feedback_for_migration() -> list[dict[str, Any]]:
+    """Đọc SQLite/JSON cũ trên disk (một lần khi Postgres trống)."""
+    records = _load_legacy_sqlite_records()
+    if records:
+        return records
+    return _load_legacy_json_records()
 
-    Đồng thời đồng bộ xuất sang data/feedback.json để duy trì tương thích ngược.
-    """
-    _ensure_dirs()
+
+def _load_legacy_sqlite_records() -> list[dict[str, Any]]:
+    target_db = _get_target_db_path()
+    if not target_db.exists():
+        return []
+    try:
+        with _get_connection(target_db) as conn:
+            _init_sqlite_db(conn)
+            return _fetch_all_sqlite(conn)
+    except Exception as exc:
+        logger.warning("Đọc feedback SQLite legacy: %s", exc)
+        return []
+
+
+def _load_legacy_json_records() -> list[dict[str, Any]]:
+    if not FEEDBACK_FILE.exists():
+        return []
+    try:
+        content = FEEDBACK_FILE.read_text(encoding="utf-8").strip()
+        if not content:
+            return []
+        parsed = json.loads(content)
+        return parsed if isinstance(parsed, list) else []
+    except Exception as exc:
+        logger.warning("Đọc feedback.json legacy: %s", exc)
+        return []
+
+
+def _ensure_sqlite_dirs() -> None:
+    DATA_DIR.mkdir(parents=True, exist_ok=True)
+    ATTACHMENTS_DIR.mkdir(parents=True, exist_ok=True)
+    target_db = _get_target_db_path()
+    target_db.parent.mkdir(parents=True, exist_ok=True)
+    with _lock:
+        with _get_connection(target_db) as conn:
+            _init_sqlite_db(conn)
+            _migrate_json_to_sqlite(conn)
+
+
+def _ensure_postgres_migrated() -> None:
+    global _pg_migrate_done
+    if _pg_migrate_done or not _use_postgres():
+        return
+    from src.infra.feedback.store import ensure_feedback_storage
+
+    ensure_feedback_storage(load_legacy_feedback_for_migration)
+    _pg_migrate_done = True
+
+
+def _sync_json_export(records: list[dict[str, Any]]) -> None:
+    if _use_postgres():
+        return
+    try:
+        FEEDBACK_FILE.parent.mkdir(parents=True, exist_ok=True)
+        FEEDBACK_FILE.write_text(json.dumps(records, ensure_ascii=False, indent=2), encoding="utf-8")
+    except Exception as exc:
+        logger.warning("Không thể đồng bộ feedback.json: %s", exc)
+
+
+def save_feedback_record(req: FeedbackRequest) -> dict[str, Any]:
+    ATTACHMENTS_DIR.mkdir(parents=True, exist_ok=True)
 
     now = datetime.now(timezone.utc).astimezone()
     ts_str = now.strftime("%Y%m%d_%H%M%S")
@@ -229,19 +270,26 @@ def save_feedback_record(req: FeedbackRequest) -> dict[str, Any]:
         "agent_trace": req.agent_trace,
     }
 
+    if _use_postgres():
+        _ensure_postgres_migrated()
+        from src.infra.feedback.store import insert_feedback
+
+        with _lock:
+            insert_feedback(record)
+        return record
+
+    _ensure_sqlite_dirs()
     target_db = _get_target_db_path()
     with _lock:
-        saved_to_sqlite = False
         try:
             with _get_connection(target_db) as conn:
-                _init_db(conn)
-                cursor = conn.cursor()
+                _init_sqlite_db(conn)
                 trace_str = (
                     json.dumps(req.agent_trace, ensure_ascii=False)
                     if req.agent_trace is not None
                     else None
                 )
-                cursor.execute(
+                conn.execute(
                     """
                     INSERT INTO feedback (
                         id, timestamp, session_id, user_id, rating, feedback_reason,
@@ -262,37 +310,16 @@ def save_feedback_record(req: FeedbackRequest) -> dict[str, Any]:
                     ),
                 )
                 conn.commit()
-                saved_to_sqlite = True
-                try:
-                    target_db.chmod(0o666)
-                except Exception:
-                    pass
-
-                # Đồng bộ dữ liệu sang file FEEDBACK_FILE (JSON) để tương thích ngược
-                try:
-                    all_records = _fetch_all_records(conn)
-                    FEEDBACK_FILE.parent.mkdir(parents=True, exist_ok=True)
-                    FEEDBACK_FILE.write_text(
-                        json.dumps(all_records, ensure_ascii=False, indent=2),
-                        encoding="utf-8",
-                    )
-                    try:
-                        FEEDBACK_FILE.chmod(0o666)
-                    except Exception:
-                        pass
-                except Exception as sync_exc:
-                    logger.warning("Không thể đồng bộ feedback sang feedback.json: %s", sync_exc)
+                _sync_json_export(_fetch_all_sqlite(conn))
         except (sqlite3.OperationalError, sqlite3.DatabaseError) as db_err:
-            logger.error("Lỗi ghi SQLite (%s): %s. Kích hoạt fallback ghi file JSON trực tiếp.", type(db_err).__name__, db_err)
+            logger.error("Lỗi ghi SQLite feedback: %s", db_err)
             _fallback_append_json(record)
 
     return record
 
 
 def _fallback_append_json(record: dict[str, Any]) -> None:
-    """Fallback lưu trực tiếp vào feedback.json nếu SQLite gặp sự cố phân quyền."""
     try:
-        FEEDBACK_FILE.parent.mkdir(parents=True, exist_ok=True)
         data: list[dict[str, Any]] = []
         if FEEDBACK_FILE.exists():
             try:
@@ -305,39 +332,27 @@ def _fallback_append_json(record: dict[str, Any]) -> None:
                 data = []
         data.append(record)
         FEEDBACK_FILE.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
-        try:
-            FEEDBACK_FILE.chmod(0o666)
-        except Exception:
-            pass
-        logger.info("Đã lưu bản ghi feedback thành công vào file JSON (chế độ fallback).")
     except Exception as exc:
         logger.error("Fallback ghi JSON thất bại: %s", exc)
 
 
 def get_all_feedback() -> list[dict[str, Any]]:
-    """Đọc toàn bộ bản ghi feedback từ SQLite (data/feedback.db), có fallback JSON."""
-    _ensure_dirs()
+    if _use_postgres():
+        _ensure_postgres_migrated()
+        from src.infra.feedback.store import fetch_all_feedback
+
+        return fetch_all_feedback()
+
+    _ensure_sqlite_dirs()
     target_db = _get_target_db_path()
     with _lock:
         if target_db.exists():
             try:
                 with _get_connection(target_db) as conn:
-                    _init_db(conn)
-                    records = _fetch_all_records(conn)
+                    _init_sqlite_db(conn)
+                    records = _fetch_all_sqlite(conn)
                     if records:
                         return records
             except Exception as exc:
-                logger.warning("Lỗi đọc feedback từ SQLite (%s), thử fallback JSON: %s", type(exc).__name__, exc)
-
-        # Fallback đọc từ JSON
-        if FEEDBACK_FILE.exists():
-            try:
-                content = FEEDBACK_FILE.read_text(encoding="utf-8").strip()
-                if content:
-                    parsed = json.loads(content)
-                    if isinstance(parsed, list):
-                        return parsed
-            except Exception as exc:
-                logger.warning("Lỗi đọc feedback.json: %s", exc)
-
-        return []
+                logger.warning("Lỗi đọc feedback SQLite: %s", exc)
+        return _load_legacy_json_records()

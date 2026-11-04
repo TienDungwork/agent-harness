@@ -9,7 +9,19 @@ from typing import Any
 
 from src.domain.agents.nodes.io import json_safe, node_event
 from src.domain.agents.state import AgentState
-from src.infra.monitoring.tracing import get_trace_parent, trace_active_parent, trace_step
+from src.infra.monitoring.tracing import ObservationType, _current, current_span, trace_step
+
+_GRAPH_NODE_AS_TYPE: dict[str, ObservationType] = {
+    "recall": "retriever",
+    "retrieve_schema": "retriever",
+    "retrieve_docs": "retriever",
+    "guardrail_input": "guardrail",
+    "guardrail_output": "guardrail",
+}
+
+
+def _graph_node_as_type(node_id: str) -> ObservationType:
+    return _GRAPH_NODE_AS_TYPE.get(node_id, "chain")
 
 logger = logging.getLogger(__name__)
 
@@ -37,7 +49,7 @@ def _wrap_node(node_id: str, func):
         import time
         t0 = time.perf_counter()
         q = _stream_queue.get()
-        parent = state.get("_trace_span") or get_trace_parent()
+        parent = state.get("_trace_span") or current_span()
         user_id = state.get("user_id") or "default"
         session_id = state.get("session_id") or "default"
         if q is not None:
@@ -47,10 +59,11 @@ def _wrap_node(node_id: str, func):
             parent,
             node_id,
             metadata={"user_id": user_id, "session_id": session_id},
+            as_type=_graph_node_as_type(node_id),
         ) as step:
+            node_token = _current.set(step["_span"]) if step.get("_span") else None
             try:
-                with trace_active_parent(step.get("_span")):
-                    res = func(state)
+                res = func(state)
                 dur_ms = round((time.perf_counter() - t0) * 1000, 1)
             except Exception as e:
                 dur_ms = round((time.perf_counter() - t0) * 1000, 1)
@@ -69,6 +82,12 @@ def _wrap_node(node_id: str, func):
                         "output": err_io["output"],
                     })
                 raise
+            finally:
+                if node_token is not None:
+                    try:
+                        _current.reset(node_token)
+                    except ValueError:
+                        pass
 
             if isinstance(res, dict) and "events" in res and res["events"]:
                 ev = res["events"][-1]

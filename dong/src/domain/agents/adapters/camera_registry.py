@@ -15,43 +15,15 @@ logger = logging.getLogger(__name__)
 
 REGISTRY_PATH = Path(__file__).resolve().parents[3] / "resource" / "db" / "camera_registry.yaml"
 
-# Fallback danh mục 10 camera chuẩn nếu file yaml bị lỗi hoặc thiếu
-FALLBACK_CAMERAS: list[dict[str, Any]] = [
-    {"camera_code": "CVN_CONG_BOH", "camera_name": "Cổng Ra Vào BOH", "area": "Sản xuất & lắp ráp", "status": "ONLINE", "ai_service": "GIÁM SÁT VÙNG CẤM"},
-    {"camera_code": "CVN_KHO_TANG2_BOH", "camera_name": "CVN_KHO_TANG2_BOH", "area": "Sản xuất & lắp ráp", "status": "ONLINE", "ai_service": "CẢNH BÁO CHÁY KHÓI"},
-    {"camera_code": "CVN_P_CAP_PHAT_DONG_PHUC", "camera_name": "CVN_P_CAP_PHAT_DONG_PHUC", "area": "Sản xuất & lắp ráp", "status": "ONLINE", "ai_service": "CẢNH BÁO CHÁY KHÓI"},
-    {"camera_code": "CVNTT", "camera_name": "CVNTT", "area": "Sản xuất & lắp ráp", "status": "ONLINE", "ai_service": "GIÁM SÁT VÙNG CẤM"},
-    {"camera_code": "congvanle4", "camera_name": "congvanle4", "area": "Sản xuất & lắp ráp", "status": "ONLINE", "ai_service": "GIÁM SÁT PHƯƠNG TIỆN"},
-    {"camera_code": "congvanle3", "camera_name": "congvanle3", "area": "Sản xuất & lắp ráp", "status": "ONLINE", "ai_service": "GIÁM SÁT PHƯƠNG TIỆN"},
-    {"camera_code": "congvanle2", "camera_name": "congvanle2", "area": "Sản xuất & lắp ráp", "status": "ONLINE", "ai_service": "GIÁM SÁT PHƯƠNG TIỆN"},
-    {"camera_code": "congvanle1", "camera_name": "congvanle1", "area": "Sản xuất & lắp ráp", "status": "ONLINE", "ai_service": "GIÁM SÁT PHƯƠNG TIỆN"},
-    {"camera_code": "congchinh2", "camera_name": "congchinh2", "area": "Sản xuất & lắp ráp", "status": "ONLINE", "ai_service": "GIÁM SÁT PHƯƠNG TIỆN"},
-    {"camera_code": "congchinh1", "camera_name": "congchinh1", "area": "Sản xuất & lắp ráp", "status": "ONLINE", "ai_service": "GIÁM SÁT PHƯƠNG TIỆN"},
-]
-
-
 def load_camera_registry() -> dict[str, Any]:
-    """Đọc camera_registry.yaml an toàn, có fallback nếu thiếu hoặc lỗi định dạng."""
-    if REGISTRY_PATH.exists():
-        try:
-            content = REGISTRY_PATH.read_text(encoding="utf-8")
-            data = yaml.safe_load(content)
-            if isinstance(data, dict) and data.get("cameras"):
-                return data
-        except Exception as exc:
-            logger.warning("Lỗi đọc camera_registry.yaml, dùng fallback: %s", exc)
-
-    return {
-        "organization_id": 103,
-        "organization_name": "Tập đoàn GELEXIMCO - KCN Hưng Phú",
-        "area_name": "Sản xuất & lắp ráp",
-        "total_cameras": len(FALLBACK_CAMERAS),
-        "cameras": FALLBACK_CAMERAS,
-        "virtual_zones": [
-            {"zone_code": "POLY_789629", "camera_name": "Cổng Ra Vào BOH", "camera_code": "CVN_CONG_BOH"},
-            {"zone_code": "POLY_393453", "camera_name": "hàng rào 01", "camera_code": "hang_rao_01"},
-        ],
-    }
+    """Đọc camera_registry.yaml — lỗi hoặc thiếu file thì raise."""
+    if not REGISTRY_PATH.exists():
+        raise FileNotFoundError(f"Thiếu camera registry: {REGISTRY_PATH}")
+    content = REGISTRY_PATH.read_text(encoding="utf-8")
+    data = yaml.safe_load(content)
+    if not isinstance(data, dict) or not data.get("cameras"):
+        raise ValueError(f"camera_registry.yaml không hợp lệ: {REGISTRY_PATH}")
+    return data
 
 
 def is_camera_count_query(question: str) -> bool:

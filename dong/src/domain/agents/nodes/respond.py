@@ -27,7 +27,7 @@ from src.domain.agents.orchestrator.synth import (
     _build_orchestrator_query_result,
     _synthesize_orchestrator_answer,
 )
-from src.infra.monitoring.tracing import trace_substep
+from src.infra.monitoring.tracing import current_span, trace_step
 
 
 def respond_node(state: AgentState) -> dict:
@@ -202,7 +202,7 @@ def respond_node(state: AgentState) -> dict:
         ans = empty_stat_reply(q)
         answer_source = "empty"
     else:
-        with trace_substep("simple_answer", kind="tool", input={"row_count": len(rows)}) as sub:
+        with trace_step(current_span(), "simple_answer", input={"row_count": len(rows)}, as_type="tool") as sub:
             simple_ans = try_format_simple_answer(q, rows)
             sub["output"] = {"matched": simple_ans is not None}
         if chart_png and len(rows) > 1 and should_render_chart(q):
@@ -237,7 +237,7 @@ def respond_node(state: AgentState) -> dict:
                     sys_prompt = registry().render("respond_stat")
                     sys_prompt = f"{sys_prompt}\n\n[Nhắc lại chỉ dẫn]: {safety_instruction}"
 
-                    with trace_substep("respond_stat", kind="agent", input={"row_count": len(rows)}):
+                    with trace_step(current_span(), "respond_stat", input={"row_count": len(rows)}, as_type="generation"):
                         raw = invoke_text(
                             sys_prompt,
                             (

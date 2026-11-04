@@ -22,12 +22,50 @@ services:
     networks:
       - kcn_network
 
+  qdrant:
+    image: qdrant/qdrant:v1.12.5
+    container_name: kcn_agent_qdrant
+    restart: unless-stopped
+    ports:
+      - "${QDRANT_PORT:-6333}:6333"
+    volumes:
+      - ./resource/db/agent/data/qdrant:/qdrant/storage
+    networks:
+      - kcn_network
+
+  agent_postgres:
+    image: postgres:16-alpine
+    container_name: kcn_agent_postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${AGENT_DB_USER:-atin}
+      POSTGRES_PASSWORD: ${AGENT_DB_PASSWORD:-Atin@123#}
+      POSTGRES_DB: ${DB_NAME_AGENT:-kcn_agent}
+      TZ: ${DB_TIMEZONE:-Asia/Ho_Chi_Minh}
+    ports:
+      - "${AGENT_DB_PORT:-5433}:5432"
+    volumes:
+      - ./resource/db/agent/data/pgdata:/var/lib/postgresql/data
+      - ./resource/db/agent/init.sql:/docker-entrypoint-initdb.d/01-init.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    networks:
+      - kcn_network
+
   ai_backend:
     build:
       context: .
       dockerfile: Dockerfile
     container_name: kcn_hungphu_backend
     restart: always
+    depends_on:
+      agent_postgres:
+        condition: service_healthy
+      qdrant:
+        condition: service_started
     ports:
       - "${BACKEND_PORT:-8000}:8000"
     volumes:
@@ -39,11 +77,11 @@ services:
         required: false
     environment:
       PORT: "8000"
-      LLM_BACKEND: ${LLM_BACKEND:-openai}
-      MODEL_BASE_URL: ${MODEL_BASE_URL:-http://192.168.1.196:18083/v1}
-      MODEL_NAME: ${MODEL_NAME:-qwen3-4b}
+      LLM_BACKEND: ${LLM_BACKEND:-self_hosted}
+      MODEL_BASE_URL: ${MODEL_BASE_URL:-http://192.168.1.198:18083/v1}
+      MODEL_NAME: ${MODEL_NAME:-bonsai-27b}
       MODEL_API_KEY: ${MODEL_API_KEY:-}
-      MODEL_ENDPOINT: ${MODEL_ENDPOINT:-http://192.168.1.196:18083/v1/chat/completions}
+      MODEL_ENDPOINT: ${MODEL_ENDPOINT:-http://192.168.1.198:18083/v1/chat/completions}
       MONITORING_ENABLED: ${MONITORING_ENABLED:-false}
       MEMORY_ENABLED: ${MEMORY_ENABLED:-true}
       MEMORY_SHORT_TERM_ENABLED: ${MEMORY_SHORT_TERM_ENABLED:-true}
@@ -55,8 +93,19 @@ services:
       LANGFUSE_PUBLIC_KEY: ${LANGFUSE_PUBLIC_KEY:-}
       LANGFUSE_SECRET_KEY: ${LANGFUSE_SECRET_KEY:-}
       # Langfuse stack riêng (langfuse/) — không dùng LANGFUSE_HOST từ .env (localhost)
-      LANGFUSE_HOST: http://host.docker.internal:3000
+      LANGFUSE_HOST: http://host.docker.internal:3001
       DB_TIMEZONE: ${DB_TIMEZONE:-Asia/Ho_Chi_Minh}
+      AGENT_DB_HOST: agent_postgres
+      AGENT_DB_PORT: "5432"
+      AGENT_DB_USER: ${AGENT_DB_USER:-atin}
+      AGENT_DB_PASSWORD: ${AGENT_DB_PASSWORD:-Atin@123#}
+      DB_NAME_AGENT: ${DB_NAME_AGENT:-kcn_agent}
+      # Trong Docker luôn dùng service name — không lấy localhost từ .env
+      QDRANT_URL: http://qdrant:6333
+      QDRANT_API_KEY: ${QDRANT_API_KEY:-}
+      QDRANT_COLLECTION: ${QDRANT_COLLECTION:-kcn_agent_memories}
+      EMBEDDING_MODEL: ${EMBEDDING_MODEL:-text-embedding-3-small}
+      EMBEDDING_DIM: ${EMBEDDING_DIM:-1536}
     extra_hosts:
       - "host.docker.internal:host-gateway"
     healthcheck:

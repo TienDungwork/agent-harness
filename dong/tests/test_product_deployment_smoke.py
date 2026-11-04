@@ -39,16 +39,16 @@ def test_docker_compose_ai_backend_self_hosted_environment():
     assert env["LLM_BACKEND"] == "${LLM_BACKEND:-self_hosted}"
 
     assert "MODEL_BASE_URL" in env
-    assert env["MODEL_BASE_URL"] == "${MODEL_BASE_URL:-http://192.168.1.196:18083/v1}"
+    assert env["MODEL_BASE_URL"] == "${MODEL_BASE_URL:-http://192.168.1.198:18083/v1}"
 
     assert "MODEL_NAME" in env
-    assert env["MODEL_NAME"] == "${MODEL_NAME:-qwen3-4b}"
+    assert env["MODEL_NAME"] == "${MODEL_NAME:-bonsai-27b}"
 
     assert "MODEL_API_KEY" in env
     assert env["MODEL_API_KEY"] == "${MODEL_API_KEY:-}"
 
     assert "MODEL_ENDPOINT" in env
-    assert env["MODEL_ENDPOINT"] == "${MODEL_ENDPOINT:-http://192.168.1.196:18083/v1/chat/completions}"
+    assert env["MODEL_ENDPOINT"] == "${MODEL_ENDPOINT:-http://192.168.1.198:18083/v1/chat/completions}"
 
     # Đảm bảo cấu hình mạng và host không bị ảnh hưởng
     assert "host.docker.internal:host-gateway" in backend.get("extra_hosts", [])
@@ -59,13 +59,13 @@ def test_settings_self_hosted_defaults():
     """Cấu hình Settings khi LLM_BACKEND=self_hosted phải trỏ đúng gateway 196 và qwen3-4b."""
     s = Settings(
         LLM_BACKEND="self_hosted",
-        MODEL_BASE_URL="http://192.168.1.196:18083/v1",
+        MODEL_BASE_URL="http://192.168.1.198:18083/v1",
         MODEL_NAME="qwen3-4b",
     )
     assert s.llm_backend == "self_hosted"
-    assert s.effective_base_url == "http://192.168.1.196:18083/v1"
+    assert s.effective_base_url == "http://192.168.1.198:18083/v1"
     assert s.effective_model == "qwen3-4b"
-    assert s.model_endpoint == "http://192.168.1.196:18083/v1/chat/completions"
+    assert s.model_endpoint == "http://192.168.1.198:18083/v1/chat/completions"
 
 
 def test_api_health_self_hosted_backend(monkeypatch):
@@ -85,7 +85,7 @@ def test_api_llm_ping_self_hosted_success(monkeypatch):
     """GET /api/llm/ping trả về backend self_hosted + model qwen3-4b khi gateway sẵn sàng."""
     monkeypatch.setattr(settings, "llm_backend", "self_hosted")
     monkeypatch.setattr(settings, "model_name", "qwen3-4b")
-    monkeypatch.setattr(settings, "model_base_url", "http://192.168.1.196:18083/v1")
+    monkeypatch.setattr(settings, "model_base_url", "http://192.168.1.198:18083/v1")
 
     with patch("src.main.llm_ping", return_value="OK"):
         res = client.get("/api/llm/ping")
@@ -94,16 +94,16 @@ def test_api_llm_ping_self_hosted_success(monkeypatch):
         assert data["status"] == "OK"
         assert data["backend"] == "self_hosted"
         assert data["model"] == "qwen3-4b"
-        assert data["base_url"] == "http://192.168.1.196:18083/v1"
+        assert data["base_url"] == "http://192.168.1.198:18083/v1"
 
 
 def test_api_llm_ping_self_hosted_failure(monkeypatch):
     """GET /api/llm/ping trả về HTTP 503 khi gateway 196 không phản hồi."""
     monkeypatch.setattr(settings, "llm_backend", "self_hosted")
     monkeypatch.setattr(settings, "model_name", "qwen3-4b")
-    monkeypatch.setattr(settings, "model_base_url", "http://192.168.1.196:18083/v1")
+    monkeypatch.setattr(settings, "model_base_url", "http://192.168.1.198:18083/v1")
 
-    err_msg = "Lỗi kết nối tới LLM tại http://192.168.1.196:18083/v1/models: Connection refused"
+    err_msg = "Lỗi kết nối tới LLM tại http://192.168.1.198:18083/v1/models: Connection refused"
     with patch("src.main.llm_ping", side_effect=RuntimeError(err_msg)):
         res = client.get("/api/llm/ping")
         assert res.status_code == 503
@@ -130,7 +130,7 @@ def test_env_example_documentation_block():
     content = env_example_path.read_text(encoding="utf-8")
 
     assert "self_hosted" in content
-    assert "192.168.1.196:18083" in content
+    assert "192.168.1.198:18083" in content
     assert "MODEL_API_KEY" in content
     assert "DB_HOST" in content
     assert "LLM_BACKEND=openai" in content

@@ -1,6 +1,6 @@
 # Checklist Smoke Test Thủ Công (Manual UI) & API — Production Live
 
-Tài liệu này cung cấp danh mục kiểm thử thủ công (manual checklist) trên giao diện Web UI (`http://localhost:8080`) kết hợp kiểm tra API tự động thông qua script [scripts/smoke-production.sh](../scripts/smoke-production.sh) trên môi trường Docker Production live (LLM `self_hosted` gateway `192.168.1.196:18083` và database PostgreSQL read-only).
+Tài liệu này cung cấp danh mục kiểm thử thủ công (manual checklist) trên giao diện Web UI (`http://localhost:8080`) kết hợp kiểm tra API tự động thông qua script [scripts/smoke-production.sh](../scripts/smoke-production.sh) trên môi trường Docker Production live (LLM `self_hosted` gateway `192.168.1.198:18083` và database PostgreSQL read-only).
 
 ---
 

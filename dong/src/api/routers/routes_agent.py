@@ -23,19 +23,37 @@ def _run_agent_stream(*args, **kwargs):
     import src.main as main_mod
 
     return main_mod.run_agent_stream(*args, **kwargs)
-from src.api.helpers.cache_helpers import is_followup_question, is_identity_query, lookup_ttl_cache
 from src.api.helpers.errors import format_error_message
 from src.api.models.schemas import AskRequest, AskResponse, ChatRequest, ChatResponse
 from src.api.helpers.session_helpers import build_agent_trace, persist_session_turn
 from src.api.helpers.sse_helpers import build_chart_sse_event, sanitize_sse_event, split_into_chunks
-from src.shared.config import settings
 from src.shared.guardrails import GuardrailViolation, check_input, redact_pii
-from src.infra.memory.ttl_cache import make_cache_key, set_ttl_cached
 from src.infra.monitoring.tracing import trace_answer
 from src.infra.session import get_session_messages
 
 logger = logging.getLogger(__name__)
 router = APIRouter(tags=["agent"])
+
+
+def _record_chat_trace(
+    t: dict[str, Any],
+    *,
+    status: str,
+    answer: str = "",
+    error: str = "",
+    tool: str = "",
+    row_count: int = 0,
+) -> None:
+    out: dict[str, Any] = {"status": status}
+    if answer:
+        out["answer"] = answer
+    if error:
+        out["error"] = error
+    if tool:
+        out["tool"] = tool
+    if row_count:
+        out["row_count"] = row_count
+    t["output"] = out
 
 @router.post("/api/chat", response_model=ChatResponse, tags=["agent"])
 def chat(req: ChatRequest) -> ChatResponse:
@@ -59,45 +77,6 @@ def chat(req: ChatRequest) -> ChatResponse:
         from src.infra.session import get_session_messages
 
         prev_messages = get_session_messages(session_id=req.session_id.strip(), user_id=req.user_id.strip()) or []
-        is_followup = is_followup_question(question, prev_messages)
-
-        if not is_followup:
-            try:
-                cached = lookup_ttl_cache(question)
-            except Exception as exc:
-                logger.warning("Cache lookup failed on chat: %s", exc)
-                cached = None
-            if isinstance(cached, dict) and "answer" in cached:
-                logger.info("cache hit")
-                detail_payload = {
-                    "tool": cached.get("tool", ""),
-                    "columns": cached.get("columns", []),
-                    "row_count": cached.get("row_count", 0),
-                    "agent_detail": cached.get("agent_detail", ""),
-                    "cache_hit": True,
-                }
-                persist_session_turn(
-                    session_id=req.session_id.strip(),
-                    user_id=req.user_id.strip(),
-                    question=req.question,
-                    answer=cached["answer"],
-                    detail=detail_payload,
-                )
-                response = ChatResponse(
-                    question=cached.get("question", req.question),
-                    answer=cached["answer"],
-                    tool=cached.get("tool", ""),
-                    detail=detail_payload,
-                    row_count=cached.get("row_count", 0),
-                )
-                t["output"] = {
-                    "status": "ok",
-                    "answer": response.answer,
-                    "tool": response.tool,
-                    "row_count": response.row_count,
-                    "cached": True,
-                }
-                return response
 
         try:
             from src.domain.agents.routing.intent import is_chat_greeting
@@ -108,7 +87,6 @@ def chat(req: ChatRequest) -> ChatResponse:
                 rewritten = RewrittenQuestion(text=question, intent_hint="chat")
             else:
                 rewritten = rewrite_question_safe(question, history=prev_messages)
-            cache_q = rewritten.text if (rewritten and rewritten.text) else question
             out = _run_agent(
                 Agent_Input(question=req.question.strip(), rewritten=rewritten, user_id=req.user_id),
                 parent_span=t.get("_span"),
@@ -119,28 +97,10 @@ def chat(req: ChatRequest) -> ChatResponse:
             raise
         except Exception as exc:
             friendly_msg = format_error_message(exc)
+            _record_chat_trace(t, status="error", error=friendly_msg, answer=friendly_msg)
             raise HTTPException(status_code=503, detail=friendly_msg) from exc
 
         query = out.query
-
-        cache_data = {
-            "question": out.question,
-            "answer": out.answer,
-            "tool": query.tool if query else "",
-            "columns": query.columns if query else [],
-            "rows": query.rows if query else [],
-            "row_count": query.row_count if query else 0,
-            "agent_detail": out.detail,
-        }
-        route = out.detail or getattr(out, "intent", "")
-        if not is_identity_query(question) and not is_identity_query(cache_q):
-            try:
-                if not is_followup:
-                    set_ttl_cached(make_cache_key(question, route=route), cache_data, ttl=settings.memory_ttl_seconds)
-                if cache_q and cache_q != question:
-                    set_ttl_cached(make_cache_key(cache_q, route=route), cache_data, ttl=settings.memory_ttl_seconds)
-            except Exception as exc:
-                logger.warning("Failed to store TTL cache on chat: %s", exc)
 
         detail_payload: dict[str, Any] = {
             "tool": query.tool if query else "",
@@ -164,12 +124,13 @@ def chat(req: ChatRequest) -> ChatResponse:
             detail=detail_payload,
             row_count=query.row_count if query else 0,
         )
-        t["output"] = {
-            "status": "ok",
-            "answer": response.answer,
-            "tool": response.tool,
-            "row_count": response.row_count,
-        }
+        _record_chat_trace(
+            t,
+            status="ok",
+            answer=response.answer,
+            tool=response.tool,
+            row_count=response.row_count,
+        )
         return response
 
 
@@ -187,29 +148,7 @@ def ask(req: AskRequest) -> AskResponse:
     ) as t:
         question = redact_pii(req.question)
 
-        try:
-            cached = lookup_ttl_cache(question)
-        except Exception as exc:
-            logger.warning("Cache lookup failed on ask: %s", exc)
-            cached = None
-        if isinstance(cached, dict) and "answer" in cached:
-            logger.info("cache hit")
-            response = AskResponse(
-                question=cached.get("question", req.question),
-                answer=cached["answer"],
-                tool=cached.get("tool", ""),
-                columns=cached.get("columns", []),
-                rows=cached.get("rows", []),
-                row_count=cached.get("row_count", 0),
-            )
-            t["output"] = {
-                "status": "ok",
-                "answer": response.answer,
-                "tool": response.tool,
-                "row_count": response.row_count,
-                "cached": True,
-            }
-            return response
+        from src.infra.session import get_session_messages
 
         try:
             from src.domain.agents.routing.intent import is_chat_greeting
@@ -220,33 +159,15 @@ def ask(req: AskRequest) -> AskResponse:
                 rewritten = RewrittenQuestion(text=question, intent_hint="chat")
             else:
                 rewritten = rewrite_question_safe(question)
-            cache_q = rewritten.text if (rewritten and rewritten.text) else question
             out = _run_agent(Agent_Input(question=req.question.strip(), rewritten=rewritten), parent_span=t.get("_span"))
         except GuardrailViolation:
             raise
         except Exception as exc:
             friendly_msg = format_error_message(exc)
+            _record_chat_trace(t, status="error", error=friendly_msg, answer=friendly_msg)
             raise HTTPException(status_code=503, detail=friendly_msg) from exc
 
         query = out.query
-
-        cache_data = {
-            "question": out.question,
-            "answer": out.answer,
-            "tool": query.tool if query else "",
-            "columns": query.columns if query else [],
-            "rows": query.rows if query else [],
-            "row_count": query.row_count if query else 0,
-            "agent_detail": out.detail,
-        }
-        route = out.detail or getattr(out, "intent", "")
-        if not is_identity_query(question) and not is_identity_query(cache_q):
-            try:
-                set_ttl_cached(make_cache_key(question, route=route), cache_data, ttl=settings.memory_ttl_seconds)
-                if cache_q and cache_q != question:
-                    set_ttl_cached(make_cache_key(cache_q, route=route), cache_data, ttl=settings.memory_ttl_seconds)
-            except Exception as exc:
-                logger.warning("Failed to store TTL cache on ask: %s", exc)
 
         response = AskResponse(
             question=out.question,
@@ -256,12 +177,13 @@ def ask(req: AskRequest) -> AskResponse:
             rows=query.rows if query else [],
             row_count=query.row_count if query else 0,
         )
-        t["output"] = {
-            "status": "ok",
-            "answer": response.answer,
-            "tool": response.tool,
-            "row_count": response.row_count,
-        }
+        _record_chat_trace(
+            t,
+            status="ok",
+            answer=response.answer,
+            tool=response.tool,
+            row_count=response.row_count,
+        )
         return response
 
 
@@ -285,49 +207,14 @@ def stream_agent(req: ChatRequest) -> StreamingResponse:
             },
         ) as t:
             question = redact_pii(req.question)
-
-            from src.infra.session import get_session_messages
-
-            prev_messages = get_session_messages(session_id=req.session_id.strip(), user_id=req.user_id.strip()) or []
-            is_followup = is_followup_question(question, prev_messages)
-
-            if not is_followup:
-                try:
-                    cached = lookup_ttl_cache(question)
-                except Exception as exc:
-                    logger.warning("Cache lookup failed on stream: %s", exc)
-                    cached = None
-                if isinstance(cached, dict) and "answer" in cached:
-                    t["output"] = {
-                        "status": "ok",
-                        "answer": cached["answer"],
-                        "tool": cached.get("tool", ""),
-                        "row_count": cached.get("row_count", 0),
-                        "cached": True,
-                    }
-                    yield f'data: {json.dumps({"node_id": "cache", "status": "done", "input": question, "output": cached["answer"]}, ensure_ascii=False)}\n\n'
-
-                    detail_payload = {
-                        "tool": cached.get("tool", ""),
-                        "columns": cached.get("columns", []),
-                        "row_count": cached.get("row_count", 0),
-                        "agent_detail": cached.get("agent_detail", ""),
-                        "cache_hit": True,
-                    }
-                    persist_session_turn(
-                        session_id=req.session_id.strip(),
-                        user_id=req.user_id.strip(),
-                        question=question,
-                        answer=cached["answer"],
-                        detail=detail_payload,
-                    )
-                    if req.stream_tokens:
-                        for delta in split_into_chunks(cached["answer"]):
-                            yield f'data: {json.dumps({"node_id": "__answer__", "status": "chunk", "delta": delta}, ensure_ascii=False)}\n\n'
-                    yield f'data: {json.dumps({"node_id": "__answer__", "status": "done", "output": cached["answer"], "detail": detail_payload}, ensure_ascii=False)}\n\n'
-                    return
+            last_stream_error = ""
+            got_final = False
 
             try:
+                prev_messages = get_session_messages(
+                    session_id=req.session_id.strip(), user_id=req.user_id.strip()
+                ) or []
+
                 from src.domain.agents.routing.intent import is_chat_greeting
                 from src.domain.agents.routing.rewrite import rewrite_question_safe
                 from src.infra.llm.schemas import RewrittenQuestion
@@ -336,7 +223,6 @@ def stream_agent(req: ChatRequest) -> StreamingResponse:
                     rewritten = RewrittenQuestion(text=question, intent_hint="chat")
                 else:
                     rewritten = rewrite_question_safe(question, history=prev_messages)
-                cache_q = rewritten.text if (rewritten and rewritten.text) else question
                 stream_kwargs = {"parent_span": t.get("_span")}
                 target_fn = getattr(_run_agent_stream, "side_effect", None) or _run_agent_stream
                 can_pass_session = True
@@ -375,26 +261,9 @@ def stream_agent(req: ChatRequest) -> StreamingResponse:
                     **stream_kwargs,
                 ):
                     if "__final_result__" in event:
+                        got_final = True
                         out = event["__final_result__"]
                         query = getattr(out, "query", None)
-
-                        cache_data = {
-                            "question": out.question,
-                            "answer": out.answer,
-                            "tool": getattr(query, "tool", "") if query else "",
-                            "columns": getattr(query, "columns", []) if query else [],
-                            "rows": getattr(query, "rows", []) if query else [],
-                            "row_count": getattr(query, "row_count", 0) if query else 0,
-                            "agent_detail": out.detail,
-                        }
-                        route = getattr(out, "detail", "") or getattr(out, "intent", "")
-                        if not is_identity_query(question) and not is_identity_query(cache_q):
-                            try:
-                                set_ttl_cached(make_cache_key(question, route=route), cache_data, ttl=settings.memory_ttl_seconds)
-                                if cache_q and cache_q != question:
-                                    set_ttl_cached(make_cache_key(cache_q, route=route), cache_data, ttl=settings.memory_ttl_seconds)
-                            except Exception as exc:
-                                logger.warning("Failed to store TTL cache on stream: %s", exc)
 
                         detail_payload: dict[str, Any] = {
                             "tool": getattr(query, "tool", "") if query else "",
@@ -409,12 +278,13 @@ def stream_agent(req: ChatRequest) -> StreamingResponse:
                             if last_chart_rows is not None:
                                 detail_payload["chart_rows"] = last_chart_rows
 
-                        t["output"] = {
-                            "status": "ok",
-                            "answer": out.answer,
-                            "tool": getattr(query, "tool", "") if query else "",
-                            "row_count": getattr(query, "row_count", 0) if query else 0,
-                        }
+                        _record_chat_trace(
+                            t,
+                            status="ok",
+                            answer=out.answer,
+                            tool=getattr(query, "tool", "") if query else "",
+                            row_count=getattr(query, "row_count", 0) if query else 0,
+                        )
                         chart_payload = None
                         if last_chart_png or detail_payload.get("chart_spec"):
                             chart_payload = {
@@ -444,6 +314,13 @@ def stream_agent(req: ChatRequest) -> StreamingResponse:
                         continue
 
                     event_node = event.get("node_id", "")
+                    if event_node == "error":
+                        last_stream_error = str(event.get("output") or last_stream_error or "Agent error")
+                    if event_node == "__answer__" and event.get("status") == "error":
+                        err_text = str(event.get("output") or last_stream_error or "Stream error")
+                        last_stream_error = err_text
+                        _record_chat_trace(t, status="error", error=err_text, answer=err_text)
+
                     if event_node and event_node not in ("__answer__", "__chart__", "error"):
                         stream_trace_nodes.append({
                             "node_id": event_node,
@@ -477,13 +354,18 @@ def stream_agent(req: ChatRequest) -> StreamingResponse:
                         payload = json.dumps(sanitize_sse_event(event), ensure_ascii=False, default=str)
                     except Exception as ser_exc:
                         friendly_msg = format_error_message(ser_exc)
+                        _record_chat_trace(t, status="error", error=friendly_msg, answer=friendly_msg)
                         yield f'data: {json.dumps({"node_id": "error", "status": "done", "output": friendly_msg}, ensure_ascii=False)}\n\n'
                         yield f'data: {json.dumps({"node_id": "__answer__", "status": "error", "output": friendly_msg, "detail": {"status": "error"}}, ensure_ascii=False)}\n\n'
                         break
                     yield f"data: {payload}\n\n"
+
+                if not got_final and t.get("output") is None:
+                    msg = last_stream_error or "Stream kết thúc không có __final_result__."
+                    _record_chat_trace(t, status="incomplete", error=msg)
             except Exception as exc:
-                t["output"] = {"status": "error", "error": str(exc)}
                 friendly_msg = format_error_message(exc)
+                _record_chat_trace(t, status="error", error=friendly_msg, answer=friendly_msg)
                 yield f'data: {json.dumps({"node_id": "error", "status": "done", "output": friendly_msg}, ensure_ascii=False)}\n\n'
                 yield f'data: {json.dumps({"node_id": "__answer__", "status": "error", "output": friendly_msg, "detail": {"status": "error"}}, ensure_ascii=False)}\n\n'
 

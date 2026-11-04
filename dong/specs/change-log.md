@@ -1,5 +1,20 @@
 # Change Log — agent dong
 
+## 2026-11-04 — LLM gateway bonsai-27b @ 198:18083
+
+- `.env`: `MODEL_NAME=bonsai-27b`, key gateway mới; gọi qua `MODEL_BASE_URL` → `/v1/chat/completions` (LangChain OpenAI client).
+- `infra/llm/gateway.py`: đọc `GET /v1/models` (ids + `limits.max_output_tokens`), cap `max_tokens`, resolve model id.
+
+---
+
+## 2026-11-04 — tracing vn-stock (B): `current_span` + `trace_step` tường minh
+
+- `infra/monitoring/tracing.py`: `_current`, `current_span()`, bỏ `trace_substep` / heuristic `as_type`; giữ token rollup + fail-safe.
+- `_redact_deep` trong `tracing.py` + Langfuse `mask`.
+- Graph `_wrap_node`: `_current.set(node span)`; call site SQL/LLM/docs → `trace_step(current_span(), …, as_type=…)`.
+
+---
+
 ## 2026-11-03 — v12: `domain/agents/` subpackages (vn-stock style)
 
 - Root giữ `graph.py`, `state.py`; module phẳng → `core/`, `nodes/`, `orchestrator/`, `sql/`, `routing/`, `respond/`, `adapters/`.

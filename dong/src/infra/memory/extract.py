@@ -10,8 +10,7 @@ Cung cấp khả năng nhận diện và chắt lọc các sự thật quan tr�
    giữa heuristic và mô hình LLM chuyên biệt qua prompt memory_extract.
 4. extract_from_messages(user_id, messages): Trích xuất fact trực tiếp từ danh sách tin nhắn
    gần nhất của hội thoại (theo chuẩn llm-engineer-demo extract_and_store_node).
-5. extract_and_store_memory(user_id, question, answer, ...): Trích xuất và lưu trực tiếp
-   vào cơ sở dữ liệu PostgreSQL (hoặc fallback in-memory) mà tuyệt đối không ném exception.
+5. extract_and_store_memory(...): Trích xuất và lưu fact vào Qdrant (long-term); không ném exception ra API.
 """
 from __future__ import annotations
 
@@ -157,8 +156,7 @@ def extract_memories(
     heuristics = _heuristic_extract(question)
     use_answer = memory_detail_includes_answer(detail) if include_answer is None else include_answer
 
-    # Nếu không được phép lấy thông tin từ câu trả lời (e.g. query_data) hoặc đang ở offline mode
-    if not use_answer or use_offline_tools():
+    if not use_answer:
         return heuristics
 
     extracted = list(heuristics)
@@ -190,8 +188,8 @@ def extract_memories(
                 continue
             if len(cleaned) > 5 and cleaned not in extracted:
                 extracted.append(cleaned)
-    except Exception as exc:
-        logger.debug("extract_memories online LLM fallback to heuristics: %s", exc)
+    except Exception:
+        raise
 
     return extracted
 

@@ -11,6 +11,7 @@ from __future__ import annotations
 from fastapi.testclient import TestClient
 
 from src.main import app
+from src.shared.config import settings
 from src.shared.guardrails import OUT_OF_SCOPE_REPLY
 
 client = TestClient(app)
@@ -27,13 +28,14 @@ def test_api_health_endpoint():
 
 
 def test_api_models_endpoint():
-    """Kiểm tra GET /api/models trả về danh sách 2 model chuẩn."""
+    """GET /api/models — OpenAI + model gateway self_hosted (nếu cấu hình)."""
     res = client.get("/api/models")
     assert res.status_code == 200
     data = res.json()
     supported = {m["id"] for m in data["supported_models"]}
     assert "gpt-4o-mini" in supported
-    assert "qwen3-4b" in supported
+    if settings.llm_backend == "self_hosted":
+        assert settings.effective_model in supported or settings.model_name in supported
 
 
 def test_api_config_endpoint():
@@ -195,10 +197,10 @@ def test_dual_model_settings():
     """Kiểm tra Settings giải quyết đúng base_url và model cho self_hosted."""
     s = Settings(
         LLM_BACKEND="self_hosted",
-        MODEL_BASE_URL="http://192.168.1.196:18083/v1",
+        MODEL_BASE_URL="http://192.168.1.198:18083/v1",
         MODEL_NAME="qwen3-4b",
     )
-    assert s.effective_base_url == "http://192.168.1.196:18083/v1"
+    assert s.effective_base_url == "http://192.168.1.198:18083/v1"
     assert s.effective_model == "qwen3-4b"
 
 
@@ -208,7 +210,8 @@ def test_frontend_index_served():
     assert res.status_code == 200
     assert "agent_ATIN" in res.text
     assert "chat-viewport" in res.text
-    assert "settings-modal" in res.text
+    assert "sidebar-model-label" in res.text
+    assert "settings-modal" not in res.text
 
 
 from pathlib import Path
@@ -619,14 +622,8 @@ def test_frontend_app_js_stream():
     assert "detail.row_count > 0" in js
 
 
-def test_frontend_settings_api_url_wiring():
-    """Kiểm tra input-api-url / getApiEndpoint / agent_api_base_url wiring."""
-    res = client.get("/")
-    assert res.status_code == 200
-    html = res.text
-    assert 'id="input-api-url"' in html
-    assert 'FastAPI (src.main:app)' in html
-
+def test_frontend_api_routes_use_same_origin():
+    """API gọi cùng origin (nginx proxy /api) — không còn modal cấu hình URL."""
     res = client.get("/app.js")
     if res.status_code == 404:
         with open("frontend/app.js", "r", encoding="utf-8") as f:
@@ -634,9 +631,9 @@ def test_frontend_settings_api_url_wiring():
     else:
         js = res.text
 
-    assert "agent_api_base_url" in js
     assert "getApiEndpoint(" in js
-    assert "state.apiBaseUrl.replace(/\\/+$/, '')" in js
+    assert "agent_api_base_url" not in js
+    assert "settings-modal" not in js
 
 
 def test_eval_run_help():

@@ -88,7 +88,7 @@ def test_trace_answer_and_trace_step_with_langfuse(monkeypatch):
             assert parent_box["_span"] is mock_parent_span
 
             # 2. Trace con (chon_tool)
-            with trace_step(parent_box["_span"], "chon_tool", input="Có bao nhiêu xe vào hôm nay?") as child_box:
+            with trace_step(parent_box["_span"], "chon_tool", input="Có bao nhiêu xe vào hôm nay?", as_type="tool") as child_box:
                 child_box["output"] = {"tool_calls": [{"name": "count_vehicle_flow", "args": {}}]}
                 child_box["usage"] = {"prompt_tokens": 100, "completion_tokens": 20, "total_tokens": 120}
                 child_box["model_name"] = "gpt-4o-mini"
@@ -279,19 +279,22 @@ def test_trace_stream_with_langfuse(monkeypatch):
     monkeypatch.setattr("src.infra.monitoring.tracing.settings.monitoring_enabled", True)
 
     mock_langfuse = MagicMock()
-    mock_span = MagicMock()
-    mock_langfuse.start_observation.return_value = mock_span
+    mock_parent = MagicMock()
+    mock_stream_span = MagicMock()
+    mock_langfuse.start_observation.return_value = mock_parent
+    mock_parent.start_observation.return_value = mock_stream_span
 
     with patch("src.infra.monitoring.tracing._get_langfuse", return_value=mock_langfuse):
-        tokens = list(trace_stream("stream_test", "câu hỏi", iter(["Hôm ", "nay ", "có ", "10 xe"])))
-        assert "".join(tokens) == "Hôm nay có 10 xe"
+        with trace_answer("chat", "câu hỏi") as parent:
+            tokens = list(trace_stream("stream_test", "câu hỏi", iter(["Hôm ", "nay ", "có ", "10 xe"]), parent=parent["_span"]))
+            assert "".join(tokens) == "Hôm nay có 10 xe"
 
-    mock_langfuse.start_observation.assert_called_once()
-    obs_kwargs = mock_langfuse.start_observation.call_args[1]
+    mock_parent.start_observation.assert_called_once()
+    obs_kwargs = mock_parent.start_observation.call_args[1]
     assert obs_kwargs["output"] == "Hôm nay có 10 xe"
     assert obs_kwargs["metadata"]["streamed"] is True
-    mock_span.end.assert_called_once()
-    mock_langfuse.flush.assert_called_once()
+    mock_stream_span.end.assert_called_once()
+    assert mock_langfuse.flush.call_count >= 1
 
 
 def test_v5_graph_trace_step_uses_node_event_input(monkeypatch):
@@ -390,11 +393,11 @@ def test_graph_node_nested_substeps(monkeypatch):
     mock_node_span.start_observation.side_effect = [mock_tool, mock_agent]
 
     def fake_generate(state):
-        from src.infra.monitoring.tracing import trace_substep
+        from src.infra.monitoring.tracing import current_span, trace_step
 
-        with trace_substep("build_prompt", kind="tool", input={"question": state["question"]}) as sub:
+        with trace_step(current_span(), "build_prompt", input={"question": state["question"]}, as_type="tool") as sub:
             sub["output"] = {"user_prompt_len": 42}
-        with trace_substep("generate_sql", kind="agent", input={"user_prompt_len": 42}) as sub:
+        with trace_step(current_span(), "generate_sql", input={"user_prompt_len": 42}, as_type="generation") as sub:
             sub["output"] = {"text_len": 10}
         return {
             "sql": "SELECT 1",
@@ -415,7 +418,7 @@ def test_graph_node_nested_substeps(monkeypatch):
     mock_root.start_observation.assert_called_once()
     assert mock_node_span.start_observation.call_count == 2
     names = [c[1]["name"] for c in mock_node_span.start_observation.call_args_list]
-    assert names == ["tool:build_prompt", "agent:generate_sql"]
+    assert names == ["build_prompt", "generate_sql"]
     mock_tool.end.assert_called_once()
     mock_agent.end.assert_called_once()
 
@@ -427,9 +430,10 @@ def test_validate_and_repair_sql_nested_validate_substep(monkeypatch):
     mock_parent = MagicMock()
     mock_validate = MagicMock()
 
-    from src.infra.monitoring.tracing import trace_active_parent
+    from src.infra.monitoring.tracing import _current
 
-    with trace_active_parent(mock_parent):
+    token = _current.set(mock_parent)
+    try:
         from src.domain.agents.sql.validate import validate_and_repair_sql
 
         from src.infra.db.validator import ValidationResult
@@ -437,9 +441,11 @@ def test_validate_and_repair_sql_nested_validate_substep(monkeypatch):
         with patch("src.domain.agents.sql.validate.validate_sql", return_value=ValidationResult(ok=True)):
             mock_parent.start_observation.return_value = mock_validate
             validate_and_repair_sql("SELECT 1", "test", user_id="u1", session_id="s1")
+    finally:
+        _current.reset(token)
 
     mock_parent.start_observation.assert_called_once()
-    assert mock_parent.start_observation.call_args[1]["name"] == "tool:validate_sql"
+    assert mock_parent.start_observation.call_args[1]["name"] == "validate_sql"
     mock_validate.end.assert_called_once()
 
 
@@ -470,39 +476,25 @@ def test_backend_monitoring_reexport():
     assert be_trace_step is trace_step
 
 
-def test_trace_observation_types_agent_vs_tool_vs_retriever(monkeypatch):
-    """Kiểm tra trace_step và trace_substep truyền đúng as_type ('agent', 'tool', 'retriever')."""
-    from src.infra.monitoring.tracing import trace_substep, trace_active_parent
+def test_trace_observation_types_explicit_as_type(monkeypatch):
+    """trace_step ghi đúng as_type khi caller truyền tường minh."""
     monkeypatch.setattr("src.infra.monitoring.tracing.settings.monitoring_enabled", True)
 
     mock_parent = MagicMock()
     mock_child = MagicMock()
     mock_parent.start_observation.return_value = mock_child
 
-    # 1. Test trace_step deduction
-    with trace_step(mock_parent, "agent:classify", input="test") as _:
+    with trace_step(mock_parent, "classify", input="test", as_type="agent") as _:
         pass
-    mock_parent.start_observation.assert_called_with(
-        name="agent:classify", as_type="agent", input="test", metadata={"latency_s": mock_parent.start_observation.call_args[1]["metadata"]["latency_s"]}
-    )
+    assert mock_parent.start_observation.call_args[1]["as_type"] == "agent"
 
-    with trace_step(mock_parent, "tool:validate_sql", input={"sql": "SELECT 1"}) as _:
+    with trace_step(mock_parent, "validate_sql", input={"sql": "SELECT 1"}, as_type="tool") as _:
         pass
     assert mock_parent.start_observation.call_args[1]["as_type"] == "tool"
 
-    with trace_step(mock_parent, "recall", input="recall query") as _:
+    with trace_step(mock_parent, "recall", input="recall query", as_type="retriever") as _:
         pass
     assert mock_parent.start_observation.call_args[1]["as_type"] == "retriever"
-
-    # 2. Test trace_substep deduction via active parent
-    with trace_active_parent(mock_parent):
-        with trace_substep("build_prompt", kind="tool") as _:
-            pass
-        assert mock_parent.start_observation.call_args[1]["as_type"] == "tool"
-
-        with trace_substep("respond_stat", kind="agent") as _:
-            pass
-        assert mock_parent.start_observation.call_args[1]["as_type"] == "agent"
 
 
 
@@ -765,16 +757,16 @@ def test_sql_repair_max_exhausted_yields_friendly_message_no_crash():
 
 def test_llm_timeout_and_db_fail_message_no_leak():
     """2. LLM timeout / DB fail: message ngắn thân thiện, không leak traceback hay raw SQL."""
-    exc_timeout = TimeoutError("Request timed out after 30s to http://192.168.1.196:11434")
-    exc_db = RuntimeError("psycopg2.OperationalError: could not connect to server 192.168.1.196 port 5432")
+    exc_timeout = TimeoutError("Request timed out after 30s to http://192.168.1.198:11434")
+    exc_db = RuntimeError("psycopg2.OperationalError: could not connect to server 192.168.1.198 port 5432")
 
     msg_timeout = _format_error_message(exc_timeout)
     msg_db = _format_error_message(exc_db)
 
     assert len(msg_timeout) <= USER_ERROR_MAX_LEN
     assert len(msg_db) <= USER_ERROR_MAX_LEN
-    assert "192.168.1.196" not in msg_timeout
-    assert "192.168.1.196" not in msg_db
+    assert "192.168.1.198" not in msg_timeout
+    assert "192.168.1.198" not in msg_db
     assert "traceback" not in msg_timeout.lower()
     assert "traceback" not in msg_db.lower()
 

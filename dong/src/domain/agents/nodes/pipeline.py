@@ -13,14 +13,14 @@ from src.domain.agents.state import AgentState
 from src.infra.chart.render import _detect_chart_type, plan_chart, should_render_chart
 from src.infra.db.catalog import build_schema_excerpt, select_relevant_tables
 from src.infra.llm.schemas import ChartSpec
-from src.infra.monitoring.tracing import trace_substep
+from src.infra.monitoring.tracing import current_span, trace_step
 
 def retrieve_docs_node(state: AgentState) -> dict:
     from src.domain.knowledge import retrieve_docs
     q = state.get("question", "")
     user_id = state.get("user_id") or "default"
     session_id = state.get("session_id") or "default"
-    with trace_substep("retrieve_docs", kind="tool", input={"question": q}) as sub:
+    with trace_step(current_span(), "retrieve_docs", input={"question": q}, as_type="tool") as sub:
         cards = retrieve_docs(q)
         sub["output"] = {"card_count": len(cards)}
     card_ids = [str(c.get("id")) for c in cards if isinstance(c, dict) and c.get("id")]
@@ -74,9 +74,9 @@ def retrieve_schema_node(state: AgentState) -> dict:
     session_id = state.get("session_id") or "default"
     q_text = query_text_for_state(state)
 
-    with trace_substep("select_tables", kind="tool", input={"question": q_text}):
+    with trace_step(current_span(), "select_tables", input={"question": q_text}, as_type="tool"):
         tables = select_relevant_tables(q_text, limit=4)
-    with trace_substep("build_schema_excerpt", kind="tool", input={"tables": tables}) as sub:
+    with trace_step(current_span(), "build_schema_excerpt", input={"tables": tables}, as_type="tool") as sub:
         excerpt = build_schema_excerpt(tables)
         sub["output"] = {"selected_tables": tables, "schema_length": len(excerpt)}
     return {
@@ -97,8 +97,7 @@ def retrieve_schema_node(state: AgentState) -> dict:
 
 
 def render_chart_node(state: AgentState) -> dict:
-    """Vẽ chart nếu được; nếu kết quả thiếu dòng tự động fallback SQL; lỗi render → bỏ chart, vẫn để respond trả text."""
-    from src.domain.agents.respond.chart_fallback import fallback_chart_query
+    """Vẽ chart khi đủ dữ liệu; lỗi render → raise."""
     rows = list(state.get("rows") or [])
     columns = list(state.get("columns") or [])
     sql = state.get("sql") or ""
@@ -106,21 +105,13 @@ def render_chart_node(state: AgentState) -> dict:
     user_id = state.get("user_id") or "default"
     session_id = state.get("session_id") or "default"
 
-    # Chart fallback retry nếu kết quả chưa đủ dòng
-    fallback_applied = False
     if len(rows) < 2:
-        with trace_substep("chart_fallback_query", kind="tool", input={"row_count": len(rows)}):
-            fb_res = fallback_chart_query(question=q, sql=sql, rows=rows)
-        if fb_res and fb_res.get("rows"):
-            rows = fb_res["rows"]
-            columns = fb_res.get("columns") or list(rows[0].keys())
-            sql = fb_res.get("sql") or sql
-            fallback_applied = True
+        raise ValueError("Không đủ dòng dữ liệu để vẽ biểu đồ (cần ≥ 2).")
 
     try:
         chart_type = state.get("chart_type") or _detect_chart_type(q)
         spec = plan_chart(rows, q, chart_type=chart_type)
-        with trace_substep("render_png", kind="tool", input={"chart_type": getattr(spec, "chart_type", "")}) as sub:
+        with trace_step(current_span(), "render_png", input={"chart_type": getattr(spec, "chart_type", "")}, as_type="tool") as sub:
             import src.domain.agents.graph as graph_mod
 
             png_base64 = graph_mod.render_chart(rows, spec)
@@ -132,7 +123,6 @@ def render_chart_node(state: AgentState) -> dict:
             "user_id": user_id,
             "session_id": session_id,
             "chart_spec": meta,
-            "fallback_applied": fallback_applied,
         })
         res_dict = {
             "chart_png_base64": png_base64 or "",
@@ -144,7 +134,6 @@ def render_chart_node(state: AgentState) -> dict:
                     "chart_spec": meta,
                     "rendered": ok,
                     "chart_png_base64_len": len(png_base64 or ""),
-                    "fallback_applied": fallback_applied,
                 },
                 chart_png_base64=png_base64 or "",
                 chart_meta=meta,
@@ -152,22 +141,6 @@ def render_chart_node(state: AgentState) -> dict:
                 meta=node_meta,
             )],
         }
-        if fallback_applied:
-            res_dict["rows"] = rows
-            res_dict["columns"] = columns
-            res_dict["sql"] = sql
         return res_dict
     except Exception as e:
-        return {
-            "chart_png_base64": "",
-            "chart_spec": None,
-            "events": [node_event(
-                "render_chart",
-                input={"question": q, "columns": columns, "rows": rows, "row_count": len(rows)},
-                output={"rendered": False, "error": str(e)},
-                chart_png_base64="",
-                chart_meta={},
-                chart_spec=None,
-                meta={"user_id": user_id, "session_id": session_id, "error": str(e)},
-            )],
-        }
+        raise RuntimeError(f"render_chart failed: {e}") from e

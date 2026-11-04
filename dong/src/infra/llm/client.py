@@ -22,7 +22,7 @@ class _Backend:
 _BACKENDS: dict[str, _Backend] = {
     "openai": _Backend(default_base_url="", requires_real_key=True),
     "self_hosted": _Backend(
-        default_base_url="http://192.168.1.196:18083/v1",
+        default_base_url="http://192.168.1.198:18083/v1",
         requires_real_key=False,
         dummy_key="",
     ),
@@ -64,16 +64,8 @@ def _pool() -> _RotatingKeyPool:
 
 
 def use_offline_tools(backend_override: str | None = None) -> bool:
-    """Không key (khi backend=openai) hoặc đang pytest / offline: agent giả 1 tool_call."""
-    if os.environ.get("AGENT_EVAL_LIVE", "").lower() in ("1", "true", "yes"):
-        return False
-    if bool(os.environ.get("PYTEST_CURRENT_TEST")) or os.environ.get("AGENT_OFFLINE", "").lower() in ("1", "true", "yes"):
-        return True
-    backend_name = (backend_override or settings.llm_backend).strip().lower()
-    backend = _BACKENDS.get(backend_name)
-    if not backend:
-        return False
-    return backend.requires_real_key and not settings.api_keys
+    """Đã bỏ chế độ offline — luôn gọi LLM/DB thật."""
+    return False
 
 
 class SafeChatOpenAI(ChatOpenAI):
@@ -96,9 +88,12 @@ def base_llm(
     backend = _get_backend(backend_name)
 
     if backend_name == "self_hosted":
+        from src.infra.llm.gateway import cap_output_tokens, resolve_self_hosted_model
+
         api_key = settings.model_api_key or backend.dummy_key
         base_url = settings.model_base_url or backend.default_base_url
-        model = model_override or settings.model_name or "qwen3-4b"
+        model = resolve_self_hosted_model(model_override)
+        max_tokens_override = cap_output_tokens(max_tokens_override)
     else:
         api_key = _pool().get_key()
         base_url = settings.llm_base_url or None
@@ -142,7 +137,9 @@ def invoke_with_tools(
 def _llm_model_label(backend_override: str | None = None) -> str:
     backend_name = (backend_override or settings.llm_backend).strip().lower()
     if backend_name == "self_hosted":
-        return settings.model_name or "qwen3-4b"
+        from src.infra.llm.gateway import resolve_self_hosted_model
+
+        return resolve_self_hosted_model()
     return settings.llm_model or "gpt-4o-mini"
 
 
@@ -157,7 +154,7 @@ def invoke_text(
     stop: list[str] | None = None,
 ) -> str:
     """Lời gọi LLM đơn giản không tool — dùng cho bước Answer và SQL generator."""
-    from src.infra.monitoring.tracing import add_request_tokens, extract_token_usage, trace_substep
+    from src.infra.monitoring.tracing import add_request_tokens, current_span, extract_token_usage, trace_step
 
     trace_in = {
         "system_len": len(system_prompt or ""),
@@ -184,7 +181,7 @@ def invoke_text(
 
     try:
         if substep:
-            with trace_substep(substep, kind="agent", input=trace_in, metadata=meta) as box:
+            with trace_step(current_span(), substep, input=trace_in, metadata=meta, as_type="generation") as box:
                 text, usage = _call()
                 box["usage"] = usage
                 box["output"] = {"text_len": len(text)}
@@ -195,22 +192,16 @@ def invoke_text(
     except Exception as e:
         raise RuntimeError(f"Lỗi kết nối tới LLM: Không thể sinh phản hồi. Chi tiết: {e}") from e
 
-import urllib.request
+
 def ping() -> str:
     """Kiểm tra LLM server có sẵn sàng không."""
-    base_url = settings.effective_base_url or "http://192.168.1.196:18083/v1"
+    from src.infra.llm.gateway import fetch_gateway_catalog
+
+    base_url = settings.effective_base_url or "http://192.168.1.198:18083/v1"
     url = f"{base_url.rstrip('/')}/models"
-    if settings.llm_backend == "self_hosted":
-        token = settings.model_api_key or _BACKENDS["self_hosted"].dummy_key
-    else:
-        token = settings.llm_api_key or (settings.api_keys[0] if settings.api_keys else "")
-    try:
-        req = urllib.request.Request(url, method="GET")
-        req.add_header("Authorization", f"Bearer {token}")
-        with urllib.request.urlopen(req, timeout=3.0) as response:
-            if response.status == 200:
-                return "OK"
-            raise RuntimeError(f"HTTP {response.status}")
-    except Exception as e:
-        raise RuntimeError(f"Lỗi kết nối tới LLM tại {url}: {e}")
+    data = fetch_gateway_catalog()
+    err = data.get("error")
+    if err:
+        raise RuntimeError(f"Lỗi kết nối tới LLM tại {url}: {err}")
+    return "OK"
 

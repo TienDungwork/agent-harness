@@ -8,13 +8,13 @@ from src.domain.agents.nodes.io import node_event
 from src.shared.config import settings
 from src.infra.db.validator import ValidationResult, validate_sql
 from src.infra.llm.client import invoke_text, use_offline_tools
-from src.infra.monitoring.tracing import trace_substep
+from src.infra.monitoring.tracing import current_span, trace_step
 from src.infra.prompts import registry
 
 
 def _trace_validate_sql(sql: str) -> ValidationResult:
     """Validate SQL và ghi substep Langfuse ``tool:validate_sql``."""
-    with trace_substep("validate_sql", kind="tool", input={"sql": sql}) as sub:
+    with trace_step(current_span(), "validate_sql", input={"sql": sql}, as_type="tool") as sub:
         val = validate_sql(sql)
         sub["output"] = val.to_dict()
         return val
@@ -158,7 +158,7 @@ def repair_sql_node(state: dict) -> dict:
     system_prompt = registry().render("sql_agent")
     val_reason = (state.get("sql_validation") or {}).get("reason") or state.get("error") or "Câu SQL không hợp lệ."
 
-    with trace_substep("build_repair_prompt", kind="tool", input={"repair_count": repair_count}) as sub:
+    with trace_step(current_span(), "build_repair_prompt", input={"repair_count": repair_count}, as_type="tool") as sub:
         user_parts: list[str] = [
             "Câu SQL trước bị từ chối hoặc chạy lỗi.",
             f"Lý do validation: {val_reason}",
@@ -187,7 +187,7 @@ def repair_sql_node(state: dict) -> dict:
         substep="repair_sql",
     )
 
-    with trace_substep("extract_sql", kind="tool", input={"raw_len": len(raw)}) as sub:
+    with trace_step(current_span(), "extract_sql", input={"raw_len": len(raw)}, as_type="tool") as sub:
         repaired_sql = extract_sql(raw)
         sub["output"] = {"sql_len": len(repaired_sql), "empty": not bool(repaired_sql)}
 
@@ -207,7 +207,7 @@ def repair_sql_node(state: dict) -> dict:
             ],
         }
 
-    with trace_substep("apply_org_scope", kind="tool", input={"sql": repaired_sql}) as sub:
+    with trace_step(current_span(), "apply_org_scope", input={"sql": repaired_sql}, as_type="tool") as sub:
         repaired_sql = apply_organization_scope(repaired_sql)
         sub["output"] = {"sql": repaired_sql}
 

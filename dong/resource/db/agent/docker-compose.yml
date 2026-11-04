@@ -1,0 +1,27 @@
+# Postgres riêng cho agent (memory + sessions + LangGraph checkpoints).
+# Chạy: docker compose -f resource/db/agent/docker-compose.yml up -d
+# DBeaver (máy host): host=localhost port=5433 db=kcn_agent user=atin
+# Data persist: ./data/pgdata (bind mount, không mất khi docker compose down)
+
+name: kcn-agent-postgres
+
+services:
+  agent_postgres:
+    image: postgres:16-alpine
+    container_name: kcn_agent_postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${AGENT_DB_USER:-atin}
+      POSTGRES_PASSWORD: ${AGENT_DB_PASSWORD:-Atin@123#}
+      POSTGRES_DB: ${DB_NAME_AGENT:-kcn_agent}
+      TZ: ${DB_TIMEZONE:-Asia/Ho_Chi_Minh}
+    ports:
+      - "${AGENT_DB_PORT:-5433}:5432"
+    volumes:
+      - ./data/pgdata:/var/lib/postgresql/data
+      - ./init.sql:/docker-entrypoint-initdb.d/01-init.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
+      interval: 5s
+      timeout: 5s
+      retries: 10

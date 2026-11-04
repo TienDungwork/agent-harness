@@ -115,13 +115,7 @@ def summarize_text(old_messages: list[Any]) -> str:
         f"{formatted}"
     )
 
-    try:
-        if use_offline_tools():
-            return "Hội thoại trước đó trao đổi về thông tin người dùng và các sự kiện giám sát camera."
-        return invoke_text(system_prompt, user_prompt, substep="context_summarize").strip()
-    except Exception as exc:
-        logger.warning("summarize_text LLM call failed, using fallback: %s", exc)
-        return "Hội thoại trước đó trao đổi về thông tin người dùng và các sự kiện giám sát camera."
+    return invoke_text(system_prompt, user_prompt, substep="context_summarize").strip()
 
 
 def summarize_old_messages(messages: list[Any], keep_recent: int = 6) -> list[Any]:

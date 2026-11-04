@@ -491,6 +491,15 @@ html, body {
   background: var(--bg-surface-hover);
 }
 
+.model-pill-static {
+  cursor: default;
+}
+
+.model-pill-static:hover {
+  border-color: var(--border-light);
+  background: var(--bg-surface);
+}
+
 .model-indicator {
   width: 8px;
   height: 8px;

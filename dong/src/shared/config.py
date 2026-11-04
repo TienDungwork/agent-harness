@@ -34,10 +34,10 @@ class Settings(BaseSettings):
     llm_request_timeout_s: float = Field(default=60.0, alias="LLM_REQUEST_TIMEOUT_S")
 
     # vLLM gateway (khi LLM_BACKEND=self_hosted)
-    model_base_url: str = Field(default="http://192.168.1.196:18083/v1", alias="MODEL_BASE_URL")
-    model_name: str = Field(default="qwen3-4b", alias="MODEL_NAME")
+    model_base_url: str = Field(default="http://192.168.1.198:18083/v1", alias="MODEL_BASE_URL")
+    model_name: str = Field(default="bonsai-27b", alias="MODEL_NAME")
     model_api_key: str = Field(default="", alias="MODEL_API_KEY")
-    model_endpoint: str = Field(default="http://192.168.1.196:18083/v1/chat/completions", alias="MODEL_ENDPOINT")
+    model_endpoint: str = Field(default="http://192.168.1.198:18083/v1/chat/completions", alias="MODEL_ENDPOINT")
 
     # v7 text-to-SQL / QueryPlan repair loop
     sql_repair_max: int = Field(default=2, alias="SQL_REPAIR_MAX")
@@ -58,6 +58,13 @@ class Settings(BaseSettings):
     memory_compact_threshold: float = Field(default=0.40, alias="MEMORY_COMPACT_THRESHOLD")
     memory_context_window_tokens: int = Field(default=4000, alias="MEMORY_CONTEXT_WINDOW_TOKENS")
 
+    # Long-term vectors (Qdrant — bắt buộc khi MEMORY_LONG_TERM_ENABLED=true)
+    qdrant_url: str = Field(default="", alias="QDRANT_URL")
+    qdrant_api_key: str = Field(default="", alias="QDRANT_API_KEY")
+    qdrant_collection: str = Field(default="kcn_agent_memories", alias="QDRANT_COLLECTION")
+    embedding_model: str = Field(default="text-embedding-3-small", alias="EMBEDDING_MODEL")
+    embedding_dim: int = Field(default=1536, alias="EMBEDDING_DIM")
+
     # ── Database Nguồn Thống Kê (Postgres, Read-Only) ─────────────────────────
     db_host: str = Field(default="", alias="DB_HOST")
     db_port: int = Field(default=5432, alias="DB_PORT")
@@ -68,6 +75,11 @@ class Settings(BaseSettings):
     db_name_face: str = Field(default="smart_face", alias="DB_NAME_FACE")
     db_name_fire: str = Field(default="firesmoke", alias="DB_NAME_FIRE")
     db_name_anomaly: str = Field(default="anomaly", alias="DB_NAME_ANOMALY")
+    db_name_agent: str = Field(default="kcn_agent", alias="DB_NAME_AGENT")
+    agent_db_host: str = Field(default="", alias="AGENT_DB_HOST")
+    agent_db_port: int = Field(default=5433, alias="AGENT_DB_PORT")
+    agent_db_user: str = Field(default="", alias="AGENT_DB_USER")
+    agent_db_password: str = Field(default="", alias="AGENT_DB_PASSWORD")
     db_organization_id: int = Field(default=0, alias="DB_ORGANIZATION_ID")
     db_timezone: str = Field(default="Asia/Ho_Chi_Minh", alias="DB_TIMEZONE")
     db_query_timeout_s: float = Field(default=5.0, alias="DB_QUERY_TIMEOUT_S")
@@ -82,8 +94,15 @@ class Settings(BaseSettings):
     langfuse_secret_key: str = Field(default="", alias="LANGFUSE_SECRET_KEY")
     langfuse_host: str = Field(default="http://localhost:3000", alias="LANGFUSE_HOST")
 
+    # ── API / CORS ───────────────────────────────────────────────────────────
+    api_access_key: str = Field(default="", alias="API_ACCESS_KEY")
+    cors_allow_origins: str = Field(default="*", alias="CORS_ALLOW_ORIGINS")
+
     # ── Cache / TTL response cache (trước graph) ─────────────────────────────
     cache_enabled: bool = Field(default=True, alias="CACHE_ENABLED")
+    cache_max_entries: int = Field(default=500, alias="CACHE_MAX_ENTRIES")
+    gateway_catalog_ttl_s: int = Field(default=300, alias="GATEWAY_CATALOG_TTL_S")
+    memory_fallback_max_per_user: int = Field(default=200, alias="MEMORY_FALLBACK_MAX_PER_USER")
 
     # Rewrite + decompose (gom trong rewrite_node — bỏ LLM khi câu ngắn/đơn)
     agent_decompose_min_chars: int = Field(default=48, alias="AGENT_DECOMPOSE_MIN_CHARS")
@@ -134,12 +153,27 @@ class Settings(BaseSettings):
     def effective_model(self) -> str:
         """Trả về tên model tuỳ theo llm_backend."""
         if self.llm_backend == "self_hosted":
-            return self.model_name or "qwen3-4b"
+            return self.model_name or "bonsai-27b"
         return self.llm_model or "gpt-4o-mini"
 
     @property
     def db_configured(self) -> bool:
         return bool(self.db_host and self.db_user)
+
+    @property
+    def agent_db_configured(self) -> bool:
+        return bool(self.agent_db_host and self.agent_db_user and self.db_name_agent)
+
+    @property
+    def qdrant_configured(self) -> bool:
+        return bool((self.qdrant_url or "").strip())
+
+    @property
+    def cors_origins_list(self) -> list[str]:
+        raw = (self.cors_allow_origins or "*").strip()
+        if raw == "*":
+            return ["*"]
+        return [o.strip() for o in raw.split(",") if o.strip()]
 
     @property
     def effective_docs_root(self) -> Path:
@@ -149,11 +183,8 @@ class Settings(BaseSettings):
         if not p.is_absolute():
             project_root = Path(__file__).resolve().parents[2]
             p = (project_root / p).resolve()
-        if p.exists() and (p / "index.yaml").exists():
-            return p
-        duy_path = Path(__file__).resolve().parents[2] / "duy" / "VMS_doc" / "VMS_documentation"
-        if duy_path.exists():
-            return duy_path.resolve()
+        if not p.exists() or not (p / "index.yaml").exists():
+            raise FileNotFoundError(f"DOCS_ROOT không hợp lệ hoặc thiếu index.yaml: {p}")
         return p
 
 

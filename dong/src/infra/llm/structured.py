@@ -22,7 +22,7 @@ def invoke_structured(
     """Gọi LLM với structured output; trả về instance `schema`."""
     from src.shared.config import settings
     from src.infra.llm.client import _llm_model_label
-    from src.infra.monitoring.tracing import trace_substep
+    from src.infra.monitoring.tracing import current_span, trace_step
 
     step_name = substep or schema.__name__
 
@@ -36,7 +36,7 @@ def invoke_structured(
 
     meta = {"model_name": _llm_model_label(backend_override), "temperature": settings.llm_temperature}
     try:
-        with trace_substep(step_name, kind="agent", input={"schema": schema.__name__}, metadata=meta) as box:
+        with trace_step(current_span(), step_name, input={"schema": schema.__name__}, metadata=meta, as_type="generation") as box:
             out = _call()
             box["output"] = out.model_dump() if hasattr(out, "model_dump") else str(out)
             box["model_name"] = meta["model_name"]

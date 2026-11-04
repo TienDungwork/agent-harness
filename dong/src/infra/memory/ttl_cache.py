@@ -90,6 +90,20 @@ def get_ttl_cached(key: str) -> Optional[dict]:
         return None
 
 
+def _enforce_cache_size_cap() -> None:
+    from src.shared.config import settings
+
+    cap = int(getattr(settings, "cache_max_entries", 0) or 0)
+    if cap <= 0:
+        return
+    if len(_ttl_cache) <= cap:
+        return
+    cleanup_expired()
+    while len(_ttl_cache) > cap:
+        oldest_key = min(_ttl_cache, key=lambda k: _ttl_cache[k].get("expire_at", 0))
+        _ttl_cache.pop(oldest_key, None)
+
+
 def set_ttl_cached(key: str, data: dict, ttl: int | None = None) -> None:
     """Store data dictionary in TTL cache with expiration time."""
     try:
@@ -101,11 +115,16 @@ def set_ttl_cached(key: str, data: dict, ttl: int | None = None) -> None:
             return
 
         expire_at = time.time() + ttl
+        slim = dict(data)
+        if "rows" in slim and isinstance(slim["rows"], list) and len(slim["rows"]) > 50:
+            slim["rows"] = slim["rows"][:50]
+
         with _ttl_lock:
             _ttl_cache[key] = {
-                "data": data,
+                "data": slim,
                 "expire_at": expire_at,
             }
+            _enforce_cache_size_cap()
     except Exception as exc:
         logger.warning("set_ttl_cached error, degrading silently: %s", exc)
 

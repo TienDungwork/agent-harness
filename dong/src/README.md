@@ -2,6 +2,8 @@
 
 Entry: `uvicorn src.main:app` từ `agent-harness/dong/`. Cấu hình: `src/shared/config.py` + `.env`.
 
+**Agent Postgres (bắt buộc khi `MEMORY_ENABLED=true`):** `DB_NAME_AGENT` — `chat_sessions`, `chat_session_messages`, `human_feedback` + LangGraph `PostgresSaver.setup()`. Long-term facts → Qdrant. **API_ACCESS_KEY** (tùy chọn): header `X-API-Key`.
+
 ```
 src/
 ├── main.py                 # FastAPI entry

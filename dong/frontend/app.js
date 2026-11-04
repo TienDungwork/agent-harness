@@ -8,8 +8,6 @@
 
   // State
   const state = {
-    activeModel: localStorage.getItem('agent_model_provider') || 'openai',
-    apiBaseUrl: localStorage.getItem('agent_api_base_url') || '',
     isGenerating: false,
     messages: [],
     graphNodes: {},
@@ -40,7 +38,6 @@
     sampleAccordionHeader: document.getElementById('sample-accordion-header'),
     sessionList: document.getElementById('session-list'),
     domainChips: document.getElementById('domain-chips'),
-    btnOpenSettings: document.getElementById('btn-open-settings'),
     sidebarModelLabel: document.getElementById('sidebar-model-label'),
     systemStatusText: document.getElementById('system-status-text'),
     systemStatusBadge: document.getElementById('system-status-badge'),
@@ -52,14 +49,6 @@
     messagesList: document.getElementById('messages-list'),
     questionInput: document.getElementById('question-input'),
     btnSend: document.getElementById('btn-send'),
-    settingsModal: document.getElementById('settings-modal'),
-    btnCloseSettings: document.getElementById('btn-close-settings'),
-    btnSaveSettings: document.getElementById('btn-save-settings'),
-    radioOpenAI: document.getElementById('radio-openai'),
-    radioSelfHosted: document.getElementById('radio-self-hosted'),
-    inputApiUrl: document.getElementById('input-api-url'),
-    btnCheckHealth: document.getElementById('btn-check-health'),
-    healthResult: document.getElementById('health-result'),
     graphPlaceholder: document.getElementById('graph-placeholder'),
     graphNodes: document.getElementById('graph-nodes'),
     graphIoEmpty: document.getElementById('graph-io-empty'),
@@ -108,7 +97,7 @@
 
     let loaded = [];
     try {
-      const res = await fetch(getApiEndpoint(`/api/sessions?user_id=${encodeURIComponent(state.userId)}`));
+      const res = await apiFetch(`/api/sessions?user_id=${encodeURIComponent(state.userId)}`);
       if (res.ok) {
         const data = await res.json();
         loaded = Array.isArray(data.sessions) ? data.sessions : [];
@@ -120,7 +109,7 @@
 
     if (loaded.length === 0) {
       try {
-        const res = await fetch(getApiEndpoint('/api/sessions'), {
+        const res = await apiFetch('/api/sessions', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ user_id: state.userId }),
@@ -282,7 +271,7 @@
   async function createNewSession() {
     if (state.isGenerating) return;
     try {
-      const res = await fetch(getApiEndpoint('/api/sessions'), {
+      const res = await apiFetch('/api/sessions', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ user_id: state.userId }),
@@ -352,7 +341,7 @@
   async function fetchUserMemoryStatus() {
     if (!state.userId) return;
     try {
-      const res = await fetch(getApiEndpoint(`/api/memory?user_id=${encodeURIComponent(state.userId)}`));
+      const res = await apiFetch(`/api/memory?user_id=${encodeURIComponent(state.userId)}`);
       if (res.ok) {
         const data = await res.json();
         const facts = Array.isArray(data.memories) ? data.memories : (Array.isArray(data.facts) ? data.facts : []);
@@ -380,8 +369,7 @@
     }
 
     try {
-      const endpoint = getApiEndpoint(`/api/memory?user_id=${encodeURIComponent(state.userId)}`);
-      const res = await fetch(endpoint, { method: 'DELETE' });
+      const res = await apiFetch(`/api/memory?user_id=${encodeURIComponent(state.userId)}`, { method: 'DELETE' });
       if (res.ok) {
         showToast('Đã xóa bộ nhớ và đặt lại ngữ cảnh thành công!', 'success');
         updateMemoryStatus(0);
@@ -405,7 +393,6 @@
   // Initialize
   async function init() {
     setupEventListeners();
-    applyStateToUI();
     adjustTextareaHeight();
     checkSystemHealth();
     await initUserAndSessions();
@@ -474,16 +461,6 @@
 
     el.btnSend.addEventListener('click', handleSendMessage);
 
-    // Settings Modal
-    el.btnOpenSettings.addEventListener('click', openSettings);
-    el.btnCloseSettings.addEventListener('click', closeSettings);
-    el.settingsModal.addEventListener('click', e => {
-      if (e.target === el.settingsModal) closeSettings();
-    });
-
-    el.btnSaveSettings.addEventListener('click', saveSettings);
-    el.btnCheckHealth.addEventListener('click', checkSystemHealthInModal);
-
     // Feedback Modal Events (Phase 2 Core UI)
     if (el.btnCloseFeedback) el.btnCloseFeedback.addEventListener('click', closeFeedbackModal);
     if (el.btnCancelFeedback) el.btnCancelFeedback.addEventListener('click', closeFeedbackModal);
@@ -499,8 +476,6 @@
       if (e.key === 'Escape') {
         if (el.feedbackModal && el.feedbackModal.classList.contains('active')) {
           closeFeedbackModal();
-        } else if (el.settingsModal && el.settingsModal.classList.contains('active')) {
-          closeSettings();
         }
       }
     });
@@ -562,15 +537,11 @@
     });
   }
 
-  function applyStateToUI() {
-    if (state.activeModel === 'self_hosted') {
-      el.sidebarModelLabel.textContent = 'Qwen3-4B (Self-hosted)';
-      if (el.radioSelfHosted) el.radioSelfHosted.checked = true;
-    } else {
-      el.sidebarModelLabel.textContent = 'OpenAI (gpt-4o-mini)';
-      if (el.radioOpenAI) el.radioOpenAI.checked = true;
-    }
-    el.inputApiUrl.value = state.apiBaseUrl;
+  function updateSidebarModelLabel(health) {
+    if (!el.sidebarModelLabel || !health) return;
+    const model = health.active_model || 'N/A';
+    const tag = health.llm_backend === 'self_hosted' ? 'Self-hosted' : 'OpenAI';
+    el.sidebarModelLabel.textContent = `${tag} · ${model}`;
   }
 
   function adjustTextareaHeight() {
@@ -1442,8 +1413,19 @@
   // API Communication
   // ==========================================================================
   function getApiEndpoint(path) {
-    const base = state.apiBaseUrl.replace(/\/+$/, '');
-    return base ? `${base}${path}` : path;
+    return path;
+  }
+
+  function apiFetch(pathOrUrl, options = {}) {
+    const url = typeof pathOrUrl === 'string' && pathOrUrl.startsWith('http')
+      ? pathOrUrl
+      : getApiEndpoint(pathOrUrl);
+    const opts = { ...options };
+    const headers = { ...(opts.headers || {}) };
+    const accessKey = localStorage.getItem('agent_api_access_key');
+    if (accessKey) headers['X-API-Key'] = accessKey;
+    opts.headers = headers;
+    return fetch(url, opts);
   }
 
   async function handleSendMessage() {
@@ -1464,6 +1446,7 @@
     el.btnSend.disabled = true;
     el.questionInput.value = '';
     adjustTextareaHeight();
+    if (el.welcomeScreen) el.welcomeScreen.style.display = 'none';
 
     const now = new Date().toISOString();
     const userMsg = {
@@ -1496,12 +1479,11 @@
     const currentRunId = graphRunId;
     const currentSessionId = sess.id;
 
-    fetch(getApiEndpoint('/api/agent/stream'), {
+    apiFetch('/api/agent/stream', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         question: question,
-        model_provider: state.activeModel,
         session_id: state.activeSessionId,
         user_id: state.userId,
         stream_tokens: true,
@@ -1768,9 +1750,14 @@
         } else {
           appendMessage('assistant', fallbackText);
         }
+        scrollToBottom();
       }
     }).catch(err => {
-      if (currentRunId !== graphRunId || err.name === 'AbortError') return;
+      if (currentRunId !== graphRunId) return;
+      if (err.name === 'AbortError') {
+        removeThinkingIndicator();
+        return;
+      }
       
       removeThinkingIndicator();
       const placeholder = document.getElementById('graph-placeholder');
@@ -1815,6 +1802,7 @@
         const data = await res.json();
         el.systemStatusText.textContent = 'Hệ thống sẵn sàng';
         el.systemStatusBadge.querySelector('.status-dot').style.background = '#10b981';
+        updateSidebarModelLabel(data);
       } else {
         throw new Error();
       }
@@ -1824,77 +1812,17 @@
         const fallback = getApiEndpoint('/health');
         const res = await fetch(fallback);
         if (res.ok) {
+          const data = await res.json();
           el.systemStatusText.textContent = 'Hệ thống sẵn sàng';
           el.systemStatusBadge.querySelector('.status-dot').style.background = '#10b981';
+          updateSidebarModelLabel(data);
           return;
         }
       } catch {}
       el.systemStatusText.textContent = 'Backend Offline';
       el.systemStatusBadge.querySelector('.status-dot').style.background = '#ef4444';
+      if (el.sidebarModelLabel) el.sidebarModelLabel.textContent = 'Backend offline';
     }
-  }
-
-  async function checkSystemHealthInModal() {
-    const apiUrlInput = el.inputApiUrl.value.trim();
-    if (apiUrlInput && !apiUrlInput.startsWith('http://') && !apiUrlInput.startsWith('https://')) {
-      el.healthResult.innerHTML = `❌ <strong>Lỗi:</strong> URL phải bắt đầu bằng http:// hoặc https://`;
-      el.healthResult.style.color = '#ef4444';
-      return;
-    }
-
-    el.healthResult.textContent = 'Đang kiểm tra kết nối...';
-    el.healthResult.style.color = 'var(--text-secondary)';
-
-    try {
-      const base = apiUrlInput.replace(/\/+$/, '');
-      const path = '/api/health';
-      const url = base ? `${base}${path}` : path;
-      const res = await fetch(url);
-      if (res.ok) {
-        const data = await res.json();
-        el.healthResult.innerHTML = `✅ <strong>Kết nối thành công!</strong> Model active: <code>${data.active_model || 'N/A'}</code>`;
-        el.healthResult.style.color = '#10b981';
-      } else {
-        throw new Error();
-      }
-    } catch {
-      el.healthResult.innerHTML = `❌ <strong>Không thể kết nối</strong> tới Backend. Hãy chắc chắn Uvicorn/FastAPI đang chạy.`;
-      el.healthResult.style.color = '#ef4444';
-    }
-  }
-
-  // ==========================================================================
-  // Settings Management
-  // ==========================================================================
-  function openSettings() {
-    applyStateToUI();
-    el.healthResult.textContent = '';
-    el.settingsModal.classList.add('active');
-  }
-
-  function closeSettings() {
-    el.settingsModal.classList.remove('active');
-  }
-
-  function saveSettings() {
-    const selectedProvider = el.radioSelfHosted.checked ? 'self_hosted' : 'openai';
-    const apiUrl = el.inputApiUrl.value.trim();
-
-    if (apiUrl && !apiUrl.startsWith('http://') && !apiUrl.startsWith('https://')) {
-      el.healthResult.innerHTML = `❌ <strong>Lỗi:</strong> URL phải bắt đầu bằng http:// hoặc https://`;
-      el.healthResult.style.color = '#ef4444';
-      return;
-    }
-
-    state.activeModel = selectedProvider;
-    state.apiBaseUrl = apiUrl;
-
-    localStorage.setItem('agent_model_provider', selectedProvider);
-    localStorage.setItem('agent_api_base_url', apiUrl);
-
-    applyStateToUI();
-    closeSettings();
-    checkSystemHealth();
   }
 
   // ==========================================================================
@@ -1939,7 +1867,7 @@
         rating: 'positive',
         agent_trace: ctx.agent_trace || { nodes: state.lastAgentTrace || [] },
       };
-      const res = await fetch(getApiEndpoint('/api/feedback'), {
+      const res = await apiFetch('/api/feedback', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),
@@ -2036,7 +1964,7 @@
         agent_trace: (ctx && ctx.agent_trace) || { nodes: state.lastAgentTrace || [] },
       };
 
-      const res = await fetch(getApiEndpoint('/api/feedback'), {
+      const res = await apiFetch('/api/feedback', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),
