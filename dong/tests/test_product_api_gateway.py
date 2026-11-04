@@ -406,33 +406,33 @@ def test_api_stream_answer_emits_before_store_extract(monkeypatch):
     assert node_ids.index("__answer__") < node_ids.index("store_extract")
 
 
-def test_api_agent_stream_passes_trace_parent_span(monkeypatch):
-    """UI stream phải truyền parent_span từ trace_answer xuống run_agent_stream."""
+def test_api_agent_stream_passes_trace_box_to_run(monkeypatch):
+    """UI stream phải truyền trace_box + metadata xuống run_agent_stream (trace trong worker)."""
     monkeypatch.setattr("src.infra.monitoring.tracing.settings.monitoring_enabled", True)
-    from src.main import _cache
-    _cache.clear()
-    from unittest.mock import MagicMock, patch
+    from unittest.mock import patch
     from src.domain.agents.graph import Agent_Output
 
-    mock_span = MagicMock()
-    with patch("src.infra.monitoring.tracing._get_langfuse") as mock_lf:
-        mock_lf.return_value.start_observation.return_value = mock_span
-        with patch("src.domain.agents.graph.run_agent_stream") as mock_stream:
-            mock_stream.side_effect = lambda inp, parent_span=None, **kwargs: iter([
-                {"__final_result__": Agent_Output(question="q", answer="ok", detail="")},
-            ])
-            res = client.post(
-                "/api/agent/stream",
-                json={
-                    "question": "Hôm nay có bao nhiêu lượt xe vào?",
-                    "session_id": "test-session",
-                    "user_id": "test-user",
-                },
-            )
+    with patch("src.domain.agents.graph.run_agent_stream") as mock_stream:
+        mock_stream.side_effect = lambda inp, **kwargs: iter([
+            {"__final_result__": Agent_Output(question="q", answer="ok", detail="")},
+        ])
+        res = client.post(
+            "/api/agent/stream",
+            json={
+                "question": "Hôm nay có bao nhiêu lượt xe vào?",
+                "session_id": "test-session",
+                "user_id": "test-user",
+            },
+        )
     assert res.status_code == 200
     mock_stream.assert_called_once()
-    assert mock_stream.call_args.kwargs["parent_span"] is mock_span
-    mock_span.end.assert_called_once()
+    kw = mock_stream.call_args.kwargs
+    assert isinstance(kw.get("trace_box"), dict)
+    assert kw.get("trace_name") == "chat"
+    meta = kw.get("trace_metadata") or {}
+    assert meta.get("session_id") == "test-session"
+    assert meta.get("user_id") == "test-user"
+    assert kw.get("parent_span") is None
 
 
 def test_api_agent_stream_prompt_injection_blocked():

@@ -38,10 +38,27 @@ def run_agent(inp, parent_span=None, session_id: str = "default", user_id: str |
     return _graph_run_agent(inp, parent_span=parent_span, session_id=session_id, user_id=user_id)
 
 
-def run_agent_stream(inp, parent_span=None, session_id: str = "default", user_id: str | None = None):
+def run_agent_stream(
+    inp,
+    parent_span=None,
+    session_id: str = "default",
+    user_id: str | None = None,
+    *,
+    trace_box=None,
+    trace_name: str = "chat",
+    trace_metadata=None,
+):
     from src.domain.agents.graph import run_agent_stream as _graph_run_agent_stream
 
-    return _graph_run_agent_stream(inp, parent_span=parent_span, session_id=session_id, user_id=user_id)
+    return _graph_run_agent_stream(
+        inp,
+        parent_span=parent_span,
+        session_id=session_id,
+        user_id=user_id,
+        trace_box=trace_box,
+        trace_name=trace_name,
+        trace_metadata=trace_metadata,
+    )
 
 
 from src.api.helpers.errors import (

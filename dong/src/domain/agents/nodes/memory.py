@@ -149,7 +149,7 @@ def run_store_extract(
     input_payload = {
         "user_id": uid,
         "question": q,
-        "answer": ans if include_answer else "",
+        "answer": ans,
         "detail": detail,
         "include_answer": include_answer,
     }
@@ -159,6 +159,7 @@ def run_store_extract(
     with trace_step(
         parent_span,
         "store_extract",
+        input=input_payload,
         metadata={"user_id": uid, "session_id": sid},
         as_type="chain",
     ) as step:
