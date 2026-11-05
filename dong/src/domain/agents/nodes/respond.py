@@ -28,6 +28,7 @@ from src.domain.agents.orchestrator.synth import (
     _synthesize_orchestrator_answer,
 )
 from src.infra.monitoring.tracing import current_span, trace_step
+from src.infra.prompts import registry
 
 
 def respond_node(state: AgentState) -> dict:
@@ -59,9 +60,11 @@ def respond_node(state: AgentState) -> dict:
     q_low = q.lower()
 
     if respond_mode == "inline":
-        ans = (state.get("answer") or "").strip()
-        if not ans and intent == "chat":
-            ans = "Chào bạn! Tôi là trợ lý AI giám sát camera VMS KCN Hưng Phú. Tôi có thể hỗ trợ gì cho bạn về dữ liệu camera, sự kiện hoặc hướng dẫn sử dụng hệ thống?"
+        with trace_step(current_span(), "respond_inline", input={"intent": intent}, as_type="tool") as sub:
+            ans = (state.get("answer") or "").strip()
+            if not ans and intent == "chat":
+                ans = "Chào bạn! Tôi là trợ lý AI giám sát camera VMS KCN Hưng Phú. Tôi có thể hỗ trợ gì cho bạn về dữ liệu camera, sự kiện hoặc hướng dẫn sử dụng hệ thống?"
+            sub["output"] = {"answer_len": len(ans)}
         detail = intent or "chat"
         result = Agent_Output(question=q_original, answer=ans, detail=detail)
         emit_answer_chunks(ans, enabled=bool(state.get("stream_tokens")))
@@ -76,7 +79,9 @@ def respond_node(state: AgentState) -> dict:
         }
 
     if respond_mode == "out_of_scope":
-        ans = (state.get("answer") or "").strip() or OUT_OF_SCOPE_REPLY
+        with trace_step(current_span(), "respond_out_of_scope", input={"intent": intent}, as_type="tool") as sub:
+            ans = (state.get("answer") or "").strip() or OUT_OF_SCOPE_REPLY
+            sub["output"] = {"answer_len": len(ans)}
         result = Agent_Output(question=q_original, answer=ans, detail="out_of_scope")
         emit_answer_chunks(ans, enabled=bool(state.get("stream_tokens")))
         return {
@@ -92,7 +97,14 @@ def respond_node(state: AgentState) -> dict:
     if is_multi_respond:
         from src.domain.agents.orchestrator.plan import is_all_events_plan
 
-        ans, answer_source = _synthesize_orchestrator_answer(q, step_results, state)
+        with trace_step(
+            current_span(),
+            "synthesize_multi",
+            input={"step_count": len(step_results)},
+            as_type="tool",
+        ) as sub:
+            ans, answer_source = _synthesize_orchestrator_answer(q, step_results, state)
+            sub["output"] = {"answer_source": answer_source, "answer_len": len(ans or "")}
         check_q = f"{q} {q_original}".lower()
         if any(k in check_q for k in ("chỗ", "cho ngoi", "5 chỗ", "7 chỗ", "9 chỗ", "16 chỗ", "29 chỗ", "40 chỗ", "45 chỗ")):
             if "không có thông tin số chỗ ngồi" not in ans.lower():
@@ -212,7 +224,7 @@ def respond_node(state: AgentState) -> dict:
             llm_used = False
         elif simple_ans is not None:
             ans = simple_ans
-            if chart_png:
+            if chart_png and should_render_chart(q):
                 ans = f"{ans} Biểu đồ đã tạo từ kết quả truy vấn."
             answer_source = "template_simple"
             llm_used = False

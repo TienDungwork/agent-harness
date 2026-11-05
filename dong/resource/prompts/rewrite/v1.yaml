@@ -53,3 +53,9 @@ template: |
   text: "Thống kê số lượng sự kiện xâm nhập vùng cấm hôm nay"
   sub_questions:
   - "Hôm nay có bao nhiêu sự kiện xâm nhập hoặc leo trèo vùng cấm?"
+
+  Ví dụ 3 (Nối tiếp sau câu vẽ biểu đồ — BẮT BUỘC giữ visualization):
+  Trước: "Vẽ biểu đồ xe ra vào hôm nay" -> Hiện tại: "Vậy còn vùng cấm thì sao?"
+  text: "Vẽ biểu đồ thống kê sự kiện xâm nhập vùng cấm hôm nay"
+  sub_questions:
+  - "Vẽ biểu đồ số sự kiện xâm nhập hoặc leo trèo vùng cấm hôm nay"

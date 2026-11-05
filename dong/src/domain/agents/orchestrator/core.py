@@ -12,6 +12,7 @@ from src.domain.agents.routing.intent import is_stat_event_domain
 from src.domain.agents.nodes.io import node_event
 from src.domain.agents.state import AgentState
 from src.infra.llm.schemas import OrchestratorPlan, OrchestratorStep
+from src.infra.monitoring.tracing import current_span, trace_step
 
 def _is_multi_plan(plan: OrchestratorPlan | None) -> bool:
     return bool(plan and (plan.is_multi or len(plan.steps) >= 2))
@@ -79,7 +80,9 @@ def orchestrator_node(state: AgentState) -> dict:
     plan_existing: OrchestratorPlan | None = state.get("orchestrator_plan")
     if state.get("orchestrator_multi_active") and plan_existing and plan_existing.steps:
         idx = int(state.get("orchestrator_step_index") or 0)
-        subs, end_idx, agent = _batch_steps_from_plan(plan_existing, idx)
+        with trace_step(current_span(), "dispatch_batch", input={"from_index": idx}, as_type="tool") as sub:
+            subs, end_idx, agent = _batch_steps_from_plan(plan_existing, idx)
+            sub["output"] = {"agent": agent, "batch_size": len(subs), "batch_end_index": end_idx}
         out = {
             **_reset_pipeline_fields(),
             "orchestrator_batch_sub_questions": subs,
@@ -99,29 +102,37 @@ def orchestrator_node(state: AgentState) -> dict:
     original_q = state.get("original_question") or q
 
     from src.domain.agents.orchestrator.plan import is_multi_question
-    # Fast pass-through nếu là câu đơn, tránh gọi LLM lần 2
+
     if not is_multi_question(q_text, rewritten=rewritten, original=original_q, intent=intent):
-        if is_stat_event_domain(q_text):
-            plan = OrchestratorPlan(steps=[OrchestratorStep(agent="query_data", sub_question=q_text)], is_multi=False, reason="Fast passthrough: stat domain")
-        elif intent == "out_of_scope":
-            plan = OrchestratorPlan(steps=[], is_multi=False, reason="Fast passthrough: out_of_scope")
-        elif intent in ("how_to", "troubleshoot", "concept"):
-            plan = OrchestratorPlan(steps=[OrchestratorStep(agent="docs", sub_question=q_text)], is_multi=False, reason="Fast passthrough: docs")
-        elif intent in ("chat", "clarify"):
-            plan = OrchestratorPlan(steps=[], is_multi=False, reason="Fast passthrough: inline")
-        else:
-            plan = OrchestratorPlan(steps=[OrchestratorStep(agent="query_data", sub_question=q_text)], is_multi=False, reason="Fast passthrough: query_data")
+        with trace_step(current_span(), "plan_passthrough", input={"intent": intent}, as_type="tool") as sub:
+            if is_stat_event_domain(q_text):
+                plan = OrchestratorPlan(steps=[OrchestratorStep(agent="query_data", sub_question=q_text)], is_multi=False, reason="Fast passthrough: stat domain")
+            elif intent == "out_of_scope":
+                plan = OrchestratorPlan(steps=[], is_multi=False, reason="Fast passthrough: out_of_scope")
+            elif intent in ("how_to", "troubleshoot", "concept"):
+                plan = OrchestratorPlan(steps=[OrchestratorStep(agent="docs", sub_question=q_text)], is_multi=False, reason="Fast passthrough: docs")
+            elif intent in ("chat", "clarify"):
+                plan = OrchestratorPlan(steps=[], is_multi=False, reason="Fast passthrough: inline")
+            else:
+                plan = OrchestratorPlan(steps=[OrchestratorStep(agent="query_data", sub_question=q_text)], is_multi=False, reason="Fast passthrough: query_data")
+            sub["output"] = {"step_count": len(plan.steps), "is_multi": plan.is_multi}
         llm_used = False
     elif intent == "out_of_scope" and is_stat_event_domain(q_text):
-        plan = plan_orchestration(
-            q_text, sub_questions=sub_questions, original=original_q, intent=intent,
-        )
+        with trace_step(current_span(), "plan_orchestration", input={"intent": intent}, as_type="tool") as sub:
+            plan = plan_orchestration(
+                q_text, sub_questions=sub_questions, original=original_q, intent=intent,
+            )
+            sub["output"] = {"step_count": len(plan.steps)}
     elif intent == "out_of_scope":
-        plan = OrchestratorPlan(steps=[], is_multi=False, reason="out_of_scope")
+        with trace_step(current_span(), "plan_passthrough", input={"intent": intent}, as_type="tool") as sub:
+            plan = OrchestratorPlan(steps=[], is_multi=False, reason="out_of_scope")
+            sub["output"] = {"step_count": 0}
     else:
-        plan = plan_orchestration(
-            q_text, sub_questions=sub_questions, original=original_q, intent=intent,
-        )
+        with trace_step(current_span(), "plan_orchestration", input={"intent": intent}, as_type="tool") as sub:
+            plan = plan_orchestration(
+                q_text, sub_questions=sub_questions, original=original_q, intent=intent,
+            )
+            sub["output"] = {"step_count": len(plan.steps), "is_multi": plan.is_multi}
 
     out: dict = {
         "orchestrator_plan": plan,

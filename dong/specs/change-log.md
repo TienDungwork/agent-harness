@@ -1,5 +1,20 @@
 # Change Log — agent dong
 
+## 2026-11-05 — v13: nested `trace_step` toàn graph (code)
+
+- **Nodes:** `guardrails`, `memory.recall`, `rewrite_classify`, `orchestrator/core`, `orchestrator/synth.collect_step`, `sql/execute` batch loop, `pipeline.answer_from_docs`, `respond` nhánh inline/out_of_scope/multi.
+- **Tests:** `test_v13_nested_trace_guardrail_recall_rewrite`, `test_v13_execute_sql_batch_nested_postgres_query`; sửa import `_cache` từ `ttl_cache` trong observability suite.
+- **Verify:** `pytest tests/test_product_observability_errors.py::test_v13_* -q` pass.
+
+## 2026-11-05 — v13 design: nested `trace_step` toàn graph (spec only)
+
+- Quyết định: span con cho mọi khối logic trong node (mức B), bọc tại thân node (cách 1) — không decorator helper.
+- Design: [nested-trace-v13-design.md](nested-trace-v13-design.md) (bản đồ span, quy ước, test AC-T1–T3).
+- SDD: `product-spec.md` AC-9; `implementation-plan.md` phase 13.1–13.5; `test-plan.md` §1.1; `specs/README.md` trạng thái v13.
+- **Chưa code** — chờ implementation plan + triển khai theo checkbox.
+
+---
+
 ## 2026-11-04 — LLM gateway bonsai-27b @ 198:18083
 
 - `.env`: `MODEL_NAME=bonsai-27b`, key gateway mới; gọi qua `MODEL_BASE_URL` → `/v1/chat/completions` (LangChain OpenAI client).

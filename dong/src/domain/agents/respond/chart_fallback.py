@@ -114,11 +114,11 @@ def fallback_chart_query(
         ).strip()
 
     try:
-        fallback_rows = execute_sql(fallback_sql)
+        fallback_rows, fallback_columns = execute_sql(fallback_sql)
         if fallback_rows and len(fallback_rows) >= 2:
             return {
                 "rows": fallback_rows,
-                "columns": list(fallback_rows[0].keys()),
+                "columns": list(fallback_columns) if fallback_columns else list(fallback_rows[0].keys()),
                 "sql": fallback_sql,
                 "fallback": True,
             }

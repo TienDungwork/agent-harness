@@ -17,6 +17,21 @@
 | **TTL Response Cache** | Cache Hit phản hồi nhanh < 10ms; hết hạn TTL tự động miss; thread-safe khi nhiều request đồng thời. | Unit test tự động |
 | **Smart Fact Extraction** | Nhận diện chính xác tên, vai trò, sở thích; lọc bỏ không lưu số liệu giao thông/realtime tạm bợ. | Unit test tự động |
 | **End-to-End Regression** | Đảm bảo 100% các tính năng cũ (Text-to-SQL, 10 camera, Human Feedback, Streaming) tiếp tục hoạt động trơn tru. | Chạy toàn bộ pytest suite |
+| **Nested Langfuse trace (v13)** | Mọi node graph có substeps `trace_step` theo design; batch SQL trace từng câu. | pytest + manual Langfuse |
+
+---
+
+## 1.1 Observability — nested trace (v13)
+
+**Spec:** [nested-trace-v13-design.md](nested-trace-v13-design.md) · **AC:** `product-spec.md` AC-9.
+
+| ID | Kiểm thử | Kỳ vọng |
+|----|---------|---------|
+| **AC-T1** | Mock `trace_step`, invoke node tối thiểu (`guardrail_input`, `recall`, `rewrite`, `classify`) | Danh sách tên span con khớp bảng design §3 |
+| **AC-T2** | `execute_sql_node` với `sql_batch` ≥ 2 (offline/mock DB) | ≥ 2 substeps `postgres_query` (hoặc validate tương đương per item) |
+| **AC-T3** | `pytest tests/test_product_observability_errors.py -q` | Pass; không regression test graph hành vi |
+
+**Manual:** Một lượt chat với `MONITORING_ENABLED=true` → Langfuse trace `chat` hiển thị cây substeps dưới `rewrite`, `recall`, `execute_sql`.
 
 ---
 

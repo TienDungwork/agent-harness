@@ -257,41 +257,24 @@ def orchestrator_collect_step_node(state: AgentState) -> dict:
     batch_results = state.get("sql_batch_results") or []
     batch_subs = state.get("orchestrator_batch_sub_questions") or []
 
-    if batch_results:
-        for item in batch_results:
-            step_results.append({
-                "agent": "query_data",
-                "sub_question": item.get("sub_question", ""),
-                "rows": list(item.get("rows") or []),
-                "columns": list(item.get("columns") or []),
-                "error": item.get("error") or "",
-                "sql": item.get("sql") or "",
-            })
-    elif batch_subs and len(batch_subs) == 1:
-        step = plan.steps[idx]
-        if step.agent == "docs":
-            docs_payload = state.get("docs_answer") or {}
-            step_results.append({
-                "agent": "docs",
-                "sub_question": step.sub_question,
-                "answer_vi": docs_payload.get("answer_vi") or (state.get("answer") or ""),
-            })
-        else:
-            val = state.get("sql_validation") or {}
-            err = state.get("error") or ""
-            if not val.get("ok"):
-                err = err or "sql_validation_failed"
-            step_results.append({
-                "agent": "query_data",
-                "sub_question": step.sub_question,
-                "rows": list(state.get("rows") or []),
-                "columns": list(state.get("columns") or []),
-                "error": err,
-                "sql": state.get("sql") or "",
-            })
-        end_idx = idx + 1
-    else:
-        for step in plan.steps[idx:end_idx]:
+    with trace_step(
+        current_span(),
+        "collect_step",
+        input={"from_index": idx, "batch_size": len(batch_results) or (end_idx - idx)},
+        as_type="tool",
+    ) as sub:
+        if batch_results:
+            for item in batch_results:
+                step_results.append({
+                    "agent": "query_data",
+                    "sub_question": item.get("sub_question", ""),
+                    "rows": list(item.get("rows") or []),
+                    "columns": list(item.get("columns") or []),
+                    "error": item.get("error") or "",
+                    "sql": item.get("sql") or "",
+                })
+        elif batch_subs and len(batch_subs) == 1:
+            step = plan.steps[idx]
             if step.agent == "docs":
                 docs_payload = state.get("docs_answer") or {}
                 step_results.append({
@@ -299,6 +282,30 @@ def orchestrator_collect_step_node(state: AgentState) -> dict:
                     "sub_question": step.sub_question,
                     "answer_vi": docs_payload.get("answer_vi") or (state.get("answer") or ""),
                 })
+            else:
+                val = state.get("sql_validation") or {}
+                err = state.get("error") or ""
+                if not val.get("ok"):
+                    err = err or "sql_validation_failed"
+                step_results.append({
+                    "agent": "query_data",
+                    "sub_question": step.sub_question,
+                    "rows": list(state.get("rows") or []),
+                    "columns": list(state.get("columns") or []),
+                    "error": err,
+                    "sql": state.get("sql") or "",
+                })
+            end_idx = idx + 1
+        else:
+            for step in plan.steps[idx:end_idx]:
+                if step.agent == "docs":
+                    docs_payload = state.get("docs_answer") or {}
+                    step_results.append({
+                        "agent": "docs",
+                        "sub_question": step.sub_question,
+                        "answer_vi": docs_payload.get("answer_vi") or (state.get("answer") or ""),
+                    })
+        sub["output"] = {"collected_steps": len(step_results), "next_end_index": end_idx}
 
     next_idx = end_idx
     out: dict = {

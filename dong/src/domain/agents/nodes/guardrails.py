@@ -5,6 +5,7 @@ from __future__ import annotations
 from typing import Any
 
 from src.domain.agents.nodes.io import node_event
+from src.infra.monitoring.tracing import current_span, trace_step
 
 AgentState = dict[str, Any]
 from src.shared.guardrails import (
@@ -25,9 +26,13 @@ def guardrail_input_node(state: AgentState) -> dict:
     q = _question(state)
     user_id = state.get("user_id") or "default"
     session_id = state.get("session_id") or "default"
-    check_input(q)
-    redacted = redact_pii(q)
-    pii_found = redacted != q
+    with trace_step(current_span(), "check_input", input={"question_len": len(q)}, as_type="tool") as sub:
+        check_input(q)
+        sub["output"] = {"ok": True}
+    with trace_step(current_span(), "redact_pii", input={"question_len": len(q)}, as_type="tool") as sub:
+        redacted = redact_pii(q)
+        pii_found = redacted != q
+        sub["output"] = {"pii_redacted": pii_found}
     return {
         "question": redacted,
         "events": [node_event(
@@ -135,13 +140,17 @@ def guardrail_output_node(state: AgentState) -> dict:
             )],
         }
 
-    evidence = _build_output_evidence(state, result)
+    with trace_step(current_span(), "build_evidence", input={"answer_len": len(result.answer or "")}, as_type="tool") as sub:
+        evidence = _build_output_evidence(state, result)
+        sub["output"] = {"evidence_count": len(evidence)}
     tool_empty = _is_tool_empty(result.query)
     step_results = state.get("orchestrator_step_results") or []
     has_docs_step = any(sr.get("agent") == "docs" for sr in step_results) or state.get("docs_answer") is not None
     if has_docs_step or getattr(result, "detail", "") == "docs":
         tool_empty = False
-    checked = check_output(result.answer, evidence, tool_empty=tool_empty)
+    with trace_step(current_span(), "check_output", input={"tool_empty": tool_empty}, as_type="tool") as sub:
+        checked = check_output(result.answer, evidence, tool_empty=tool_empty)
+        sub["output"] = {"valid": checked.valid, "issues_count": len(checked.issues or [])}
     guarded = Agent_Output(
         question=result.question,
         answer=checked.answer,

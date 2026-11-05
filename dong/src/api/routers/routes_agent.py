@@ -23,37 +23,21 @@ def _run_agent_stream(*args, **kwargs):
     import src.main as main_mod
 
     return main_mod.run_agent_stream(*args, **kwargs)
+from src.api.helpers.agent_turn import (
+    build_cache_data_from_output,
+    detail_payload_from_cache,
+    store_turn_cache,
+)
 from src.api.helpers.errors import format_error_message
 from src.api.models.schemas import AskRequest, AskResponse, ChatRequest, ChatResponse
 from src.api.helpers.session_helpers import build_agent_trace, persist_session_turn
 from src.api.helpers.sse_helpers import build_chart_sse_event, sanitize_sse_event, split_into_chunks
 from src.shared.guardrails import GuardrailViolation, check_input, redact_pii
-from src.infra.monitoring.tracing import trace_answer
 from src.infra.session import get_session_messages
 
 logger = logging.getLogger(__name__)
 router = APIRouter(tags=["agent"])
 
-
-def _record_chat_trace(
-    t: dict[str, Any],
-    *,
-    status: str,
-    answer: str = "",
-    error: str = "",
-    tool: str = "",
-    row_count: int = 0,
-) -> None:
-    out: dict[str, Any] = {"status": status}
-    if answer:
-        out["answer"] = answer
-    if error:
-        out["error"] = error
-    if tool:
-        out["tool"] = tool
-    if row_count:
-        out["row_count"] = row_count
-    t["output"] = out
 
 @router.post("/api/chat", response_model=ChatResponse, tags=["agent"])
 def chat(req: ChatRequest) -> ChatResponse:
@@ -62,129 +46,151 @@ def chat(req: ChatRequest) -> ChatResponse:
         raise HTTPException(status_code=400, detail="session_id không được để trống.")
     if not req.user_id or not req.user_id.strip():
         raise HTTPException(status_code=400, detail="user_id không được để trống.")
-    with trace_answer(
-        "chat",
-        req.question,
-        metadata={
-            "endpoint": "/api/chat",
-            "provider": req.model_provider,
-            "session_id": req.session_id,
-            "user_id": req.user_id,
-        },
-    ) as t:
-        question = redact_pii(req.question)
+    question = redact_pii(req.question)
+    raw_question = req.question.strip()
+    import src.main as main_mod
 
-        from src.infra.session import get_session_messages
-
-        prev_messages = get_session_messages(session_id=req.session_id.strip(), user_id=req.user_id.strip()) or []
-
-        try:
-            from src.domain.agents.routing.intent import is_chat_greeting
-            from src.domain.agents.routing.rewrite import rewrite_question_safe
-            from src.infra.llm.schemas import RewrittenQuestion
-
-            if is_chat_greeting(question):
-                rewritten = RewrittenQuestion(text=question, intent_hint="chat")
-            else:
-                rewritten = rewrite_question_safe(question, history=prev_messages)
-            out = _run_agent(
-                Agent_Input(question=req.question.strip(), rewritten=rewritten, user_id=req.user_id),
-                parent_span=t.get("_span"),
-                session_id=req.session_id,
-                user_id=req.user_id,
-            )
-        except GuardrailViolation:
-            raise
-        except Exception as exc:
-            friendly_msg = format_error_message(exc)
-            _record_chat_trace(t, status="error", error=friendly_msg, answer=friendly_msg)
-            raise HTTPException(status_code=503, detail=friendly_msg) from exc
-
-        query = out.query
-
-        detail_payload: dict[str, Any] = {
-            "tool": query.tool if query else "",
-            "columns": query.columns if query else [],
-            "row_count": query.row_count if query else 0,
-            "agent_detail": out.detail,
-        }
-
+    cached = main_mod._lookup_ttl_cache(raw_question)
+    if cached:
+        detail_payload = detail_payload_from_cache(cached)
         persist_session_turn(
             session_id=req.session_id.strip(),
             user_id=req.user_id.strip(),
-            question=out.question or req.question,
-            answer=out.answer,
+            question=cached.get("question") or raw_question,
+            answer=cached.get("answer") or "",
             detail=detail_payload,
+        )
+        return ChatResponse(
+            question=cached.get("question") or raw_question,
+            answer=cached.get("answer") or "",
+            tool=detail_payload.get("tool") or "",
+            detail=detail_payload,
+            row_count=int(detail_payload.get("row_count") or 0),
         )
 
-        response = ChatResponse(
-            question=out.question,
-            answer=out.answer,
-            tool=query.tool if query else "",
-            detail=detail_payload,
-            row_count=query.row_count if query else 0,
+    prev_messages = get_session_messages(session_id=req.session_id.strip(), user_id=req.user_id.strip()) or []
+
+    try:
+        from src.domain.agents.routing.intent import is_chat_greeting
+        from src.domain.agents.routing.rewrite import rewrite_question_safe
+        from src.infra.llm.schemas import RewrittenQuestion
+
+        if is_chat_greeting(question):
+            rewritten = RewrittenQuestion(text=question, intent_hint="chat")
+        else:
+            rewritten = rewrite_question_safe(question, history=prev_messages)
+        out = _run_agent(
+            Agent_Input(question=req.question.strip(), rewritten=rewritten, user_id=req.user_id),
+            session_id=req.session_id,
+            user_id=req.user_id,
+            trace_name="chat",
+            trace_metadata={
+                "endpoint": "/api/chat",
+                "provider": req.model_provider,
+                "session_id": req.session_id,
+                "user_id": req.user_id,
+                "trace_question": req.question,
+            },
         )
-        _record_chat_trace(
-            t,
-            status="ok",
-            answer=response.answer,
-            tool=response.tool,
-            row_count=response.row_count,
-        )
-        return response
+    except GuardrailViolation:
+        raise
+    except Exception as exc:
+        friendly_msg = format_error_message(exc)
+        raise HTTPException(status_code=503, detail=friendly_msg) from exc
+
+    query = out.query
+
+    detail_payload: dict[str, Any] = {
+        "tool": query.tool if query else "",
+        "columns": query.columns if query else [],
+        "row_count": query.row_count if query else 0,
+        "agent_detail": out.detail,
+    }
+
+    persist_session_turn(
+        session_id=req.session_id.strip(),
+        user_id=req.user_id.strip(),
+        question=out.question or req.question,
+        answer=out.answer,
+        detail=detail_payload,
+    )
+
+    store_turn_cache(
+        raw_question,
+        rewritten.text if rewritten else raw_question,
+        out.detail or "query_data",
+        build_cache_data_from_output(out),
+    )
+
+    return ChatResponse(
+        question=out.question,
+        answer=out.answer,
+        tool=query.tool if query else "",
+        detail=detail_payload,
+        row_count=query.row_count if query else 0,
+    )
 
 
 @router.post("/ask", response_model=AskResponse, tags=["agent"])
 def ask(req: AskRequest) -> AskResponse:
     """Endpoint tương thích ngược cho /ask."""
-    with trace_answer(
-        "ask",
-        req.question,
-        metadata={
-            "endpoint": "/ask",
-            "session_id": getattr(req, "session_id", "default"),
-            "user_id": getattr(req, "user_id", "default"),
-        },
-    ) as t:
-        question = redact_pii(req.question)
+    question = redact_pii(req.question)
+    raw_question = req.question.strip()
+    import src.main as main_mod
 
-        from src.infra.session import get_session_messages
-
-        try:
-            from src.domain.agents.routing.intent import is_chat_greeting
-            from src.domain.agents.routing.rewrite import rewrite_question_safe
-            from src.infra.llm.schemas import RewrittenQuestion
-
-            if is_chat_greeting(question):
-                rewritten = RewrittenQuestion(text=question, intent_hint="chat")
-            else:
-                rewritten = rewrite_question_safe(question)
-            out = _run_agent(Agent_Input(question=req.question.strip(), rewritten=rewritten), parent_span=t.get("_span"))
-        except GuardrailViolation:
-            raise
-        except Exception as exc:
-            friendly_msg = format_error_message(exc)
-            _record_chat_trace(t, status="error", error=friendly_msg, answer=friendly_msg)
-            raise HTTPException(status_code=503, detail=friendly_msg) from exc
-
-        query = out.query
-
-        response = AskResponse(
-            question=out.question,
-            answer=out.answer,
-            tool=query.tool if query else "",
-            columns=query.columns if query else [],
-            rows=query.rows if query else [],
-            row_count=query.row_count if query else 0,
+    cached = main_mod._lookup_ttl_cache(raw_question)
+    if cached:
+        return AskResponse(
+            question=cached.get("question") or raw_question,
+            answer=cached.get("answer") or "",
+            tool=cached.get("tool") or "",
+            columns=list(cached.get("columns") or []),
+            rows=list(cached.get("rows") or []),
+            row_count=int(cached.get("row_count") or 0),
         )
-        _record_chat_trace(
-            t,
-            status="ok",
-            answer=response.answer,
-            tool=response.tool,
-            row_count=response.row_count,
+
+    try:
+        from src.domain.agents.routing.intent import is_chat_greeting
+        from src.domain.agents.routing.rewrite import rewrite_question_safe
+        from src.infra.llm.schemas import RewrittenQuestion
+
+        if is_chat_greeting(question):
+            rewritten = RewrittenQuestion(text=question, intent_hint="chat")
+        else:
+            rewritten = rewrite_question_safe(question)
+        out = _run_agent(
+            Agent_Input(question=req.question.strip(), rewritten=rewritten),
+            trace_name="ask",
+            trace_metadata={
+                "endpoint": "/ask",
+                "session_id": getattr(req, "session_id", "default"),
+                "user_id": getattr(req, "user_id", "default"),
+                "trace_question": req.question,
+            },
         )
-        return response
+    except GuardrailViolation:
+        raise
+    except Exception as exc:
+        friendly_msg = format_error_message(exc)
+        raise HTTPException(status_code=503, detail=friendly_msg) from exc
+
+    query = out.query
+
+    store_turn_cache(
+        raw_question,
+        rewritten.text if rewritten else raw_question,
+        out.detail or "query_data",
+        build_cache_data_from_output(out),
+    )
+
+    return AskResponse(
+        question=out.question,
+        answer=out.answer,
+        tool=query.tool if query else "",
+        columns=query.columns if query else [],
+        rows=query.rows if query else [],
+        row_count=query.row_count if query else 0,
+    )
 
 
 @router.post("/api/agent/stream", tags=["agent"])
@@ -196,12 +202,29 @@ def stream_agent(req: ChatRequest) -> StreamingResponse:
     check_input(req.question)
 
     def event_generator():
-        trace_box: dict[str, Any] = {}
         question = redact_pii(req.question)
+        raw_question = req.question.strip()
         last_stream_error = ""
         got_final = False
 
         try:
+            import src.main as main_mod
+
+            cached = main_mod._lookup_ttl_cache(raw_question)
+            if cached:
+                detail_payload = detail_payload_from_cache(cached)
+                ans = cached.get("answer") or ""
+                yield f'data: {json.dumps({"node_id": "cache", "status": "done", "output": ans}, ensure_ascii=False)}\n\n'
+                persist_session_turn(
+                    session_id=req.session_id.strip(),
+                    user_id=req.user_id.strip(),
+                    question=cached.get("question") or raw_question,
+                    answer=ans,
+                    detail=detail_payload,
+                )
+                yield f'data: {json.dumps({"node_id": "__answer__", "status": "done", "output": ans, "detail": detail_payload}, ensure_ascii=False)}\n\n'
+                return
+
             prev_messages = get_session_messages(
                 session_id=req.session_id.strip(), user_id=req.user_id.strip()
             ) or []
@@ -215,7 +238,6 @@ def stream_agent(req: ChatRequest) -> StreamingResponse:
             else:
                 rewritten = rewrite_question_safe(question, history=prev_messages)
             stream_kwargs = {
-                "trace_box": trace_box,
                 "trace_name": "chat",
                 "trace_metadata": {
                     "endpoint": "/api/agent/stream",
@@ -276,13 +298,6 @@ def stream_agent(req: ChatRequest) -> StreamingResponse:
                         if last_chart_rows is not None:
                             detail_payload["chart_rows"] = last_chart_rows
 
-                    _record_chat_trace(
-                        trace_box,
-                        status="ok",
-                        answer=out.answer,
-                        tool=getattr(query, "tool", "") if query else "",
-                        row_count=getattr(query, "row_count", 0) if query else 0,
-                    )
                     chart_payload = None
                     if last_chart_png or detail_payload.get("chart_spec"):
                         chart_payload = {
@@ -302,6 +317,12 @@ def stream_agent(req: ChatRequest) -> StreamingResponse:
                         agent_trace=agent_trace,
                     )
                     detail_payload["agent_trace"] = agent_trace
+                    store_turn_cache(
+                        raw_question,
+                        rewritten.text if rewritten else raw_question,
+                        out.detail or "query_data",
+                        build_cache_data_from_output(out),
+                    )
                     ans_event = {
                         "node_id": "__answer__",
                         "status": "done",
@@ -314,10 +335,6 @@ def stream_agent(req: ChatRequest) -> StreamingResponse:
                 event_node = event.get("node_id", "")
                 if event_node == "error":
                     last_stream_error = str(event.get("output") or last_stream_error or "Agent error")
-                if event_node == "__answer__" and event.get("status") == "error":
-                    err_text = str(event.get("output") or last_stream_error or "Stream error")
-                    last_stream_error = err_text
-                    _record_chat_trace(trace_box, status="error", error=err_text, answer=err_text)
 
                 if event_node and event_node not in ("__answer__", "__chart__", "error"):
                     stream_trace_nodes.append({
@@ -348,21 +365,18 @@ def stream_agent(req: ChatRequest) -> StreamingResponse:
                     payload = json.dumps(sanitize_sse_event(event), ensure_ascii=False, default=str)
                 except Exception as ser_exc:
                     friendly_msg = format_error_message(ser_exc)
-                    _record_chat_trace(trace_box, status="error", error=friendly_msg, answer=friendly_msg)
                     yield f'data: {json.dumps({"node_id": "error", "status": "done", "output": friendly_msg}, ensure_ascii=False)}\n\n'
                     yield f'data: {json.dumps({"node_id": "__answer__", "status": "error", "output": friendly_msg, "detail": {"status": "error"}}, ensure_ascii=False)}\n\n'
                     break
                 yield f"data: {payload}\n\n"
 
-            if not got_final and trace_box.get("output") is None:
+            if not got_final and last_stream_error:
                 msg = last_stream_error or "Stream kết thúc không có __final_result__."
-                _record_chat_trace(trace_box, status="incomplete", error=msg)
+                logger.warning("Stream incomplete: %s", msg)
         except Exception as exc:
             friendly_msg = format_error_message(exc)
-            _record_chat_trace(trace_box, status="error", error=friendly_msg, answer=friendly_msg)
             yield f'data: {json.dumps({"node_id": "error", "status": "done", "output": friendly_msg}, ensure_ascii=False)}\n\n'
             yield f'data: {json.dumps({"node_id": "__answer__", "status": "error", "output": friendly_msg, "detail": {"status": "error"}}, ensure_ascii=False)}\n\n'
 
     return StreamingResponse(event_generator(), media_type="text/event-stream")
-
 

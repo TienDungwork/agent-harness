@@ -6,8 +6,14 @@ import logging
 from typing import Any
 
 from src.api.helpers.cache_helpers import is_identity_query
-from src.infra.memory.ttl_cache import make_cache_key, set_ttl_cached
+from src.infra.memory.ttl_cache import make_cache_key
 from src.shared.config import settings
+
+
+def _set_ttl_cached(key: str, data: dict[str, Any], *, ttl: int) -> None:
+    import src.main as main_mod
+
+    main_mod.set_ttl_cached(key, data, ttl=ttl)
 
 logger = logging.getLogger(__name__)
 
@@ -25,6 +31,16 @@ def build_cache_data_from_output(out: Any) -> dict[str, Any]:
     }
 
 
+def detail_payload_from_cache(cached: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "tool": cached.get("tool") or "",
+        "columns": cached.get("columns") or [],
+        "row_count": int(cached.get("row_count") or 0),
+        "agent_detail": cached.get("agent_detail") or "",
+        "cache_hit": True,
+    }
+
+
 def store_turn_cache(
     question: str,
     cache_q: str,
@@ -39,8 +55,8 @@ def store_turn_cache(
         return
     ttl = settings.memory_ttl_seconds
     try:
-        set_ttl_cached(make_cache_key(question, route=route), cache_data, ttl=ttl)
+        _set_ttl_cached(make_cache_key(question, route=route), cache_data, ttl=ttl)
         if cache_q and cache_q != question:
-            set_ttl_cached(make_cache_key(cache_q, route=route), cache_data, ttl=ttl)
+            _set_ttl_cached(make_cache_key(cache_q, route=route), cache_data, ttl=ttl)
     except Exception as exc:
         logger.warning("Failed to store TTL cache: %s", exc)

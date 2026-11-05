@@ -10,7 +10,7 @@ logger = logging.getLogger(__name__)
 
 from src.domain.agents.nodes.io import node_event
 from src.domain.agents.state import AgentState, Agent_Output
-from src.infra.monitoring.tracing import trace_step
+from src.infra.monitoring.tracing import current_span, trace_step
 
 def recall_node(state: AgentState) -> dict:
     from src.shared.config import settings
@@ -19,13 +19,24 @@ def recall_node(state: AgentState) -> dict:
     q = state.get("question", "")
     user_id = state.get("user_id") or "default"
     session_id = state.get("session_id") or "default"
+    with trace_step(
+        current_span(),
+        "recall_long_term",
+        input={"user_id": user_id, "question_len": len(q)},
+        as_type="retriever",
+    ) as sub:
+        if not settings.long_term_memory_enabled:
+            sub["output"] = {"disabled": True, "recalled_count": 0}
+            memories: list[str] = []
+        else:
+            memories = recall_long_term(user_id, q, k=3)
+            sub["output"] = {"disabled": False, "recalled_count": len(memories)}
     if not settings.long_term_memory_enabled:
         return {
             "user_id": user_id,
             "session_id": session_id,
             "original_question": q,
             "recalled_memories": [],
-            "rewritten": None,
             "intent": "",
             "answer": "",
             "respond_mode": "",
@@ -41,6 +52,10 @@ def recall_node(state: AgentState) -> dict:
             "sql": "",
             "error": "",
             "repair_count": 0,
+            "chart_png_base64": "",
+            "chart_spec": None,
+            "chart_requested": False,
+            "chart_type": None,
             "events": [node_event(
                 "recall",
                 input={"user_id": user_id, "question": q},
@@ -48,7 +63,6 @@ def recall_node(state: AgentState) -> dict:
                 meta={"user_id": user_id, "session_id": session_id, "recalled_count": 0, "disabled": True},
             )],
         }
-    memories = recall_long_term(user_id, q, k=3)
     ev_output: dict[str, Any] = {"recalled_memories": memories}
     ev_meta: dict[str, Any] = {
         "user_id": user_id,
@@ -60,7 +74,6 @@ def recall_node(state: AgentState) -> dict:
         "session_id": session_id,
         "original_question": q,
         "recalled_memories": memories,
-        "rewritten": None,
         "intent": "",
         "answer": "",
         "respond_mode": "",
@@ -80,6 +93,10 @@ def recall_node(state: AgentState) -> dict:
         "sql": "",
         "error": "",
         "repair_count": 0,
+        "chart_png_base64": "",
+        "chart_spec": None,
+        "chart_requested": False,
+        "chart_type": None,
         "events": [node_event(
             "recall",
             input={"user_id": user_id, "question": q},

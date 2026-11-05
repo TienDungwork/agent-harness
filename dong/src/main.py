@@ -32,10 +32,25 @@ async def _lifespan(_app: FastAPI):
     yield
 
 
-def run_agent(inp, parent_span=None, session_id: str = "default", user_id: str | None = None):
+def run_agent(
+    inp,
+    parent_span=None,
+    session_id: str = "default",
+    user_id: str | None = None,
+    *,
+    trace_name: str = "chat",
+    trace_metadata=None,
+):
     from src.domain.agents.graph import run_agent as _graph_run_agent
 
-    return _graph_run_agent(inp, parent_span=parent_span, session_id=session_id, user_id=user_id)
+    return _graph_run_agent(
+        inp,
+        parent_span=parent_span,
+        session_id=session_id,
+        user_id=user_id,
+        trace_name=trace_name,
+        trace_metadata=trace_metadata,
+    )
 
 
 def run_agent_stream(
@@ -72,6 +87,19 @@ from src.api.routers.routes_memory import router as memory_router
 from src.api.routers.routes_meta import router as meta_router
 from src.api.routers.routes_sessions import router as sessions_router
 from src.api.models.schemas import AskRequest, AskResponse, ChatRequest, ChatResponse
+from src.infra.memory.ttl_cache import _cache, get_ttl_cached, make_cache_key, set_ttl_cached
+
+
+def _lookup_ttl_cache(question: str) -> dict | None:
+    from src.api.helpers.cache_helpers import is_identity_query
+
+    q = (question or "").strip()
+    if not q or is_identity_query(q):
+        return None
+    try:
+        return get_ttl_cached(make_cache_key(q))
+    except Exception:
+        return None
 from src.api.helpers.sse_helpers import build_chart_sse_event as _build_chart_sse_event
 from src.shared.guardrails import GuardrailViolation, rejection_detail
 app = FastAPI(

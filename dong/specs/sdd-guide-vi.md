@@ -16,6 +16,7 @@ Quy trình làm việc với **Cursor Agent** trên repo này. Chi tiết prompt
 | [superpowers-workflow-vi.md](superpowers-workflow-vi.md) | Superpowers + Ponytail + SDD |
 | [product-spec.md](product-spec.md) | Mục tiêu, user, flow, AC |
 | [implementation-plan.md](implementation-plan.md) | Task triển khai (checkbox) |
+| [nested-trace-v13-design.md](nested-trace-v13-design.md) | v13 Langfuse substeps toàn graph |
 | [test-plan.md](test-plan.md) | Test tự động + smoke manual |
 | [change-log.md](change-log.md) | Nhật ký thay đổi (giữ gần đây) |
 | [smoke-manual-checklist.md](smoke-manual-checklist.md) | Checklist demo tay |

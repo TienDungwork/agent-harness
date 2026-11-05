@@ -621,6 +621,12 @@
     }
   }
 
+  function formatDurationMs(ms) {
+    if (ms === undefined || ms === null || isNaN(ms)) return '';
+    const n = Number(ms);
+    return (n >= 100 ? Math.round(n) : n.toFixed(1)) + ' ms';
+  }
+
   function showNodeIo(nodeId) {
     const activeNodeId = pinnedGraphNodeId || nodeId;
     const n = state.graphNodes[activeNodeId];
@@ -641,8 +647,7 @@
       '\n\ninput:\n' + formatIoValue(n.input) +
       '\n\noutput:\n' + (isRunning && (n.output === undefined || n.output === null) ? '(đang chạy…)' : formatIoValue(n.output));
     if (n.durationMs !== undefined && n.durationMs !== null) {
-      const durFormatted = n.durationMs >= 1000 ? (n.durationMs / 1000).toFixed(2) + 's' : (n.durationMs >= 10 ? Math.round(n.durationMs) : n.durationMs.toFixed(1)) + 'ms';
-      raw += `\n\nthời gian thực thi (latency): ${durFormatted}`;
+      raw += `\n\nthời gian thực thi (latency): ${formatDurationMs(n.durationMs)}`;
     }
     if (n.meta && typeof n.meta === 'object' && Object.keys(n.meta).length > 0) {
       raw += '\n\nmeta:\n' + formatIoValue(n.meta);
@@ -750,7 +755,7 @@
     const curDur = next.durationMs;
     let durLabel = '';
     if (typeof curDur === 'number' && !isNaN(curDur)) {
-      durLabel = curDur >= 1000 ? (curDur / 1000).toFixed(2) + 's' : (curDur >= 10 ? Math.round(curDur) : curDur.toFixed(1)) + 'ms';
+      durLabel = formatDurationMs(curDur);
     }
 
     if (timeEl) {
@@ -1646,8 +1651,7 @@
                 
                 if (state.streamStartTime && el.graphPanelHint) {
                   const totalMs = Math.round(performance.now() - state.streamStartTime);
-                  const totalStr = totalMs >= 1000 ? (totalMs / 1000).toFixed(2) + 's' : totalMs + 'ms';
-                  el.graphPanelHint.innerHTML = '<span class="graph-panel-total">⏱️ Tổng: ' + totalStr + '</span>';
+                  el.graphPanelHint.innerHTML = '<span class="graph-panel-total">⏱️ Tổng: ' + formatDurationMs(totalMs) + '</span>';
                 }
 
                 // Mở khóa UI ngay lập tức khi câu trả lời hoàn tất, không bắt người dùng phải đợi store_extract

@@ -14,7 +14,22 @@ from src.domain.agents.core.wiring import _build_graph, _get_graph
 from src.domain.agents.nodes.memory import run_store_extract
 from src.domain.agents.state import Agent_Input, Agent_Output
 from src.domain.agents.core.runtime import _stream_queue
+from src.shared.config import settings
 from src.infra.monitoring.tracing import bind_trace_root, reset_trace_root
+
+
+def _trace_output_from_result(result: Agent_Output, *, status: str = "ok", error: str = "") -> dict[str, Any]:
+    query = getattr(result, "query", None)
+    out: dict[str, Any] = {"status": status}
+    if error:
+        out["error"] = error
+        out["answer"] = error
+    else:
+        out["answer"] = getattr(result, "answer", "") or ""
+        if query:
+            out["tool"] = getattr(query, "tool", "") or ""
+            out["row_count"] = getattr(query, "row_count", 0) or 0
+    return out
 
 def _fresh_invoke_state(question: str, inp: Agent_Input, uid: str, session_id: str) -> dict:
     """State khởi tạo mỗi lượt — xóa orchestrator cũ khỏi checkpointer."""
@@ -50,27 +65,55 @@ def _fresh_invoke_state(question: str, inp: Agent_Input, uid: str, session_id: s
     }
 
 
-def run_agent(inp: Agent_Input, parent_span: Any = None, session_id: str = "default", user_id: str | None = None) -> Agent_Output:
+def run_agent(
+    inp: Agent_Input,
+    parent_span: Any = None,
+    session_id: str = "default",
+    user_id: str | None = None,
+    *,
+    trace_name: str = "chat",
+    trace_metadata: dict[str, Any] | None = None,
+) -> Agent_Output:
+    from src.infra.monitoring.tracing import trace_answer
+
     question = (inp.question or "").strip()
     uid = user_id or getattr(inp, "user_id", "default") or "default"
     config = {"configurable": {"thread_id": session_id}}
-    token = bind_trace_root(parent_span)
-    try:
-        state = _get_graph().invoke(
-            _fresh_invoke_state(question, inp, uid, session_id),
-            config=config,
-        )
-        result = state.get("result")
-        if result is None:
-            raise RuntimeError("Pipeline không trả về kết quả.")
-        threading.Thread(
-            target=run_store_extract,
-            args=(uid, session_id, question, result, parent_span),
-            daemon=True,
-        ).start()
-        return result
-    finally:
-        reset_trace_root(token)
+    meta = dict(trace_metadata or {})
+    trace_question = meta.get("trace_question", question)
+    own_root = parent_span is None and settings.monitoring_enabled
+    trace_ctx = (
+        trace_answer(trace_name, trace_question, metadata=meta)
+        if own_root
+        else nullcontext({})
+    )
+
+    with trace_ctx as trace_box:
+        active_span = parent_span
+        if own_root:
+            active_span = trace_box.get("_span")
+        span_token = None
+        if not own_root and active_span is not None:
+            span_token = bind_trace_root(active_span)
+        try:
+            state = _get_graph().invoke(
+                _fresh_invoke_state(question, inp, uid, session_id),
+                config=config,
+            )
+            result = state.get("result")
+            if result is None:
+                raise RuntimeError("Pipeline không trả về kết quả.")
+            if own_root:
+                trace_box["output"] = _trace_output_from_result(result)
+            threading.Thread(
+                target=run_store_extract,
+                args=(uid, session_id, question, result, active_span),
+                daemon=True,
+            ).start()
+            return result
+        finally:
+            if span_token is not None:
+                reset_trace_root(span_token)
 
 
 def run_agent_stream(
@@ -88,6 +131,9 @@ def run_agent_stream(
     config = {"configurable": {"thread_id": session_id}}
 
     q = queue.Queue()
+    meta = dict(trace_metadata or {})
+    if trace_box is None and parent_span is None and settings.monitoring_enabled:
+        trace_box = {}
     use_worker_trace = trace_box is not None and parent_span is None
 
     def target():
@@ -100,8 +146,8 @@ def run_agent_stream(
         if use_worker_trace:
             trace_ctx = trace_answer(
                 trace_name,
-                trace_metadata.get("trace_question", question) if trace_metadata else question,
-                metadata=trace_metadata,
+                meta.get("trace_question", question),
+                metadata=meta,
                 box=trace_box,
             )
         try:
@@ -118,13 +164,7 @@ def run_agent_stream(
                     if res and "result" in res:
                         result = res["result"]
                         if trace_box is not None:
-                            query = getattr(result, "query", None)
-                            trace_box["output"] = {
-                                "status": "ok",
-                                "answer": getattr(result, "answer", "") or "",
-                                "tool": getattr(query, "tool", "") if query else "",
-                                "row_count": getattr(query, "row_count", 0) if query else 0,
-                            }
+                            trace_box["output"] = _trace_output_from_result(result)
                         q.put({"__final_result__": result})
                         for store_ev in run_store_extract(
                             uid, session_id, question, res["result"], active_span

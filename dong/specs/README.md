@@ -18,6 +18,7 @@ Chỉ mục tài liệu Spec-Driven Development (SDD), tương tự cách [llm-e
 |----------|------------|
 | Memory v9 (Postgres + TTL + context) | Hoàn thành — implementation-plan Phase 1–7 |
 | **v10 Cấu trúc `src/` (API + graph modules)** | Hoàn thành — `src/api/`, `graph.py` facade |
+| **v13 Nested Langfuse `trace_step` toàn graph** | **Design approved** — [nested-trace-v13-design.md](nested-trace-v13-design.md); task trong `implementation-plan.md` |
 | LangGraph multi-hop + batch SQL | Triển khai — change-log 2026-09-25 |
 | Golden eval | `eval/datasets/agent_stat/v2.yaml` |
 | Graph live | `graph.mmd`, `graph.png` (repo root) |

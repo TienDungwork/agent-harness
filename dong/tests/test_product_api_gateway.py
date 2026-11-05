@@ -406,8 +406,8 @@ def test_api_stream_answer_emits_before_store_extract(monkeypatch):
     assert node_ids.index("__answer__") < node_ids.index("store_extract")
 
 
-def test_api_agent_stream_passes_trace_box_to_run(monkeypatch):
-    """UI stream phải truyền trace_box + metadata xuống run_agent_stream (trace trong worker)."""
+def test_api_agent_stream_passes_trace_metadata_to_run(monkeypatch):
+    """UI stream truyền trace_metadata; root trace mở trong worker run_agent_stream."""
     monkeypatch.setattr("src.infra.monitoring.tracing.settings.monitoring_enabled", True)
     from unittest.mock import patch
     from src.domain.agents.graph import Agent_Output
@@ -427,11 +427,11 @@ def test_api_agent_stream_passes_trace_box_to_run(monkeypatch):
     assert res.status_code == 200
     mock_stream.assert_called_once()
     kw = mock_stream.call_args.kwargs
-    assert isinstance(kw.get("trace_box"), dict)
     assert kw.get("trace_name") == "chat"
     meta = kw.get("trace_metadata") or {}
     assert meta.get("session_id") == "test-session"
     assert meta.get("user_id") == "test-user"
+    assert meta.get("endpoint") == "/api/agent/stream"
     assert kw.get("parent_span") is None
 
 

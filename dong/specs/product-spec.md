@@ -119,3 +119,4 @@ Xây dựng và chuẩn hóa hệ thống **Memory & Context Engineering** tinh 
 - **AC-6 (Active Compaction 40%)**: Khi dung lượng ngữ cảnh vượt ngưỡng 40% window, hệ thống tự động gom tin nhắn cũ thành 1 đoạn tóm tắt `[Tóm tắt hội thoại trước]: ...`, giữ nguyên các tin nhắn gần nhất.
 - **AC-7 (Tool Output Compression)**: Kết quả SQL table hoặc Docs dài hơn `max_tokens` được nén gọn gàng trước khi nạp vào context.
 - **AC-8 (Zero Regression & Clean Code)**: Không còn code rác `vector=[0.0]`; toàn bộ test suite cũ và mới (≥620 tests) đạt kết quả PASS 100%.
+- **AC-9 (Nested Langfuse substeps — v13)**: Mọi node graph có span ngoài (`_wrap_node`) và span con `trace_step` cho từng khối logic trong node theo [nested-trace-v13-design.md](nested-trace-v13-design.md). Nhánh SQL batch có substeps per query. Không đổi hành vi trả lời; `tests/test_product_observability_errors.py` pass AC-T1–T3.

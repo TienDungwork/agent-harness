@@ -162,11 +162,25 @@ def _usage_from_box(box: dict[str, Any], meta: dict[str, Any]) -> tuple[int, int
     return p, c, t
 
 
-def _finish_step(span: Any, box: dict[str, Any], trace_in: Any, meta: dict[str, Any], start: float) -> None:
-    latency_s = time.perf_counter() - start
+def _format_latency_ms(start: float) -> float:
+    return round((time.perf_counter() - start) * 1000, 1)
+
+
+def _finish_step(
+    span: Any,
+    box: dict[str, Any],
+    trace_in: Any,
+    meta: dict[str, Any],
+    start: float,
+    *,
+    step_name: str = "",
+) -> None:
+    latency_ms = _format_latency_ms(start)
     out = box.get("output") or {"status": "completed"}
     meta = dict(meta)
-    meta["latency_s"] = latency_s
+    meta["latency_ms"] = latency_ms
+    if box.get("metadata"):
+        meta.update(box["metadata"])
     model_name = box.get("model_name") or meta.get("model_name")
     temperature = box.get("temperature", meta.get("temperature"))
     if model_name:
@@ -185,6 +199,8 @@ def _finish_step(span: Any, box: dict[str, Any], trace_in: Any, meta: dict[str, 
         kw["model_parameters"] = {"temperature": temperature}
     if t > 0 or p > 0 or c > 0:
         kw["usage_details"] = {"input": p, "output": c, "total": t}
+    if step_name:
+        kw["name"] = f"{step_name} ({latency_ms:g} ms)"
     span.update(**kw)
     span.end()
 
@@ -254,12 +270,12 @@ def trace_answer(
                     "reason": "no_output_recorded",
                     "question_preview": (question or "")[:500],
                 }
-            latency_s = time.perf_counter() - start
+            latency_ms = _format_latency_ms(start)
             model_name = _default_model_name(meta, box)
             temperature = box.get("temperature", meta.get("temperature", settings.llm_temperature))
             p, c, t = _usage_from_box(box, meta)
             meta.update({
-                "latency_s": latency_s,
+                "latency_ms": latency_ms,
                 "model_name": model_name,
                 "temperature": temperature,
                 "prompt_tokens": p,
@@ -267,7 +283,7 @@ def trace_answer(
                 "total_tokens": t,
             })
             kw: dict[str, Any] = {
-                "name": name,
+                "name": f"{name} ({latency_ms:g} ms)",
                 "input": question,
                 "output": out,
                 "metadata": meta,
@@ -327,7 +343,7 @@ def trace_step(
         raise
     finally:
         try:
-            _finish_step(span, box, input, meta, start)
+            _finish_step(span, box, input, meta, start, step_name=name)
         except Exception as exc:
             logger.warning("Langfuse child end fail-safe: %s", exc)
 
@@ -358,7 +374,7 @@ def trace_stream(
                 as_type=as_type,
                 input=question,
                 output="".join(chunks),
-                metadata={"latency_s": time.perf_counter() - start, "streamed": True},
+                metadata={"latency_ms": _format_latency_ms(start), "streamed": True},
             )
             span.end()
             langfuse.flush()

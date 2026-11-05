@@ -66,6 +66,60 @@
 
 ---
 
+## v13 — Nested Langfuse `trace_step` toàn graph
+
+**Goal:** Span con trong mọi node giống nhánh SQL — xem [nested-trace-v13-design.md](nested-trace-v13-design.md).  
+**AC:** `product-spec.md` AC-9; test AC-T1–T3 trong `test-plan.md`.
+
+| Phase v13 | Mục tiêu |
+|:--:|-----------|
+| **13.1** | Guardrails input/output + recall |
+| **13.2** | rewrite + classify + respond_inline |
+| **13.3** | orchestrator + orchestrator_collect |
+| **13.4** | execute_sql batch + answer_from_docs + respond |
+| **13.5** | Tests observability + manual Langfuse |
+
+### Phase 13.1 — Guardrails + recall
+
+- [x] `guardrail_input_node`: `trace_step` `check_input`, `redact_pii`.
+- [x] `recall_node`: `trace_step` `recall_long_term` (kể cả disabled).
+- [x] `guardrail_output_node`: `build_evidence`, `check_output`.
+
+**Done khi:** AC-T1 cover guardrail_input + recall; pytest observability pass.
+
+### Phase 13.2 — Rewrite / classify / inline
+
+- [x] `rewrite_node`: `sliding_window`, `compact_history`, `rewrite_question`.
+- [x] `classify_node`: `classify_intent`.
+- [x] `respond_inline_node`: `inline_response`.
+
+**Done khi:** AC-T1 cover rewrite + classify.
+
+### Phase 13.3 — Orchestrator
+
+- [x] `orchestrator_node`: một span trong `plan_passthrough` | `plan_orchestration` | `dispatch_batch`.
+- [x] `orchestrator_collect_step_node`: `collect_step`.
+
+**Done khi:** Multi-hop trace mock có substeps orchestrator.
+
+### Phase 13.4 — SQL batch + docs + respond
+
+- [x] `execute_sql_node` batch: per-item `apply_org_scope`, `revalidate_sql`, `postgres_query`.
+- [x] `answer_from_docs_node`: `compress_docs` khi nén.
+- [x] `respond_node`: substeps nhánh inline / out_of_scope / multi (`synthesize_multi`).
+
+**Done khi:** AC-T2 pass; không regression respond tests.
+
+### Phase 13.5 — Verification + docs
+
+- [x] Mở rộng `tests/test_product_observability_errors.py` (AC-T1–T2; AC-T3: 41 pass, 6 fail cache/API cũ).
+- [ ] Manual Langfuse §4.2 design doc.
+- [x] `change-log.md` khi merge code; đánh dấu `[x]` các task 13.x.
+
+**Done khi:** `pytest tests/test_product_observability_errors.py -q` pass; AC-9 đạt.
+
+---
+
 ## Tổng quan các Phase
 
 | Phase | Tên Phase | Mục tiêu chính |

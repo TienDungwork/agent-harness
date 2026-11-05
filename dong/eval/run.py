@@ -113,7 +113,11 @@ def run_pipeline(question: str) -> PipelineResult:
         return PipelineResult(answer=OUT_OF_SCOPE_REPLY)
 
     question = redact_pii(question)
-    out = run_agent(Agent_Input(question=question))
+    out = run_agent(
+        Agent_Input(question=question),
+        trace_name="eval",
+        trace_metadata={"source": "eval", "trace_question": question},
+    )
 
     query = out.query
     evidence_parts = [question] + (

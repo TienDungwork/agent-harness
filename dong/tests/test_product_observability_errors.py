@@ -105,7 +105,8 @@ def test_trace_answer_and_trace_step_with_langfuse(monkeypatch):
     assert update_kwargs["metadata"]["completion_tokens"] == 20
     assert update_kwargs["metadata"]["total_tokens"] == 120
     assert update_kwargs["metadata"]["model_name"] == "gpt-4o-mini"
-    assert "latency_s" in update_kwargs["metadata"]
+    assert "latency_ms" in update_kwargs["metadata"]
+    assert update_kwargs["name"].endswith(" ms)")
     assert update_kwargs["usage_details"] == {"input": 100, "output": 20, "total": 120}
     mock_parent_span.end.assert_called_once()
     mock_langfuse.flush.assert_called_once()
@@ -117,7 +118,8 @@ def test_trace_answer_and_trace_step_with_langfuse(monkeypatch):
     assert child_update_kwargs["output"] == {"tool_calls": [{"name": "count_vehicle_flow", "args": {}}]}
     assert child_update_kwargs["metadata"]["prompt_tokens"] == 100
     assert child_update_kwargs["metadata"]["model_name"] == "gpt-4o-mini"
-    assert "latency_s" in child_update_kwargs["metadata"]
+    assert "latency_ms" in child_update_kwargs["metadata"]
+    assert child_update_kwargs["name"].endswith(" ms)")
     assert child_update_kwargs["usage_details"] == {"input": 100, "output": 20, "total": 120}
     mock_child_span.end.assert_called_once()
 
@@ -497,6 +499,86 @@ def test_trace_observation_types_explicit_as_type(monkeypatch):
     assert mock_parent.start_observation.call_args[1]["as_type"] == "retriever"
 
 
+def _trace_name_recorder(monkeypatch, module_path: str) -> list[str]:
+    names: list[str] = []
+
+    @contextmanager
+    def _record(parent, name, **kwargs):
+        names.append(name)
+        yield {}
+
+    monkeypatch.setattr(f"{module_path}.trace_step", _record)
+    monkeypatch.setattr(f"{module_path}.current_span", lambda: MagicMock())
+    return names
+
+
+def test_v13_nested_trace_guardrail_recall_rewrite(monkeypatch):
+    """AC-T1: node graph emit đủ tên span con theo nested-trace-v13-design §3."""
+    g_names = _trace_name_recorder(monkeypatch, "src.domain.agents.nodes.guardrails")
+    from src.domain.agents.nodes.guardrails import guardrail_input_node
+
+    guardrail_input_node({"question": "xin chào", "user_id": "u", "session_id": "s"})
+    assert "check_input" in g_names
+    assert "redact_pii" in g_names
+
+    monkeypatch.setattr("src.infra.memory.longterm.recall_long_term", lambda *a, **k: [])
+    r_names = _trace_name_recorder(monkeypatch, "src.domain.agents.nodes.memory")
+    from src.domain.agents.nodes.memory import recall_node
+
+    recall_node({"question": "test", "user_id": "u", "session_id": "s"})
+    assert "recall_long_term" in r_names
+
+    from src.infra.llm.schemas import RewrittenQuestion
+
+    rw_names = _trace_name_recorder(monkeypatch, "src.domain.agents.nodes.rewrite_classify")
+    monkeypatch.setattr(
+        "src.domain.agents.graph.rewrite_question",
+        lambda q, history=None: RewrittenQuestion(text=q, sub_questions=[]),
+    )
+    monkeypatch.setattr(
+        "src.domain.agents.graph.classify_intent_safe",
+        lambda rewritten: MagicMock(intent="chat", answer="hi", reason="", chart_requested=False, chart_type=None),
+    )
+    monkeypatch.setattr(
+        "src.domain.agents.graph.sanitize_intent_result",
+        lambda res: res,
+    )
+    from src.domain.agents.nodes.rewrite_classify import rewrite_node, classify_node
+
+    rewrite_node({"question": "xin chào", "messages": [], "user_id": "u", "session_id": "s"})
+    assert "rewrite_question" in rw_names
+
+    classify_node(
+        {
+            "question": "xin chào",
+            "rewritten": RewrittenQuestion(text="xin chào", sub_questions=[]),
+            "user_id": "u",
+            "session_id": "s",
+        }
+    )
+    assert "classify_intent" in rw_names
+
+
+def test_v13_execute_sql_batch_nested_postgres_query(monkeypatch):
+    """AC-T2: sql_batch ≥2 → mỗi item có postgres_query substeps."""
+    names = _trace_name_recorder(monkeypatch, "src.domain.agents.sql.execute")
+    monkeypatch.setattr("src.infra.llm.client.use_offline_tools", lambda: True)
+    from src.domain.agents.sql.execute import execute_sql_node
+
+    execute_sql_node(
+        {
+            "sql_batch": [
+                {"sub_question": "a", "sql": "SELECT COUNT(*) FROM zone_event WHERE TRUE"},
+                {"sub_question": "b", "sql": "SELECT COUNT(*) FROM plate_event WHERE TRUE"},
+            ],
+            "user_id": "u",
+            "session_id": "s",
+        }
+    )
+    assert names.count("apply_org_scope") >= 2
+    assert names.count("revalidate_sql") >= 2
+    assert names.count("postgres_query") >= 2
+
 
 def test_trace_answer_token_sum_via_contextvar(monkeypatch):
     monkeypatch.setattr("src.infra.monitoring.tracing.settings.monitoring_enabled", True)
@@ -521,8 +603,8 @@ def test_trace_answer_token_sum_via_contextvar(monkeypatch):
     assert update_kwargs["usage_details"] == {"input": 30, "output": 15, "total": 45}
 
 
-from src.main import _cache, chat, ChatRequest
-from src.infra.memory.ttl_cache import clear_ttl_cache
+from src.main import chat, ChatRequest
+from src.infra.memory.ttl_cache import _cache, clear_ttl_cache
 
 def test_cache_miss_then_hit_skips_run_agent(monkeypatch):
     from src.domain.agents.graph import Agent_Output
@@ -644,6 +726,28 @@ def test_every_graph_node_emits_full_input_output_and_session_user_meta():
         assert ev.get("output")
 
 
+def test_run_agent_opens_root_trace_without_api_wrapper(monkeypatch):
+    """run_agent() tự mở root trace khi monitoring bật (eval/CLI cùng luồng domain)."""
+    monkeypatch.setattr("src.infra.monitoring.tracing.settings.monitoring_enabled", True)
+    mock_langfuse = MagicMock()
+    mock_span = MagicMock()
+    mock_langfuse.start_observation.return_value = mock_span
+
+    with patch("src.infra.monitoring.tracing._get_langfuse", return_value=mock_langfuse):
+        from src.domain.agents.graph import Agent_Input, run_agent
+
+        run_agent(
+            Agent_Input(question="Hôm nay có bao nhiêu lượt xe vào?"),
+            trace_name="eval",
+            trace_metadata={"source": "eval", "trace_question": "Hôm nay có bao nhiêu lượt xe vào?"},
+        )
+
+    assert mock_langfuse.start_observation.called
+    assert mock_langfuse.start_observation.call_args[1].get("name") == "eval"
+    mock_span.update.assert_called()
+    mock_span.end.assert_called_once()
+
+
 def test_trace_observation_receives_session_and_user_metadata(monkeypatch):
     """Langfuse start_observation nhận đầy đủ session_id và user_id từ API."""
     monkeypatch.setattr("src.infra.monitoring.tracing.settings.monitoring_enabled", True)
@@ -718,7 +822,7 @@ client = TestClient(app)
 
 def test_sql_repair_max_exhausted_yields_friendly_message_no_crash():
     """1. SQL invalid / hết lần repair: trả về message ngắn tiếng Việt trong stream mà không crash."""
-    from src.main import _cache
+    from src.infra.memory.ttl_cache import _cache
     _cache.clear()
     inp = Agent_Input(question="Hôm nay có bao nhiêu xe vào?")
 
@@ -795,7 +899,7 @@ def test_empty_statistical_data_contains_zero():
 
 def test_stream_error_emits_friendly_answer_status_error():
     """5. Lỗi stream phát ra __answer__ status error với câu thông báo ngắn gọn."""
-    from src.main import _cache
+    from src.infra.memory.ttl_cache import _cache
     _cache.clear()
 
     with patch(
@@ -871,7 +975,7 @@ def test_format_error_messages_short_vietnamese(exc, keyword):
 
 def test_stream_db_error_yields_answer_not_crash(monkeypatch):
     monkeypatch.setattr("src.infra.monitoring.tracing.settings.monitoring_enabled", False)
-    from src.main import _cache
+    from src.infra.memory.ttl_cache import _cache
 
     _cache.clear()
     with patch(
@@ -898,7 +1002,7 @@ def test_stream_db_error_yields_answer_not_crash(monkeypatch):
 def test_stream_graph_thread_error_yields_friendly_answer(monkeypatch):
     """Lỗi trong graph thread → __answer__ error, không crash generator."""
     monkeypatch.setattr("src.infra.monitoring.tracing.settings.monitoring_enabled", False)
-    from src.main import _cache
+    from src.infra.memory.ttl_cache import _cache
 
     _cache.clear()
 

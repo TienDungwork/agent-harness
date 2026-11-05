@@ -94,6 +94,7 @@ def test_router_cache_miss_executes_graph_and_populates_cache(monkeypatch):
 
 def test_router_cache_hit_skips_graph_execution_completely(monkeypatch):
     """Cache Hit phản hồi tức thì và bỏ qua hoàn toàn việc thực thi graph."""
+    monkeypatch.setattr("src.api.routers.routes_agent.persist_session_turn", lambda **_: None)
     q = "Bao nhiêu xe máy vào cổng hôm nay?"
     set_ttl_cached(make_cache_key(q, route="query_data"), {
         "question": q,
@@ -186,7 +187,10 @@ def test_router_dual_key_caching_for_raw_and_rewritten_questions(monkeypatch):
         detail="query_data",
     )
     monkeypatch.setattr("src.main.run_agent", mock_run)
-    monkeypatch.setattr("src.domain.agents.routing.rewrite.rewrite_question_safe", lambda _q: RewrittenQuestion(text=rewritten_q))
+    monkeypatch.setattr(
+        "src.domain.agents.routing.rewrite.rewrite_question_safe",
+        lambda _q, history=None: RewrittenQuestion(text=rewritten_q),
+    )
 
     # Lượt 1: hỏi raw_q -> Miss -> run_agent
     resp1 = chat(ChatRequest(question=raw_q, session_id="s1", user_id="u1"))
