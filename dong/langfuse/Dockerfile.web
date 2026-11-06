@@ -1,0 +1,13 @@
+# Langfuse web — base :4 + patch latency 3 chữ số thập phân (giây) trên cây trace.
+FROM docker.langfuse.com/langfuse/langfuse:4
+
+USER root
+COPY scripts/patch-latency-decimals.sh /usr/local/bin/patch-latency-decimals.sh
+COPY scripts/langfuse-web-entrypoint.sh /usr/local/bin/langfuse-web-entrypoint.sh
+RUN chmod +x /usr/local/bin/patch-latency-decimals.sh /usr/local/bin/langfuse-web-entrypoint.sh \
+    && LANGFUSE_LATENCY_DECIMALS=3 /usr/local/bin/patch-latency-decimals.sh
+
+USER nextjs
+# Giữ dumb-init + CMD gốc (node web/server.js); chỉ thay shell trước entrypoint Langfuse.
+ENTRYPOINT ["dumb-init", "--", "/usr/local/bin/langfuse-web-entrypoint.sh"]
+CMD ["/bin/sh", "-c", "if [ -n \"$NEXT_PUBLIC_LANGFUSE_CLOUD_REGION\" ]; then     node --import dd-trace/initialize.mjs ./web/server.js --keepAliveTimeout 110000;     else     node ./web/server.js --keepAliveTimeout 110000;     fi"]

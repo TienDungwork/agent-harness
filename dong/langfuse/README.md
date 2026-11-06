@@ -12,6 +12,14 @@ docker compose up -d
 
 Container/volume đều có prefix `kcn_hungphu_langfuse_*` (vd. `kcn_hungphu_langfuse_web`, `kcn_hungphu_langfuse_redis`) — dễ nhận trong `docker ps`.
 
+**Web UI tùy biến:** `langfuse-web` build từ `Dockerfile.web` (base `langfuse:4`) — patch bundle Next.js để cột latency trên cây trace hiển thị **giây với 3 chữ số thập phân** (`formatIntervalSeconds` mặc định `scale=3`). Sau khi pull image Langfuse mới, chạy lại `docker compose build langfuse-web`.
+
+```bash
+docker compose build langfuse-web && docker compose up -d langfuse-web
+```
+
+Sau khi rebuild patch, **xóa cache site** cho `http://localhost:3001` (DevTools → Application → Clear site data) hoặc tab ẩn danh — Next gắn `immutable` 1 năm trên `/_next/static/chunks/*`, cùng URL có thể vẫn là JS cũ nếu không clear.
+
 Dừng:
 
 ```bash

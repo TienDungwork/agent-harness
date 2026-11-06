@@ -172,13 +172,13 @@ def _finish_step(
     trace_in: Any,
     meta: dict[str, Any],
     start: float,
-    *,
-    step_name: str = "",
 ) -> None:
     latency_ms = _format_latency_ms(start)
+    latency_s = round(latency_ms / 1000, 3)
     out = box.get("output") or {"status": "completed"}
     meta = dict(meta)
     meta["latency_ms"] = latency_ms
+    meta["latency_s"] = latency_s
     if box.get("metadata"):
         meta.update(box["metadata"])
     model_name = box.get("model_name") or meta.get("model_name")
@@ -199,8 +199,6 @@ def _finish_step(
         kw["model_parameters"] = {"temperature": temperature}
     if t > 0 or p > 0 or c > 0:
         kw["usage_details"] = {"input": p, "output": c, "total": t}
-    if step_name:
-        kw["name"] = f"{step_name} ({latency_ms:g} ms)"
     span.update(**kw)
     span.end()
 
@@ -276,6 +274,7 @@ def trace_answer(
             p, c, t = _usage_from_box(box, meta)
             meta.update({
                 "latency_ms": latency_ms,
+                "latency_s": round(latency_ms / 1000, 3),
                 "model_name": model_name,
                 "temperature": temperature,
                 "prompt_tokens": p,
@@ -283,7 +282,7 @@ def trace_answer(
                 "total_tokens": t,
             })
             kw: dict[str, Any] = {
-                "name": f"{name} ({latency_ms:g} ms)",
+                "name": name,
                 "input": question,
                 "output": out,
                 "metadata": meta,
@@ -343,7 +342,7 @@ def trace_step(
         raise
     finally:
         try:
-            _finish_step(span, box, input, meta, start, step_name=name)
+            _finish_step(span, box, input, meta, start)
         except Exception as exc:
             logger.warning("Langfuse child end fail-safe: %s", exc)
 

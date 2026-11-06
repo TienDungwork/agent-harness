@@ -5,7 +5,10 @@ name: kcn-hungphu-langfuse
 
 services:
   langfuse-web:
-    image: docker.langfuse.com/langfuse/langfuse:4
+    build:
+      context: .
+      dockerfile: Dockerfile.web
+    image: kcn_hungphu_langfuse_web:4-latency3
     container_name: kcn_hungphu_langfuse_web
     restart: always
     depends_on: &langfuse-deps

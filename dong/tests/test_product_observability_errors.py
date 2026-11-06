@@ -105,8 +105,9 @@ def test_trace_answer_and_trace_step_with_langfuse(monkeypatch):
     assert update_kwargs["metadata"]["completion_tokens"] == 20
     assert update_kwargs["metadata"]["total_tokens"] == 120
     assert update_kwargs["metadata"]["model_name"] == "gpt-4o-mini"
-    assert "latency_ms" in update_kwargs["metadata"]
-    assert update_kwargs["name"].endswith(" ms)")
+    assert update_kwargs["metadata"]["latency_ms"] >= 0
+    assert update_kwargs["metadata"]["latency_s"] >= 0
+    assert update_kwargs["name"] == "chat"
     assert update_kwargs["usage_details"] == {"input": 100, "output": 20, "total": 120}
     mock_parent_span.end.assert_called_once()
     mock_langfuse.flush.assert_called_once()
@@ -119,7 +120,8 @@ def test_trace_answer_and_trace_step_with_langfuse(monkeypatch):
     assert child_update_kwargs["metadata"]["prompt_tokens"] == 100
     assert child_update_kwargs["metadata"]["model_name"] == "gpt-4o-mini"
     assert "latency_ms" in child_update_kwargs["metadata"]
-    assert child_update_kwargs["name"].endswith(" ms)")
+    assert "latency_s" in child_update_kwargs["metadata"]
+    assert " ms)" not in str(child_update_kwargs.get("name", ""))
     assert child_update_kwargs["usage_details"] == {"input": 100, "output": 20, "total": 120}
     mock_child_span.end.assert_called_once()
 
