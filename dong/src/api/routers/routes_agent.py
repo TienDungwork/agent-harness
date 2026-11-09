@@ -10,7 +10,7 @@ from typing import Any
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import StreamingResponse
 
-from src.domain.agents.graph import Agent_Input
+from src.domain.agents.vms.graph import Agent_Input
 
 
 def _run_agent(*args, **kwargs):
@@ -71,8 +71,8 @@ def chat(req: ChatRequest) -> ChatResponse:
     prev_messages = get_session_messages(session_id=req.session_id.strip(), user_id=req.user_id.strip()) or []
 
     try:
-        from src.domain.agents.routing.intent import is_chat_greeting
-        from src.domain.agents.routing.rewrite import rewrite_question_safe
+        from src.domain.agents.vms.nodes.intent import is_chat_greeting
+        from src.domain.agents.vms.nodes.rewrite import rewrite_question_safe
         from src.infra.llm.schemas import RewrittenQuestion
 
         if is_chat_greeting(question):
@@ -150,8 +150,8 @@ def ask(req: AskRequest) -> AskResponse:
         )
 
     try:
-        from src.domain.agents.routing.intent import is_chat_greeting
-        from src.domain.agents.routing.rewrite import rewrite_question_safe
+        from src.domain.agents.vms.nodes.intent import is_chat_greeting
+        from src.domain.agents.vms.nodes.rewrite import rewrite_question_safe
         from src.infra.llm.schemas import RewrittenQuestion
 
         if is_chat_greeting(question):
@@ -229,8 +229,8 @@ def stream_agent(req: ChatRequest) -> StreamingResponse:
                 session_id=req.session_id.strip(), user_id=req.user_id.strip()
             ) or []
 
-            from src.domain.agents.routing.intent import is_chat_greeting
-            from src.domain.agents.routing.rewrite import rewrite_question_safe
+            from src.domain.agents.vms.nodes.intent import is_chat_greeting
+            from src.domain.agents.vms.nodes.rewrite import rewrite_question_safe
             from src.infra.llm.schemas import RewrittenQuestion
 
             if is_chat_greeting(question):

@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from src.domain.agents.sql.batch import (
+from src.domain.agents.sql_agent.tools.batch import (
     build_sql_batch,
     execute_sql_batch,
     offline_sql_for_sub_question,

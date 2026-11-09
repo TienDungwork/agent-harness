@@ -2,8 +2,121 @@
 
 **Trạng thái v9 (Memory):** 100% hoàn thành — 7 Phase bên dưới.  
 **Trạng thái v10 (Cấu trúc `src/`):** Hoàn thành — API package + tách `graph.py` (facade ~90 dòng).  
+**Trạng thái v13 (Nested Langfuse):** Code + tests — xem § v13.  
+**Trạng thái v14 (ai_backend layout):** 14.1–14.4 done — [v14-ai-backend-layout-design.md](v14-ai-backend-layout-design.md); 14.5 optional.  
+**Trạng thái v15 (leaf agents + flat graph):** 15.1–15.5 done — [v15-leaf-agents-flat-graph-design.md](v15-leaf-agents-flat-graph-design.md).  
 **Nguồn:** `specs/product-spec.md`, `specs/superpowers-workflow-vi.md`  
 **Quy tắc:** Thực hiện tuần tự từng dòng `[ ]` một, kiểm tra kỹ lưỡng, sau đó đổi thành `[x]` và cập nhật `specs/change-log.md`. Không implement hàng loạt nhiều bước cùng lúc. **Task mới → thêm checklist ở đây trước khi code.**
+
+---
+
+## v15 — Leaf `sql_agent` / `docs_agent` + flat `vms/graph.py`
+
+**Goal:** Package giống `ai_backend` leaf; wiring flat; không đổi hành vi.  
+**Design:** [v15-leaf-agents-flat-graph-design.md](v15-leaf-agents-flat-graph-design.md) · **Plan chi tiết:** [v15-leaf-agents-flat-graph-plan.md](v15-leaf-agents-flat-graph-plan.md) · **AC:** product-spec AC-11.
+
+| Phase v15 | Mục tiêu |
+|:--:|-----------|
+| **15.1** | Spec + AC + checkbox |
+| **15.2** | Skeleton + move sql/docs agents |
+| **15.3** | Gộp `core/` → `vms/graph.py`; nodes/tools |
+| **15.4** | Rewire + xóa package cũ |
+| **15.5** | Docs + pytest subset |
+
+### Phase 15.1 — Spec
+
+- [x] Design `v15-leaf-agents-flat-graph-design.md` + AC-11 + index SDD.
+- [x] User review / approve written spec trước khi code.
+- [x] Writing-plans: `v15-leaf-agents-flat-graph-plan.md`.
+
+**Done khi:** Spec reviewed.
+
+### Phase 15.2 — sql_agent / docs_agent
+
+- [x] Tạo `sql_agent/`, `docs_agent/` (`graph.py` re-export only, `state.py`, `tools.py`).
+- [x] Move `vms/sql/*` + docs nodes/adapters; không `compile()`.
+
+**Done khi:** Import package mới OK.
+
+### Phase 15.3 — Flat graph
+
+- [x] Gộp `vms/core/*` → `vms/graph.py`; giữ `_build_graph` / `run_agent` / `_wrap_node`.
+- [x] `routing` / `respond` / `render_chart` / helpers → `vms/nodes` + `vms/tools`.
+- [x] Xóa `vms/core/`.
+
+**Done khi:** App boot; node names không đổi.
+
+### Phase 15.4 — Rewire
+
+- [x] Sửa import repo + tests; xóa `vms/sql`, `vms/routing`, `vms/respond`, `vms/adapters` nếu trống.
+- [x] Grep sạch path cũ trong `.py`.
+
+**Done khi:** Grep sạch.
+
+### Phase 15.5 — Docs + verify
+
+- [x] `src/README.md` + `change-log.md`.
+- [x] Pytest subset (nodes structure, camera, greeting offline, v13) — **17 passed**.
+
+**Done khi:** AC-11 pass.
+
+---
+
+## v14 — Align layout với `vn-stock-swarm/src/ai_backend`
+
+**Goal:** `vms/` + `multi_agent/` + `application/` + `shared/settings/`; dọn specs core; không đổi hành vi.  
+**Design:** [v14-ai-backend-layout-design.md](v14-ai-backend-layout-design.md) · **AC:** product-spec AC-10.
+
+| Phase v14 | Mục tiêu |
+|:--:|-----------|
+| **14.1** | Specs hygiene (core + archive) |
+| **14.2** | Package skeleton |
+| **14.3** | Move + rewire + shims |
+| **14.4** | Docs + pytest |
+| **14.5** | Drop shims (optional) |
+
+### Phase 14.1 — Specs hygiene
+
+- [x] Archive `v7-chart-ui-audit.md`, `v7-dead-code-inventory.md`, `nested-trace-v13-design.md` (AC v13 đã ở product-spec / § v13).
+- [x] Cập nhật `specs/README.md` + `sdd-guide-vi.md` danh sách file core.
+- [x] Ghi `change-log.md` (design/hygiene).
+
+**Done khi:** `specs/` chỉ còn core + `archive/` + `v14-ai-backend-layout-design.md`.
+
+### Phase 14.2 — Package skeleton
+
+- [x] Tạo `domain/agents/vms/`, `domain/agents/multi_agent/`, `application/`, `shared/settings/`.
+- [x] `__init__.py` tối thiểu; chưa move logic nặng.
+
+**Done khi:** Import package rỗng OK.
+
+### Phase 14.3 — Move + rewire
+
+- [x] Move graph/state/nodes/sql/routing/respond/adapters/core → `vms/`.
+- [x] Move orchestrator → `multi_agent/`.
+- [x] Tách turn orchestration mỏng → `application/` (nếu routes/main đang phình).
+- [x] `shared/settings` từ `config.py` + shim `shared.config`.
+- [x] Shim `domain.agents.graph` → `vms.graph`.
+- [x] Sửa import toàn repo / tests.
+
+**Done khi:** App boot; graph node names không đổi.
+
+### Phase 14.4 — Docs + verify
+
+- [x] Cập nhật `src/README.md`.
+- [x] `pytest -q` (ghi fail pre-existing nếu có).
+- [x] `change-log.md` entry code merge.
+
+**Done khi:** AC-10 checklist pass.
+
+**Verify note:** Node names LangGraph giữ nguyên; camera registry + greeting offline + audit archive path + `test_v13_*` xanh. Full suite chậm/có fail pre-existing (SQL offline heuristic `anomaly_event`, frontend memory badge string) — không phải regression layout v14.
+
+### Phase 14.5 — Drop shims (optional)
+
+- [x] Xóa shim `domain.agents.orchestrator` (grep sạch → chỉ còn `multi_agent`).
+- [ ] Xóa shim `domain.agents.graph` / `state` + `shared.config` sau khi grep sạch.
+
+**Done khi:** Không còn shim.
 
 ---
 
@@ -68,7 +181,7 @@
 
 ## v13 — Nested Langfuse `trace_step` toàn graph
 
-**Goal:** Span con trong mọi node giống nhánh SQL — xem [nested-trace-v13-design.md](nested-trace-v13-design.md).  
+**Goal:** Span con trong mọi node giống nhánh SQL — xem [archive/nested-trace-v13-design.md](archive/nested-trace-v13-design.md).  
 **AC:** `product-spec.md` AC-9; test AC-T1–T3 trong `test-plan.md`.
 
 | Phase v13 | Mục tiêu |

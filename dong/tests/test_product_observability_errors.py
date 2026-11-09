@@ -333,7 +333,7 @@ def test_v5_graph_trace_step_uses_node_event_input(monkeypatch):
         }
 
     with patch("src.infra.monitoring.tracing._get_langfuse", return_value=mock_langfuse):
-        from src.domain.agents.graph import _wrap_node
+        from src.domain.agents.vms.graph import _wrap_node
 
         wrapped = _wrap_node("respond", fake_respond)
         wrapped({"question": "Hôm nay có bao nhiêu lượt xe vào?", "_trace_span": mock_parent})
@@ -372,7 +372,7 @@ def test_v5_graph_trace_rewrite_input_not_parent_question(monkeypatch):
         }
 
     with patch("src.infra.monitoring.tracing._get_langfuse", return_value=mock_langfuse):
-        from src.domain.agents.graph import _wrap_node
+        from src.domain.agents.vms.graph import _wrap_node
 
         wrapped = _wrap_node("rewrite", fake_rewrite)
         wrapped({
@@ -414,7 +414,7 @@ def test_graph_node_nested_substeps(monkeypatch):
         }
 
     with patch("src.infra.monitoring.tracing._get_langfuse"):
-        from src.domain.agents.graph import _wrap_node
+        from src.domain.agents.vms.graph import _wrap_node
 
         wrapped = _wrap_node("generate_sql", fake_generate)
         wrapped({"question": "Hôm nay có bao nhiêu xe?", "_trace_span": mock_root})
@@ -438,11 +438,11 @@ def test_validate_and_repair_sql_nested_validate_substep(monkeypatch):
 
     token = _current.set(mock_parent)
     try:
-        from src.domain.agents.sql.validate import validate_and_repair_sql
+        from src.domain.agents.sql_agent.tools.validate import validate_and_repair_sql
 
         from src.infra.db.validator import ValidationResult
 
-        with patch("src.domain.agents.sql.validate.validate_sql", return_value=ValidationResult(ok=True)):
+        with patch("src.domain.agents.sql_agent.tools.validate.validate_sql", return_value=ValidationResult(ok=True)):
             mock_parent.start_observation.return_value = mock_validate
             validate_and_repair_sql("SELECT 1", "test", user_id="u1", session_id="s1")
     finally:
@@ -454,14 +454,14 @@ def test_validate_and_repair_sql_nested_validate_substep(monkeypatch):
 
 
 def test_strip_thinking_removes_qwen_block():
-    from src.domain.agents.graph import _strip_thinking
+    from src.domain.agents.vms.graph import _strip_thinking
 
     raw = "\x3cthink\x3einternal\x3c/think\x3e\nHôm nay có 10 xe vào."
     assert _strip_thinking(raw) == "Hôm nay có 10 xe vào."
 
 
 def test_respond_offline_emits_stat_answer_event():
-    from src.domain.agents.graph import respond_node
+    from src.domain.agents.vms.graph import respond_node
 
     out = respond_node({
         "question": "Hôm nay có bao nhiêu lượt xe vào?",
@@ -516,36 +516,36 @@ def _trace_name_recorder(monkeypatch, module_path: str) -> list[str]:
 
 def test_v13_nested_trace_guardrail_recall_rewrite(monkeypatch):
     """AC-T1: node graph emit đủ tên span con theo nested-trace-v13-design §3."""
-    g_names = _trace_name_recorder(monkeypatch, "src.domain.agents.nodes.guardrails")
-    from src.domain.agents.nodes.guardrails import guardrail_input_node
+    g_names = _trace_name_recorder(monkeypatch, "src.domain.agents.vms.nodes.guardrails")
+    from src.domain.agents.vms.nodes.guardrails import guardrail_input_node
 
     guardrail_input_node({"question": "xin chào", "user_id": "u", "session_id": "s"})
     assert "check_input" in g_names
     assert "redact_pii" in g_names
 
     monkeypatch.setattr("src.infra.memory.longterm.recall_long_term", lambda *a, **k: [])
-    r_names = _trace_name_recorder(monkeypatch, "src.domain.agents.nodes.memory")
-    from src.domain.agents.nodes.memory import recall_node
+    r_names = _trace_name_recorder(monkeypatch, "src.domain.agents.vms.nodes.memory")
+    from src.domain.agents.vms.nodes.memory import recall_node
 
     recall_node({"question": "test", "user_id": "u", "session_id": "s"})
     assert "recall_long_term" in r_names
 
     from src.infra.llm.schemas import RewrittenQuestion
 
-    rw_names = _trace_name_recorder(monkeypatch, "src.domain.agents.nodes.rewrite_classify")
+    rw_names = _trace_name_recorder(monkeypatch, "src.domain.agents.vms.nodes.rewrite_classify")
     monkeypatch.setattr(
-        "src.domain.agents.graph.rewrite_question",
+        "src.domain.agents.vms.graph.rewrite_question",
         lambda q, history=None: RewrittenQuestion(text=q, sub_questions=[]),
     )
     monkeypatch.setattr(
-        "src.domain.agents.graph.classify_intent_safe",
+        "src.domain.agents.vms.graph.classify_intent_safe",
         lambda rewritten: MagicMock(intent="chat", answer="hi", reason="", chart_requested=False, chart_type=None),
     )
     monkeypatch.setattr(
-        "src.domain.agents.graph.sanitize_intent_result",
+        "src.domain.agents.vms.graph.sanitize_intent_result",
         lambda res: res,
     )
-    from src.domain.agents.nodes.rewrite_classify import rewrite_node, classify_node
+    from src.domain.agents.vms.nodes.rewrite_classify import rewrite_node, classify_node
 
     rewrite_node({"question": "xin chào", "messages": [], "user_id": "u", "session_id": "s"})
     assert "rewrite_question" in rw_names
@@ -563,9 +563,9 @@ def test_v13_nested_trace_guardrail_recall_rewrite(monkeypatch):
 
 def test_v13_execute_sql_batch_nested_postgres_query(monkeypatch):
     """AC-T2: sql_batch ≥2 → mỗi item có postgres_query substeps."""
-    names = _trace_name_recorder(monkeypatch, "src.domain.agents.sql.execute")
+    names = _trace_name_recorder(monkeypatch, "src.domain.agents.sql_agent.tools.execute")
     monkeypatch.setattr("src.infra.llm.client.use_offline_tools", lambda: True)
-    from src.domain.agents.sql.execute import execute_sql_node
+    from src.domain.agents.sql_agent.tools.execute import execute_sql_node
 
     execute_sql_node(
         {
@@ -609,7 +609,7 @@ from src.main import chat, ChatRequest
 from src.infra.memory.ttl_cache import _cache, clear_ttl_cache
 
 def test_cache_miss_then_hit_skips_run_agent(monkeypatch):
-    from src.domain.agents.graph import Agent_Output
+    from src.domain.agents.vms.graph import Agent_Output
     from src.infra.llm.schemas import QueryResult
 
     mock_run_agent = MagicMock()
@@ -635,7 +635,7 @@ def test_cache_miss_then_hit_skips_run_agent(monkeypatch):
     assert resp2.detail.get("cache_hit") is True
 
 def test_cache_expired_entry_misses(monkeypatch):
-    from src.domain.agents.graph import Agent_Output
+    from src.domain.agents.vms.graph import Agent_Output
     from src.infra.llm.schemas import QueryResult
 
     mock_run_agent = MagicMock()
@@ -664,7 +664,7 @@ def test_cache_expired_entry_misses(monkeypatch):
     assert valid_answer in resp2.answer
 
 def test_cache_disabled(monkeypatch):
-    from src.domain.agents.graph import Agent_Output
+    from src.domain.agents.vms.graph import Agent_Output
     from src.infra.llm.schemas import QueryResult
 
     mock_run_agent = MagicMock()
@@ -691,7 +691,7 @@ def test_cache_disabled(monkeypatch):
 
 def test_every_graph_node_emits_full_input_output_and_session_user_meta():
     """Tất cả node trong graph đều ghi nhận đầy đủ input, output và metadata session/user."""
-    from src.domain.agents.graph import Agent_Input, run_agent_stream
+    from src.domain.agents.vms.graph import Agent_Input, run_agent_stream
 
     user_id = "user-trace-full"
     session_id = "session-trace-full"
@@ -736,7 +736,7 @@ def test_run_agent_opens_root_trace_without_api_wrapper(monkeypatch):
     mock_langfuse.start_observation.return_value = mock_span
 
     with patch("src.infra.monitoring.tracing._get_langfuse", return_value=mock_langfuse):
-        from src.domain.agents.graph import Agent_Input, run_agent
+        from src.domain.agents.vms.graph import Agent_Input, run_agent
 
         run_agent(
             Agent_Input(question="Hôm nay có bao nhiêu lượt xe vào?"),
@@ -813,8 +813,8 @@ from unittest.mock import patch
 import pytest
 from fastapi.testclient import TestClient
 
-from src.domain.agents.graph import Agent_Input, run_agent, run_agent_stream
-from src.domain.agents.routing.intent import classify_intent_safe
+from src.domain.agents.vms.graph import Agent_Input, run_agent, run_agent_stream
+from src.domain.agents.vms.nodes.intent import classify_intent_safe
 from src.infra.db.validator import ValidationResult
 from src.shared.guardrails import empty_stat_reply
 from src.main import USER_ERROR_MAX_LEN, _format_error_message, app
@@ -832,7 +832,7 @@ def test_sql_repair_max_exhausted_yields_friendly_message_no_crash():
     with (
         patch("src.infra.llm.client.use_offline_tools", return_value=True),
         patch(
-            "src.domain.agents.sql.validate.validate_sql",
+            "src.domain.agents.sql_agent.tools.validate.validate_sql",
             return_value=ValidationResult(ok=False, reason="Cú pháp không hợp lệ"),
         ),
     ):
@@ -883,8 +883,8 @@ def test_classify_error_safe_fallback_not_silent():
 
     q = RewrittenQuestion(text="Hôm nay có cảnh báo cháy hoặc khói không?")
     with (
-        patch("src.domain.agents.routing.intent.use_offline_tools", return_value=False),
-        patch("src.domain.agents.routing.intent.invoke_structured", side_effect=Exception("LLM down")),
+        patch("src.domain.agents.vms.nodes.intent.use_offline_tools", return_value=False),
+        patch("src.domain.agents.vms.nodes.intent.invoke_structured", side_effect=Exception("LLM down")),
     ):
         res = classify_intent_safe(q)
 
@@ -905,7 +905,7 @@ def test_stream_error_emits_friendly_answer_status_error():
     _cache.clear()
 
     with patch(
-        "src.domain.agents.graph.run_agent_stream",
+        "src.domain.agents.vms.graph.run_agent_stream",
         side_effect=RuntimeError("Database connection lost"),
     ):
         res = client.post(
@@ -981,7 +981,7 @@ def test_stream_db_error_yields_answer_not_crash(monkeypatch):
 
     _cache.clear()
     with patch(
-        "src.domain.agents.graph.run_agent_stream",
+        "src.domain.agents.vms.graph.run_agent_stream",
         side_effect=RuntimeError("clickhouse connect error: connection refused"),
     ):
         res = client.post(
@@ -1012,7 +1012,7 @@ def test_stream_graph_thread_error_yields_friendly_answer(monkeypatch):
         yield {"node_id": "recall", "status": "running"}
         raise RuntimeError("LLM API timeout after 30s")
 
-    with patch("src.domain.agents.graph.run_agent_stream", side_effect=_boom):
+    with patch("src.domain.agents.vms.graph.run_agent_stream", side_effect=_boom):
         res = client.post(
             "/api/agent/stream",
             json={"question": "Hôm nay có bao nhiêu xe vào?"},

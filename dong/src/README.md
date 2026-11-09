@@ -1,50 +1,44 @@
 # `src/` — layout (vn-stock `ai_backend` style)
 
-Entry: `uvicorn src.main:app` từ `agent-harness/dong/`. Cấu hình: `src/shared/config.py` + `.env`.
+Entry: `uvicorn src.main:app` từ `agent-harness/dong/`. Cấu hình: `src/shared/settings/` (shim `shared.config`) + `.env`.
 
 **Agent Postgres (bắt buộc khi `MEMORY_ENABLED=true`):** `DB_NAME_AGENT` — `chat_sessions`, `chat_session_messages`, `human_feedback` + LangGraph `PostgresSaver.setup()`. Long-term facts → Qdrant. **API_ACCESS_KEY** (tùy chọn): header `X-API-Key`.
 
 ```
 src/
-├── main.py                 # FastAPI entry
+├── main.py
 ├── api/
-│   ├── routers/            # routes_meta, sessions, memory, feedback, agent
-│   ├── models/             # Pydantic schemas
-│   └── helpers/            # errors, cache, SSE, session
+├── application/            # use-cases mỏng (agent_turn)
 ├── domain/
-│   ├── agents/             # LangGraph VMS agent (graph facade + nodes)
-│   └── knowledge/          # RAG cards AIOC/VMS
+│   ├── agents/
+│   │   ├── vms/            # graph.py (máy chạy flat) + state + nodes + tools
+│   │   ├── sql_agent/      # leaf: graph re-export nodes, tools SQL (no compile)
+│   │   ├── docs_agent/     # leaf: docs/camera tools + nodes
+│   │   ├── multi_agent/    # orchestrator plan / core / synth
+│   │   ├── graph.py        # shim → vms.graph
+│   │   └── state.py        # shim → vms.state
+│   └── knowledge/
 ├── infra/
-│   ├── db/                 # Postgres read-only, catalog, validator
-│   ├── memory/             # TTL, long-term, context, checkpointer
-│   ├── llm/                # LiteLLM client, schemas
-│   ├── chart/              # Matplotlib render
-│   ├── monitoring/         # Langfuse tracing
-│   ├── prompts/            # YAML registry
-│   └── session/            # Chat session store
 └── shared/
-    ├── config.py
-    ├── guardrails.py
-    └── feedback.py
+    ├── settings/
+    └── config.py           # shim → settings
 ```
 
-## `domain/agents/` (giống vn-stock: graph + state ở root, package con)
+## `domain/agents/`
 
 | Package | Nội dung |
 |---------|----------|
-| `graph.py`, `state.py` | Entry + state (như `ai_backend/domain/agents/graph.py`) |
-| `core/` | wiring, run, runtime, helpers |
-| `nodes/` | memory, rewrite/classify, pipeline, respond, guardrails, io |
-| `orchestrator/` | plan, core node, synth/collect |
-| `sql/` | generate, validate, execute, batch |
-| `routing/` | intent, rewrite, inline_respond |
-| `respond/` | simple_answer, chart_fallback |
-| `adapters/` | docs, camera_registry |
+| `vms/graph.py` | Build + run + stream + wrap (gộp core cũ) |
+| `vms/nodes/` | guardrail, memory, rewrite/intent, respond, render_chart |
+| `vms/tools.py` + `stream.py` | helpers + SSE queue |
+| `sql_agent/` | retrieve_schema + generate/validate/execute… |
+| `docs_agent/` | retrieve_docs / answer_from_docs + adapters |
+| `multi_agent/` | multi-hop orchestrator |
 
-Luồng: `guardrail_input → recall → rewrite → classify → orchestrator → … → respond → guardrail_output`.
+Luồng (flat): `guardrail_input → recall → rewrite → classify → orchestrator → … → respond → guardrail_output`.
 
 ## Quy ước import
 
-- Domain: `src.domain.agents.*`, `src.domain.knowledge.*`
-- Infra: `src.infra.db.*`, `src.infra.memory.*`, …
-- Shared: `src.shared.config`, `src.shared.guardrails`
+- Canonical: `src.domain.agents.vms.*`, `sql_agent.*`, `docs_agent.*`, `multi_agent.*`
+- Application: `src.application.agent_turn`
+- Shared: `src.shared.settings` (hoặc shim `src.shared.config`)

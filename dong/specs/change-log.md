@@ -1,5 +1,49 @@
 # Change Log — agent dong
 
+## 2026-11-09 — golden live + UI smoke (post-v15)
+
+- Gen lại `graph.png` / `graph.mmd` từ `vms.graph.save_graph_visualization`.
+- Docker stack healthy; UI `:8001` hỏi golden (SQL/camera/chart) — SSE node đủ `guardrail_input→…→store_extract`, `duration_ms`.
+- Fix: eval `session_id` unique; `ping()` OpenAI không đập gateway self-host; `respond` KeyError `vehicle_type`; `pre_sql` multi vehicle types cho chart #019.
+- `eval/run.py --judge` → `eval/results/golden-30.md`.
+
+## 2026-11-09 — v15 code: leaf `sql_agent` / `docs_agent` + flat `vms/graph.py`
+
+- Move: `vms/sql` → `sql_agent/tools`; docs/camera → `docs_agent`; `pipeline` tách schema/docs/chart.
+- Gộp `vms/core` → `vms/graph.py`; SSE queue → `vms/stream.py` (tránh circular import với respond).
+- Gom `routing`/`respond` → `vms/nodes` + `vms/chart_fallback.py`.
+- Xóa `vms/{core,sql,routing,respond,adapters}`; wiring flat; không `compile()` ở leaf.
+- Verify: AC-11 pytest subset **17 passed** (nodes, camera, greeting offline, v13).
+
+## 2026-11-09 — v15 design: leaf agents + flat `vms/graph.py` (spec only)
+
+- Quyết định: Approach 1 + wiring flat (A); `sql_agent` / `docs_agent`; gộp `vms/core` → `vms/graph.py`; **không** `chart_agent`; không subgraph `compile`.
+- Design: [v15-leaf-agents-flat-graph-design.md](v15-leaf-agents-flat-graph-design.md).
+- SDD: AC-11; implementation-plan phase 15.1–15.5.
+- Plan: [v15-leaf-agents-flat-graph-plan.md](v15-leaf-agents-flat-graph-plan.md) (tasks 1–6).
+- **Chưa code** — chờ chọn cách execute (subagent / inline).
+
+## 2026-11-09 — v14.5 partial: drop shim `orchestrator/`
+
+- Xóa `src/domain/agents/orchestrator/` (chỉ re-export `multi_agent`); không còn import Python path cũ.
+
+## 2026-11-09 — v14 code: align `src/` với `ai_backend` (14.1–14.4)
+
+- Move: `domain/agents/{graph,state,nodes,sql,routing,respond,adapters,core}` → `vms/`; `orchestrator/` → `multi_agent/`.
+- Thêm `application/agent_turn` (canonical; `api.helpers.agent_turn` shim); `shared/settings` (canonical; `shared.config` shim).
+- Shim tạm: `domain.agents.graph` / `state` / `orchestrator/*` → `vms` / `multi_agent`.
+- Specs: archive `v7-*`, `nested-trace-v13-design.md`; cập nhật `src/README.md`, test path audit → `specs/archive/`.
+- Fix path: `camera_registry` `parents[5]` + khôi phục `FALLBACK_CAMERAS`; `settings.effective_docs_root` `parents[3]`.
+- Verify: 22 tests layout/offline/v13 xanh; fail pre-existing (SQL `anomaly_event` heuristic, frontend memory badge) ghi riêng — không regression v14.
+- Phase 14.5 (drop shims) chưa làm.
+
+## 2026-11-09 — v14 design: align `src/` với `ai_backend` (spec only)
+
+- Quyết định: target-tree + move; packaging `vms/` + `multi_agent/`; thêm `application/` + `shared/settings` mỏng; không đổi hành vi.
+- Design: [v14-ai-backend-layout-design.md](v14-ai-backend-layout-design.md).
+- SDD: `product-spec.md` AC-10; `implementation-plan.md` phase 14.1–14.5; `specs/README.md` trạng thái v14.
+- Specs hygiene (khi implement 14.1): archive `v7-*`, `nested-trace-v13-design.md`.
+
 ## 2026-11-05 — v13: nested `trace_step` toàn graph (code)
 
 - **Nodes:** `guardrails`, `memory.recall`, `rewrite_classify`, `orchestrator/core`, `orchestrator/synth.collect_step`, `sql/execute` batch loop, `pipeline.answer_from_docs`, `respond` nhánh inline/out_of_scope/multi.

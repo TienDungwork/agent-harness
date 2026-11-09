@@ -19,7 +19,7 @@ import base64
 
 import pytest
 
-from src.domain.agents.graph import Agent_Input, run_agent_stream
+from src.domain.agents.vms.graph import Agent_Input, run_agent_stream
 from src.infra.chart import normalize_chart_type, plan_chart, render_chart, should_render_chart
 from src.infra.llm.schemas import ChartSpec
 
@@ -204,8 +204,8 @@ from unittest.mock import patch
 
 import pytest
 
-from src.domain.agents.sql.generate import generate_sql_node
-from src.domain.agents.sql.pre_sql import build_chart_sql_hint
+from src.domain.agents.sql_agent.tools.generate import generate_sql_node
+from src.domain.agents.sql_agent.tools.pre_sql import build_chart_sql_hint
 from src.infra.llm.schemas import RewrittenQuestion
 
 
@@ -262,8 +262,8 @@ def test_chart_hint_generic_contains_expected_structure():
 
 # ── 2. Online generate_sql_node: chart hint in user prompt ─────────────────────
 
-@patch("src.domain.agents.sql.generate.use_offline_tools", return_value=False)
-@patch("src.domain.agents.sql.generate.invoke_text", return_value="SELECT vehicle_type, count(*) FROM plate_event GROUP BY vehicle_type")
+@patch("src.domain.agents.sql_agent.tools.generate.use_offline_tools", return_value=False)
+@patch("src.domain.agents.sql_agent.tools.generate.invoke_text", return_value="SELECT vehicle_type, count(*) FROM plate_event GROUP BY vehicle_type")
 def test_generate_sql_online_injects_chart_hint_for_bieu_do(mock_invoke, _mock_offline):
     """Câu hỏi có 'biểu đồ' → user prompt của generate_sql_node chứa chart hint."""
     rewritten = RewrittenQuestion(
@@ -290,8 +290,8 @@ def test_generate_sql_online_injects_chart_hint_for_bieu_do(mock_invoke, _mock_o
     assert "Vẽ biểu đồ cột lượt xe theo loại hôm nay" in user_prompt
 
 
-@patch("src.domain.agents.sql.generate.use_offline_tools", return_value=False)
-@patch("src.domain.agents.sql.generate.invoke_text", return_value="SELECT count(*) FROM plate_event")
+@patch("src.domain.agents.sql_agent.tools.generate.use_offline_tools", return_value=False)
+@patch("src.domain.agents.sql_agent.tools.generate.invoke_text", return_value="SELECT count(*) FROM plate_event")
 def test_generate_sql_online_no_chart_hint_for_plain_count(mock_invoke, _mock_offline):
     """Câu hỏi thống kê thông thường (không có từ khóa biểu đồ) → KHÔNG có chart hint."""
     rewritten = RewrittenQuestion(
@@ -333,12 +333,12 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from src.domain.agents.respond.chart_fallback import (
+from src.domain.agents.vms.chart_fallback import (
     fallback_chart_query,
     should_retry_chart_query,
 )
-from src.domain.agents.graph import Agent_Input, AgentState, render_chart_node, reset_graph, respond_node, run_agent
-from src.domain.agents.respond.simple_answer import _fmt_num, try_format_simple_answer
+from src.domain.agents.vms.graph import Agent_Input, AgentState, render_chart_node, reset_graph, respond_node, run_agent
+from src.domain.agents.vms.nodes.simple_answer import _fmt_num, try_format_simple_answer
 from src.infra.chart.render import (
     _detect_chart_type,
     _format_label,
@@ -526,7 +526,7 @@ class TestChartFallbackSql:
         sql = "SELECT count(*) FROM plate_event"
         q = "Vẽ biểu đồ các loại xe hôm nay"
 
-        with patch("src.domain.agents.respond.chart_fallback.use_offline_tools", return_value=True):
+        with patch("src.domain.agents.vms.chart_fallback.use_offline_tools", return_value=True):
             res = fallback_chart_query(question=q, sql=sql, rows=rows)
             assert res is not None
             assert len(res["rows"]) >= 2
@@ -539,7 +539,7 @@ class TestChartFallbackSql:
         sql = "SELECT count(*) FROM plate_event"
         q = "Vẽ biểu đồ phương tiện theo loại hôm nay"
 
-        with patch("src.domain.agents.respond.chart_fallback.use_offline_tools", return_value=True):
+        with patch("src.domain.agents.vms.chart_fallback.use_offline_tools", return_value=True):
             state: AgentState = {
                 "question": q,
                 "rows": initial_rows,
@@ -699,7 +699,7 @@ Tests for:
 - chart_rows included in __chart__ event when render_chart input has rows.
 - chart_rows included in __answer__ detail when chart present.
 
-Mock pattern follows test_api.py: patch src.domain.agents.graph.run_agent_stream.
+Mock pattern follows test_api.py: patch src.domain.agents.vms.graph.run_agent_stream.
 """
 
 
@@ -709,7 +709,7 @@ from unittest.mock import patch
 import pytest
 from fastapi.testclient import TestClient
 
-from src.domain.agents.graph import Agent_Output
+from src.domain.agents.vms.graph import Agent_Output
 from src.main import _build_chart_sse_event, app
 
 client = TestClient(app)
@@ -792,7 +792,7 @@ def test_stream_emits_chart_event_on_render_chart(monkeypatch):
     from src.main import _cache
     _cache.clear()
 
-    with patch("src.domain.agents.graph.run_agent_stream", side_effect=_mock_stream_with_chart):
+    with patch("src.domain.agents.vms.graph.run_agent_stream", side_effect=_mock_stream_with_chart):
         res = client.post(
             "/api/agent/stream",
             json={"question": "Vẽ biểu đồ xe hôm nay", "session_id": "test-chart", "user_id": "tester"},
@@ -818,7 +818,7 @@ def test_stream_answer_detail_includes_chart_when_present(monkeypatch):
     from src.main import _cache
     _cache.clear()
 
-    with patch("src.domain.agents.graph.run_agent_stream", side_effect=_mock_stream_with_chart):
+    with patch("src.domain.agents.vms.graph.run_agent_stream", side_effect=_mock_stream_with_chart):
         res = client.post(
             "/api/agent/stream",
             json={"question": "Vẽ biểu đồ xe hôm nay", "session_id": "test-chart2", "user_id": "tester"},
@@ -870,7 +870,7 @@ def test_stream_no_chart_event_when_no_chart(monkeypatch):
     from src.main import _cache
     _cache.clear()
 
-    with patch("src.domain.agents.graph.run_agent_stream", side_effect=_mock_stream_no_chart):
+    with patch("src.domain.agents.vms.graph.run_agent_stream", side_effect=_mock_stream_no_chart):
         res = client.post(
             "/api/agent/stream",
             json={"question": "Hôm nay có bao nhiêu xe?", "session_id": "test-no-chart", "user_id": "tester"},
@@ -899,7 +899,7 @@ def test_stream_chart_event_includes_chart_rows(monkeypatch):
     from src.main import _cache
     _cache.clear()
 
-    with patch("src.domain.agents.graph.run_agent_stream", side_effect=_mock_stream_with_chart):
+    with patch("src.domain.agents.vms.graph.run_agent_stream", side_effect=_mock_stream_with_chart):
         res = client.post(
             "/api/agent/stream",
             json={"question": "Vẽ biểu đồ xe hôm nay", "session_id": "test-chart-rows", "user_id": "tester"},
@@ -926,7 +926,7 @@ def test_stream_answer_detail_includes_chart_rows(monkeypatch):
     from src.main import _cache
     _cache.clear()
 
-    with patch("src.domain.agents.graph.run_agent_stream", side_effect=_mock_stream_with_chart):
+    with patch("src.domain.agents.vms.graph.run_agent_stream", side_effect=_mock_stream_with_chart):
         res = client.post(
             "/api/agent/stream",
             json={"question": "Vẽ biểu đồ xe hôm nay", "session_id": "test-answer-rows", "user_id": "tester"},
@@ -1332,7 +1332,7 @@ FRONTEND = Path(__file__).resolve().parent.parent / "frontend"
 APP_JS = FRONTEND / "app.js"
 STYLE_CSS = FRONTEND / "style.css"
 INDEX_HTML = FRONTEND / "index.html"
-AUDIT_MD = Path(__file__).resolve().parent.parent / "specs" / "v7-chart-ui-audit.md"
+AUDIT_MD = Path(__file__).resolve().parent.parent / "specs" / "archive" / "v7-chart-ui-audit.md"
 CHECKLIST_MD = Path(__file__).resolve().parent.parent / "specs" / "smoke-manual-checklist.md"
 
 
@@ -1454,7 +1454,7 @@ def test_stream_chart_question_emits_chart_and_answer_events():
 
     with (
         patch("src.infra.llm.client.use_offline_tools", return_value=True),
-        patch("src.domain.agents.graph.execute_sql", return_value=mock_rows),
+        patch("src.domain.agents.vms.graph.execute_sql", return_value=mock_rows),
     ):
         res = client.post("/api/agent/stream", json=req_body)
 
@@ -1558,7 +1558,7 @@ from unittest.mock import patch
 import pytest
 from fastapi.testclient import TestClient
 
-from src.domain.agents.graph import respond_node
+from src.domain.agents.vms.graph import respond_node
 from src.infra.llm.schemas import QueryResult
 from src.shared.guardrails import EMPTY_TOOL_REPLY, check_output, empty_stat_reply
 from src.main import app
@@ -1606,7 +1606,7 @@ def test_check_output_tool_empty_honest_normalized_to_zero():
 
 
 def test_api_chat_empty_query_answer_has_zero():
-    from src.domain.agents.graph import Agent_Output
+    from src.domain.agents.vms.graph import Agent_Output
 
     empty_out = Agent_Output(
         question="Hôm nay có phát hiện leo trèo không?",
@@ -1615,7 +1615,7 @@ def test_api_chat_empty_query_answer_has_zero():
         detail="query_data",
     )
 
-    with patch("src.domain.agents.graph.run_agent", return_value=empty_out):
+    with patch("src.domain.agents.vms.graph.run_agent", return_value=empty_out):
         res = client.post(
             "/api/chat",
             json={

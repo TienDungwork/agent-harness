@@ -16,12 +16,13 @@ Quy trình làm việc với **Cursor Agent** trên repo này. Chi tiết prompt
 | [superpowers-workflow-vi.md](superpowers-workflow-vi.md) | Superpowers + Ponytail + SDD |
 | [product-spec.md](product-spec.md) | Mục tiêu, user, flow, AC |
 | [implementation-plan.md](implementation-plan.md) | Task triển khai (checkbox) |
-| [nested-trace-v13-design.md](nested-trace-v13-design.md) | v13 Langfuse substeps toàn graph |
+| [v15-leaf-agents-flat-graph-design.md](v15-leaf-agents-flat-graph-design.md) | v15 leaf `sql_agent`/`docs_agent` + flat `vms/graph.py` |
+| [v14-ai-backend-layout-design.md](v14-ai-backend-layout-design.md) | v14 align layout `ai_backend` (`vms` + `multi_agent`) |
 | [test-plan.md](test-plan.md) | Test tự động + smoke manual |
 | [change-log.md](change-log.md) | Nhật ký thay đổi (giữ gần đây) |
 | [smoke-manual-checklist.md](smoke-manual-checklist.md) | Checklist demo tay |
 | [../src/README.md](../src/README.md) | Bản đồ `src/` |
-| [archive/](archive/) | SDD đầy đủ, change-log cũ, audit v7 |
+| [archive/](archive/) | SDD đầy đủ, change-log cũ, audit v7, nested-trace v13 |
 
 Repo gốc: `README.md` (cài/chạy/test), `AGENTS.md` (quy tắc agent + Antigravity).
 

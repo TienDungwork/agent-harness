@@ -7,7 +7,7 @@ from __future__ import annotations
 
 """Unit tests for Phase 3b short-term memory checkpointer MVP."""
 
-from src.domain.agents.graph import Agent_Input, _get_graph, run_agent
+from src.domain.agents.vms.graph import Agent_Input, _get_graph, run_agent
 from src.main import ChatRequest
 from src.infra.memory.shortterm import get_checkpointer
 
@@ -191,7 +191,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 from fastapi.testclient import TestClient
 
-from src.domain.agents.graph import Agent_Input, _build_graph, run_agent, run_agent_stream
+from src.domain.agents.vms.graph import Agent_Input, _build_graph, run_agent, run_agent_stream
 from src.main import app
 from src.infra.memory import (
     clear_long_term,
@@ -382,10 +382,10 @@ def test_recall_memories_injected_into_respond_prompt(monkeypatch):
 
     monkeypatch.setattr("src.infra.llm.client.invoke_text", fake_invoke)
     monkeypatch.setattr("src.infra.llm.client.use_offline_tools", lambda: False)
-    monkeypatch.setattr("src.domain.agents.sql.generate.invoke_text", fake_invoke)
-    monkeypatch.setattr("src.domain.agents.sql.generate.use_offline_tools", lambda: False)
-    monkeypatch.setattr("src.domain.agents.sql.execute.use_offline_tools", lambda: False)
-    monkeypatch.setattr("src.domain.agents.sql.execute.execute_sql", lambda sql, params=None: [
+    monkeypatch.setattr("src.domain.agents.sql_agent.tools.generate.invoke_text", fake_invoke)
+    monkeypatch.setattr("src.domain.agents.sql_agent.tools.generate.use_offline_tools", lambda: False)
+    monkeypatch.setattr("src.domain.agents.sql_agent.tools.execute.use_offline_tools", lambda: False)
+    monkeypatch.setattr("src.domain.agents.sql_agent.tools.execute.execute_sql", lambda sql, params=None: [
         {"camera_name": "Cổng 2", "so_luot": 10},
         {"camera_name": "Cổng 1", "so_luot": 20},
     ])
@@ -624,7 +624,7 @@ def test_cache_hit_skips_rewrite_when_llm_fails(monkeypatch):
     def boom(*_args, **_kwargs):
         raise TimeoutError("LLM gateway timeout")
 
-    monkeypatch.setattr("src.domain.agents.routing.rewrite.rewrite_question", boom)
+    monkeypatch.setattr("src.domain.agents.vms.nodes.rewrite.rewrite_question", boom)
     mock_run = MagicMock()
     monkeypatch.setattr("src.main.run_agent", mock_run)
 
@@ -662,7 +662,7 @@ def test_stream_agent_cache_hit_before_graph(monkeypatch):
     })
 
     mock_stream = MagicMock()
-    monkeypatch.setattr("src.domain.agents.graph.run_agent_stream", mock_stream)
+    monkeypatch.setattr("src.domain.agents.vms.graph.run_agent_stream", mock_stream)
 
     client = TestClient(app)
     res = client.post("/api/agent/stream", json={"question": q})
@@ -694,7 +694,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 from fastapi.testclient import TestClient
 
-from src.domain.agents.graph import Agent_Input, Agent_Output, recall_node, run_agent_stream, run_store_extract
+from src.domain.agents.vms.graph import Agent_Input, Agent_Output, recall_node, run_agent_stream, run_store_extract
 from src.infra.llm.schemas import QueryResult
 from src.main import app, _lookup_ttl_cache
 from src.infra.memory.ttl_cache import (
@@ -768,7 +768,7 @@ def test_ttl_get_fails_chat_still_200_when_agent_ok(monkeypatch):
     )
 
     with patch("src.main.get_ttl_cached", side_effect=RuntimeError("Cache connection lost")), \
-         patch("src.domain.agents.graph.run_agent", return_value=mock_output):
+         patch("src.domain.agents.vms.graph.run_agent", return_value=mock_output):
         res = client.post("/api/chat", json={"question": "Hôm nay có bao nhiêu xe vào?"})
 
     assert res.status_code == 200
@@ -789,7 +789,7 @@ def test_ttl_set_raises_chat_and_ask_still_return_answer(monkeypatch):
     )
 
     with patch("src.main.set_ttl_cached", side_effect=RuntimeError("Disk full / Cache write failed")), \
-         patch("src.domain.agents.graph.run_agent", return_value=mock_output):
+         patch("src.domain.agents.vms.graph.run_agent", return_value=mock_output):
         # /api/chat
         res_chat = client.post("/api/chat", json={"question": "Hôm nay có bao nhiêu xe vào?"})
         assert res_chat.status_code == 200
@@ -817,7 +817,7 @@ def test_ttl_set_raises_in_stream_still_returns_answer(monkeypatch):
         yield {"__final_result__": mock_output}
 
     with patch("src.main.set_ttl_cached", side_effect=RuntimeError("Cache store error")), \
-         patch("src.domain.agents.graph.run_agent_stream", side_effect=fake_stream):
+         patch("src.domain.agents.vms.graph.run_agent_stream", side_effect=fake_stream):
         res = client.post("/api/agent/stream", json={"question": "Bao nhiêu xe hôm nay?"})
 
     assert res.status_code == 200
@@ -932,7 +932,7 @@ def test_stream_integration_recall_fail_agent_ok_store_extract_degraded(monkeypa
 
 def test_memory_master_disabled_turns_off_all_layers(monkeypatch):
     """MEMORY_ENABLED=false tắt short-term checkpointer, long-term recall/store, TTL cache."""
-    from src.domain.agents.graph import recall_node, run_store_extract, Agent_Output
+    from src.domain.agents.vms.graph import recall_node, run_store_extract, Agent_Output
     from src.shared.config import settings
 
     clear_ttl_cache()

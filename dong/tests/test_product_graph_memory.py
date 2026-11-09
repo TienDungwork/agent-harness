@@ -5,7 +5,7 @@ from __future__ import annotations
 import pytest
 from unittest.mock import MagicMock, patch
 
-from src.domain.agents.graph import (
+from src.domain.agents.vms.graph import (
     Agent_Input,
     Agent_Output,
     _memory_context_block,
@@ -15,7 +15,7 @@ from src.domain.agents.graph import (
     run_agent,
     run_agent_stream,
 )
-from src.domain.agents.routing.inline_respond import generate_inline_response
+from src.domain.agents.vms.nodes.inline_respond import generate_inline_response
 from src.infra.memory import (
     clear_long_term,
     clear_ttl_cache,
@@ -83,7 +83,7 @@ def test_extract_memory_node_stores_facts_directly():
 
 def test_sliding_window_prunes_long_history(monkeypatch):
     """Lịch sử hội thoại dài trên 20 tin nhắn được sliding_window thu gọn an toàn."""
-    from src.domain.agents.graph import rewrite_node
+    from src.domain.agents.vms.graph import rewrite_node
 
     long_messages = [HumanMessage(content=f"Câu hỏi số {i}") for i in range(25)]
     state = {
@@ -127,11 +127,11 @@ def test_instruction_reinject_in_respond_prompt(monkeypatch):
 
     monkeypatch.setattr("src.infra.llm.client.use_offline_tools", lambda: False)
     monkeypatch.setattr("src.infra.llm.client.invoke_text", mock_invoke)
-    monkeypatch.setattr("src.domain.agents.sql.generate.invoke_text", mock_invoke)
-    monkeypatch.setattr("src.domain.agents.sql.generate.use_offline_tools", lambda: False)
-    monkeypatch.setattr("src.domain.agents.sql.execute.use_offline_tools", lambda: False)
+    monkeypatch.setattr("src.domain.agents.sql_agent.tools.generate.invoke_text", mock_invoke)
+    monkeypatch.setattr("src.domain.agents.sql_agent.tools.generate.use_offline_tools", lambda: False)
+    monkeypatch.setattr("src.domain.agents.sql_agent.tools.execute.use_offline_tools", lambda: False)
     monkeypatch.setattr(
-        "src.domain.agents.sql.execute.execute_sql",
+        "src.domain.agents.sql_agent.tools.execute.execute_sql",
         lambda sql, params=None: ([{"loai_xe": "TRUCK", "so_luot": 25}], ["loai_xe", "so_luot"]),
     )
 

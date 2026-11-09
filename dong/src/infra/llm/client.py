@@ -195,6 +195,13 @@ def invoke_text(
 
 def ping() -> str:
     """Kiểm tra LLM server có sẵn sàng không."""
+    backend = (settings.llm_backend or "").strip().lower()
+    if backend == "openai":
+        # OpenAI cloud — không ping MODEL_BASE_URL (self-host gateway).
+        if not (settings.api_keys or settings.llm_api_key):
+            raise RuntimeError("LLM_BACKEND=openai nhưng thiếu OPENAI_API_KEYS / LLM_API_KEY")
+        return "OK"
+
     from src.infra.llm.gateway import fetch_gateway_catalog
 
     base_url = settings.effective_base_url or "http://192.168.1.198:18083/v1"

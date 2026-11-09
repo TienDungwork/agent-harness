@@ -21,6 +21,7 @@ import os
 import re
 import sys
 import time
+import uuid
 from collections import Counter
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
@@ -30,7 +31,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 import yaml
 
-from src.domain.agents.graph import Agent_Input, run_agent
+from src.domain.agents.vms.graph import Agent_Input, run_agent
 from eval.judge import judge_answer
 from src.shared.guardrails import (
     GuardrailViolation,
@@ -113,8 +114,11 @@ def run_pipeline(question: str) -> PipelineResult:
         return PipelineResult(answer=OUT_OF_SCOPE_REPLY)
 
     question = redact_pii(question)
+    # Unique thread_id mỗi case — tránh dính checkpoint cũ (msgpack unregistered / hang).
     out = run_agent(
-        Agent_Input(question=question),
+        Agent_Input(question=question, user_id="eval"),
+        session_id=f"eval-{uuid.uuid4().hex[:12]}",
+        user_id="eval",
         trace_name="eval",
         trace_metadata={"source": "eval", "trace_question": question},
     )

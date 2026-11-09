@@ -320,7 +320,7 @@ def test_mock_testclient_ttl_cache_stream_hit(monkeypatch):
 
     # Đảm bảo run_agent_stream không cần gọi khi đã trúng TTL cache
     mock_stream = MagicMock()
-    monkeypatch.setattr("src.domain.agents.graph.run_agent_stream", mock_stream)
+    monkeypatch.setattr("src.domain.agents.vms.graph.run_agent_stream", mock_stream)
 
     # Gửi request lần 2 tới /api/agent/stream
     res = client.post(

@@ -29,7 +29,7 @@ from src.infra.memory.longterm import (
     recall_long_term,
     save_to_long_term,
 )
-from src.domain.agents.graph import Agent_Input, run_agent
+from src.domain.agents.vms.graph import Agent_Input, run_agent
 
 
 @pytest.fixture(autouse=True)
