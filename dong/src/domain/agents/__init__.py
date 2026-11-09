@@ -1,10 +1,10 @@
 """LangGraph agent VMS — orchestrator, Text-to-SQL, batch, guardrails (v9)."""
 
-from src.domain.agents.vms.chart_fallback import fallback_chart_query, should_retry_chart_query
-from src.domain.agents.docs_agent.tools.docs import answer_from_docs, handle_docs_intent, retrieve_docs
-from src.domain.agents.sql_agent.tools.execute import execute_sql_node
-from src.domain.agents.sql_agent.tools.generate import extract_sql, generate_sql_node
-from src.domain.agents.vms.nodes.intent import (
+from src.domain.agents.analytics.chart_fallback import fallback_chart_query, should_retry_chart_query
+from src.domain.agents.knowledge.docs_agent.tools.docs import answer_from_docs, handle_docs_intent, retrieve_docs
+from src.domain.agents.analytics.sql_agent.tools.execute import execute_sql_node
+from src.domain.agents.analytics.sql_agent.tools.generate import extract_sql, generate_sql_node
+from src.domain.agents.nodes.intent import (
     CHAT_GREETING_KEYWORDS,
     classify_intent,
     classify_intent_str,
@@ -12,13 +12,14 @@ from src.domain.agents.vms.nodes.intent import (
     is_chat_like,
     sanitize_intent_result,
 )
-from src.domain.agents.multi_agent.plan import is_multi_question, plan_orchestration
-from src.domain.agents.vms.nodes.rewrite import rewrite_question
-from src.domain.agents.vms.nodes.simple_answer import try_format_simple_answer
-from src.domain.agents.sql_agent.tools.validate import repair_sql_node, validate_and_repair_sql, validate_sql_node
-from src.domain.agents.vms.graph import (
+from src.domain.agents.nodes.plan import is_multi_question, plan_orchestration
+from src.domain.agents.nodes.rewrite import rewrite_question
+from src.domain.agents.nodes.simple_answer import try_format_simple_answer
+from src.domain.agents.analytics.sql_agent.tools.validate import repair_sql_node, validate_and_repair_sql, validate_sql_node
+from src.domain.agents.graph import (
     Agent_Input,
     Agent_Output,
+    build_graph,
     extract_memory_node,
     recall_memory_node,
     recall_node,
@@ -54,6 +55,7 @@ __all__ = [
     "render_chart",
     "Agent_Input",
     "Agent_Output",
+    "build_graph",
     "recall_node",
     "recall_memory_node",
     "extract_memory_node",

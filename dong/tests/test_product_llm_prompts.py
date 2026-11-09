@@ -125,7 +125,7 @@ ALL_PROMPT_NAMES = [
     "classify",
     "judge_eval",
     "memory_extract",
-    "orchestrator",
+    "top_supervisor",
     "plan_chart",
     "respond_stat",
     "rewrite",
@@ -619,7 +619,7 @@ def test_api_stream_prompt_error_yields_friendly_answer_sse(monkeypatch):
     _cache.clear()
 
     with patch(
-        "src.domain.agents.vms.graph.run_agent_stream",
+        "src.domain.agents.graph.run_agent_stream",
         side_effect=ValueError("Prompt 'agent_system' thiếu biến: ['now']"),
     ):
         res = client.post(

@@ -5,8 +5,43 @@
 **Trạng thái v13 (Nested Langfuse):** Code + tests — xem § v13.  
 **Trạng thái v14 (ai_backend layout):** 14.1–14.4 done — [v14-ai-backend-layout-design.md](v14-ai-backend-layout-design.md); 14.5 optional.  
 **Trạng thái v15 (leaf agents + flat graph):** 15.1–15.5 done — [v15-leaf-agents-flat-graph-design.md](v15-leaf-agents-flat-graph-design.md).  
+**Trạng thái v16 (hierarchical teams):** 16.1–16.7 code (continuous) — [v16-hierarchical-agents-design.md](v16-hierarchical-agents-design.md) · [v16-hierarchical-agents-plan.md](v16-hierarchical-agents-plan.md).  
 **Nguồn:** `specs/product-spec.md`, `specs/superpowers-workflow-vi.md`  
 **Quy tắc:** Thực hiện tuần tự từng dòng `[ ]` một, kiểm tra kỹ lưỡng, sau đó đổi thành `[x]` và cập nhật `specs/change-log.md`. Không implement hàng loạt nhiều bước cùng lúc. **Task mới → thêm checklist ở đây trước khi code.**
+
+---
+
+## v16 — Hierarchical `analytics_team` | `knowledge_team`
+
+**Goal:** Root graph + team subgraphs + `AgentTurnService` (SSE mới).  
+**Design:** [v16-hierarchical-agents-design.md](v16-hierarchical-agents-design.md) · **Plan:** [v16-hierarchical-agents-plan.md](v16-hierarchical-agents-plan.md).
+
+| Task | Mục tiêu |
+|:--:|-----------|
+| **16.1** | Skeleton `AssistantState` + `build_graph` stub + `nodes` stub |
+| **16.2** | Shared prefix / canonical root graph |
+| **16.3** | `analytics/` subgraph |
+| **16.4** | `knowledge/` subgraph |
+| **16.5** | `top_supervisor` + `synth` |
+| **16.6** | `AgentTurnService` + SSE + FE |
+| **16.7** | Cleanup dead code |
+
+### Phase 16.1 — Skeleton
+
+- [x] `AssistantState` trên `domain/agents/state.py` (re-export vms I/O).
+- [x] `nodes.py` stub supervisor/synth; `graph.build_graph` → vms `_build_graph`; `start_graph` stub.
+- [x] `tests/test_v16_hierarchy_skeleton.py` PASS.
+
+### Phase 16.2–16.7 — Continuous
+
+- [x] 16.2 Canonical `domain/agents/graph.py`; `vms.graph` shim.
+- [x] 16.3 `analytics/` subgraph + root `analytics_team`.
+- [x] 16.4 `knowledge/` subgraph + root `knowledge_team`.
+- [x] 16.5 `top_supervisor` (+ multi collect); route helpers.
+- [x] 16.6 `AgentTurnService` + SSE `complete` + FE bridge.
+- [x] 16.7 Docs/changelog; giữ `vms/nodes` (impl); không xóa hết shim nội bộ.
+
+**Done khi:** `pytest tests/test_v16_*.py` + `test_graph_nodes_and_structure` xanh.
 
 ---
 

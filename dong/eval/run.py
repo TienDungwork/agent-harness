@@ -31,7 +31,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 import yaml
 
-from src.domain.agents.vms.graph import Agent_Input, run_agent
+from src.domain.agents.graph import Agent_Input, run_agent
 from eval.judge import judge_answer
 from src.shared.guardrails import (
     GuardrailViolation,

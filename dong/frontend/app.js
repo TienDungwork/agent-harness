@@ -1533,6 +1533,24 @@
             if (!dataStr || dataStr === '[DONE]') continue;
             try {
               const event = JSON.parse(dataStr);
+              // v16 SSE: node/complete/token (+ legacy node_id bridge)
+              if (event.node && !event.node_id) event.node_id = event.node;
+              if (event.token && !event.node_id) {
+                event.node_id = '__answer__';
+                event.status = 'chunk';
+                event.delta = event.token;
+                event.output = event.token;
+              }
+              if (event.complete === true) {
+                event.node_id = event.node_id || '__answer__';
+                event.status = event.status || 'done';
+                event.output = event.output || event.answer || '';
+              }
+              if (event.error && !event.node_id) {
+                event.node_id = 'error';
+                event.status = 'done';
+                event.output = event.error;
+              }
               if (!event.node_id || !event.status) continue;
               
               if (event.chart_png_base64) {

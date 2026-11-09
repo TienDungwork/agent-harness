@@ -1,5 +1,39 @@
 # Change Log — agent dong
 
+## 2026-11-10 — v16 layout = Design §1 (no vms/multi_agent root)
+
+- Nest: `analytics/sql_agent/`, `knowledge/docs_agent/`.
+- Gộp: `vms/nodes` + `multi_agent` → `agents/nodes/` (`supervisor`/`plan`/`synth` + prefix).
+- `state.py` chứa `AssistantState` + `AgentState`; xóa package `vms/`.
+- Helpers: `agents/stream.py`, `agents/tools.py`; chart fallback → `analytics/`.
+- Cập nhật import src/tests/eval; `src/README.md`.
+
+## 2026-11-10 — v16 finish: drop re-export junk + thin router
+
+- Xóa file chỉ re-export: `sql_agent/{graph,state}.py`, `docs_agent/{graph,state}.py`, `knowledge/nodes.py` rỗng.
+- Import SQL/docs node thẳng từ `sql_agent.tools.*` / `docs_agent.nodes`.
+- Router `chat`/`ask` → `AgentTurnService.process` (không rewrite sớm ở API).
+- Stream: bỏ rewrite sớm; SSE `complete` giữ bridge `node_id`.
+- `nodes.py` root chỉ còn `route_from_top`.
+
+## 2026-11-09 — v16.2–16.7 hierarchical teams + AgentTurnService (continuous)
+
+- **Canonical graph:** `domain/agents/graph.py` (vms/graph shim ngược).
+- **Subgraphs:** `analytics/` (SQL+chart+repair), `knowledge/` (docs).
+- **Root wiring:** prefix → `top_supervisor` ⇄ teams → respond; multi qua `orchestrator_collect`.
+- **Application:** `AgentTurnService` (`process` / `iter_graph_events` / `stream_sse`); SSE thêm `complete`/`node`/`token` (giữ bridge `node_id`).
+- **FE:** `frontend/app.js` đọc schema v16 + legacy.
+- Tests: `tests/test_v16_*.py`; cập nhật structure/`top_supervisor` asserts.
+- Chưa xóa `vms/nodes` (vẫn chứa node impl); ReAct worker không làm.
+
+## 2026-11-09 — v16.1 skeleton: AssistantState + build_graph stub
+
+- `domain/agents/state.py`: `AssistantState` (root fields) + re-export `AgentState` / I/O từ `vms.state`.
+- `domain/agents/nodes.py`: stub `top_supervisor_node` / `route_from_top` / `synth_node`.
+- `domain/agents/graph.py`: `build_graph` = vms `_build_graph`; giữ `import *` tương thích; `start_graph` stub (chưa wire API).
+- Test: `tests/test_v16_hierarchy_skeleton.py`.
+- Design/plan: [v16-hierarchical-agents-design.md](v16-hierarchical-agents-design.md), [v16-hierarchical-agents-plan.md](v16-hierarchical-agents-plan.md).
+
 ## 2026-11-09 — golden live + UI smoke (post-v15)
 
 - Gen lại `graph.png` / `graph.mmd` từ `vms.graph.save_graph_visualization`.

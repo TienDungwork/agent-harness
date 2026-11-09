@@ -17,7 +17,9 @@ Chỉ mục tài liệu Spec-Driven Development (SDD), tương tự cách [llm-e
 
 | File | Nội dung |
 |------|----------|
-| [v15-leaf-agents-flat-graph-design.md](v15-leaf-agents-flat-graph-design.md) | **v15** — leaf `sql_agent`/`docs_agent` + flat `vms/graph.py` |
+| [v16-hierarchical-agents-design.md](v16-hierarchical-agents-design.md) | **v16** — hierarchical `analytics_team` \| `knowledge_team` + `AgentTurnService` (supersede flat-only v15) |
+| [v16-hierarchical-agents-plan.md](v16-hierarchical-agents-plan.md) | **v16** — implementation plan (Tasks 1–7) |
+| [v15-leaf-agents-flat-graph-design.md](v15-leaf-agents-flat-graph-design.md) | **v15** — leaf `sql_agent`/`docs_agent` + flat `vms/graph.py` (baseline cho v16) |
 | [v15-leaf-agents-flat-graph-plan.md](v15-leaf-agents-flat-graph-plan.md) | **v15** — implementation plan (tasks 1–6) |
 | [v14-ai-backend-layout-design.md](v14-ai-backend-layout-design.md) | **v14** — align layout với `ai_backend` (`vms` + `multi_agent`) |
 
@@ -30,6 +32,7 @@ Chỉ mục tài liệu Spec-Driven Development (SDD), tương tự cách [llm-e
 | **v13 Nested Langfuse `trace_step` toàn graph** | Code + tests — design trong `archive/` |
 | **v14 Align `src/` ↔ `ai_backend`** | **14.1–14.4 done** — `vms/` + `multi_agent/` + `application/` + `shared/settings`; 14.5 optional |
 | **v15 Leaf agents + flat graph** | **15.1–15.5 done** — `sql_agent` / `docs_agent` + flat `vms/graph.py`; AC-11 subset 17 passed |
+| **v16 Hierarchical teams** | **done (finish)** — teams + service + xóa re-export junk; `vms/nodes` = impl |
 | LangGraph multi-hop + batch SQL | Triển khai |
 | Golden eval | `eval/datasets/agent_stat/v2.yaml` |
 

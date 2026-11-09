@@ -1,44 +1,41 @@
-# `src/` — layout (vn-stock `ai_backend` style)
+# `src/` — layout (v16 hierarchical, swarm-style)
 
 Entry: `uvicorn src.main:app` từ `agent-harness/dong/`. Cấu hình: `src/shared/settings/` (shim `shared.config`) + `.env`.
 
-**Agent Postgres (bắt buộc khi `MEMORY_ENABLED=true`):** `DB_NAME_AGENT` — `chat_sessions`, `chat_session_messages`, `human_feedback` + LangGraph `PostgresSaver.setup()`. Long-term facts → Qdrant. **API_ACCESS_KEY** (tùy chọn): header `X-API-Key`.
+**Agent Postgres (bắt buộc khi `MEMORY_ENABLED=true`):** `DB_NAME_AGENT` — sessions/feedback + LangGraph checkpointer. Long-term → Qdrant. **API_ACCESS_KEY** (tùy chọn): header `X-API-Key`.
 
 ```
 src/
 ├── main.py
 ├── api/
-├── application/            # use-cases mỏng (agent_turn)
+├── application/                 # AgentTurnService
 ├── domain/
 │   ├── agents/
-│   │   ├── vms/            # graph.py (máy chạy flat) + state + nodes + tools
-│   │   ├── sql_agent/      # leaf: graph re-export nodes, tools SQL (no compile)
-│   │   ├── docs_agent/     # leaf: docs/camera tools + nodes
-│   │   ├── multi_agent/    # orchestrator plan / core / synth
-│   │   ├── graph.py        # shim → vms.graph
-│   │   └── state.py        # shim → vms.state
-│   └── knowledge/
+│   │   ├── graph.py             # root build/run/stream
+│   │   ├── state.py             # AssistantState + AgentState
+│   │   ├── nodes/               # top_supervisor + prefix nodes
+│   │   ├── stream.py / tools.py # SSE queue + helpers
+│   │   ├── analytics/           # SQL team subgraph + sql_agent/
+│   │   └── knowledge/           # docs team subgraph + docs_agent/
+│   └── knowledge/               # RAG corpus (infra-facing)
 ├── infra/
 └── shared/
-    ├── settings/
-    └── config.py           # shim → settings
 ```
 
 ## `domain/agents/`
 
-| Package | Nội dung |
-|---------|----------|
-| `vms/graph.py` | Build + run + stream + wrap (gộp core cũ) |
-| `vms/nodes/` | guardrail, memory, rewrite/intent, respond, render_chart |
-| `vms/tools.py` + `stream.py` | helpers + SSE queue |
-| `sql_agent/` | retrieve_schema + generate/validate/execute… |
-| `docs_agent/` | retrieve_docs / answer_from_docs + adapters |
-| `multi_agent/` | multi-hop orchestrator |
+| Path | Vai trò |
+|------|---------|
+| `graph.py` | Root compile + `run_agent` / `start_graph` |
+| `state.py` | `AssistantState` / `AgentState` / I/O |
+| `nodes/` | Supervisor (`top_supervisor`), plan/synth, guardrail/rewrite/respond… |
+| `analytics/` | `build_analytics_graph` + `sql_agent/tools` |
+| `knowledge/` | `build_knowledge_graph` + `docs_agent` |
 
-Luồng (flat): `guardrail_input → recall → rewrite → classify → orchestrator → … → respond → guardrail_output`.
+Luồng: `guardrail → recall → rewrite → classify → top_supervisor ⇄ analytics_team|knowledge_team → respond → guardrail_output`.
 
 ## Quy ước import
 
-- Canonical: `src.domain.agents.vms.*`, `sql_agent.*`, `docs_agent.*`, `multi_agent.*`
-- Application: `src.application.agent_turn`
-- Shared: `src.shared.settings` (hoặc shim `src.shared.config`)
+- Canonical: `src.domain.agents.graph`, `src.domain.agents.state`, `src.domain.agents.nodes.*`
+- SQL: `src.domain.agents.analytics.sql_agent.tools.*`
+- Docs: `src.domain.agents.knowledge.docs_agent.*`

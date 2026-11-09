@@ -10,7 +10,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
-from src.domain.agents.vms.graph import Agent_Input
+from src.domain.agents.graph import Agent_Input
 from src.shared.config import settings
 
 
@@ -41,7 +41,7 @@ def run_agent(
     trace_name: str = "chat",
     trace_metadata=None,
 ):
-    from src.domain.agents.vms.graph import run_agent as _graph_run_agent
+    from src.domain.agents.graph import run_agent as _graph_run_agent
 
     return _graph_run_agent(
         inp,
@@ -63,7 +63,7 @@ def run_agent_stream(
     trace_name: str = "chat",
     trace_metadata=None,
 ):
-    from src.domain.agents.vms.graph import run_agent_stream as _graph_run_agent_stream
+    from src.domain.agents.graph import run_agent_stream as _graph_run_agent_stream
 
     return _graph_run_agent_stream(
         inp,

@@ -2,7 +2,7 @@
 
 from unittest.mock import MagicMock, patch
 
-from src.domain.agents.vms.nodes.rewrite import (
+from src.domain.agents.nodes.rewrite import (
     _apply_chart_followup_inheritance,
     rewrite_question,
 )
@@ -31,7 +31,7 @@ def test_apply_chart_followup_skips_when_prior_turn_no_chart():
     assert out.text == raw.text
 
 
-@patch("src.domain.agents.vms.nodes.rewrite.invoke_structured")
+@patch("src.domain.agents.nodes.rewrite.invoke_structured")
 def test_rewrite_question_post_process_after_llm(mock_invoke):
     mock_invoke.return_value = RewrittenQuestion(
         text="Thống kê số lượng sự kiện xâm nhập vùng cấm hôm nay",
