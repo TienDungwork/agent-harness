@@ -17,6 +17,7 @@ Chỉ mục tài liệu Spec-Driven Development (SDD), tương tự cách [llm-e
 
 | File | Nội dung |
 |------|----------|
+| [v17-langfuse-rich-trace-design.md](v17-langfuse-rich-trace-design.md) | **v17** — Langfuse rich traces (parity UI + prompts redacted + slim state) |
 | [v16-hierarchical-agents-design.md](v16-hierarchical-agents-design.md) | **v16** — hierarchical `analytics_team` \| `knowledge_team` + `AgentTurnService` (supersede flat-only v15) |
 | [v16-hierarchical-agents-plan.md](v16-hierarchical-agents-plan.md) | **v16** — implementation plan (Tasks 1–7) |
 | [v15-leaf-agents-flat-graph-design.md](v15-leaf-agents-flat-graph-design.md) | **v15** — leaf `sql_agent`/`docs_agent` + flat `vms/graph.py` (baseline cho v16) |
