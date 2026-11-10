@@ -1,4 +1,4 @@
-# `src/` — layout (v16 hierarchical, swarm-style)
+# `src/` — layout (v16 hierarchical)
 
 Entry: `uvicorn src.main:app` từ `agent-harness/dong/`. Cấu hình: `src/shared/settings/` (shim `shared.config`) + `.env`.
 
@@ -12,30 +12,21 @@ src/
 ├── domain/
 │   ├── agents/
 │   │   ├── graph.py             # root build/run/stream
-│   │   ├── state.py             # AssistantState + AgentState
-│   │   ├── nodes/               # top_supervisor + prefix nodes
-│   │   ├── stream.py / tools.py # SSE queue + helpers
-│   │   ├── analytics/           # SQL team subgraph + sql_agent/
-│   │   └── knowledge/           # docs team subgraph + docs_agent/
-│   └── knowledge/               # RAG corpus (infra-facing)
+│   │   ├── state.py
+│   │   ├── nodes/
+│   │   ├── analytics/           # SQL team + sql_agent/tools
+│   │   └── knowledge/           # docs team
+│   │       ├── graph.py
+│   │       ├── docs_agent/      # nodes + camera/docs adapters
+│   │       └── retrieval/       # corpus YAML: loader / retrieve / answer
 ├── infra/
 └── shared/
 ```
 
-## `domain/agents/`
-
-| Path | Vai trò |
-|------|---------|
-| `graph.py` | Root compile + `run_agent` / `start_graph` |
-| `state.py` | `AssistantState` / `AgentState` / I/O |
-| `nodes/` | Supervisor (`top_supervisor`), plan/synth, guardrail/rewrite/respond… |
-| `analytics/` | `build_analytics_graph` + `sql_agent/tools` |
-| `knowledge/` | `build_knowledge_graph` + `docs_agent` |
-
-Luồng: `guardrail → recall → rewrite → classify → top_supervisor ⇄ analytics_team|knowledge_team → respond → guardrail_output`.
-
 ## Quy ước import
 
-- Canonical: `src.domain.agents.graph`, `src.domain.agents.state`, `src.domain.agents.nodes.*`
 - SQL: `src.domain.agents.analytics.sql_agent.tools.*`
-- Docs: `src.domain.agents.knowledge.docs_agent.*`
+- Docs corpus: `src.domain.agents.knowledge.retrieval.*`
+- Docs team: `src.domain.agents.knowledge.docs_agent.*`
+
+Luồng: `guardrail → recall → rewrite → classify → top_supervisor ⇄ analytics_team|knowledge_team → respond`.

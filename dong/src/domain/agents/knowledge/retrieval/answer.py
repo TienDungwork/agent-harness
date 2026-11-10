@@ -2,7 +2,7 @@
 from __future__ import annotations
 from typing import Any
 import yaml
-from src.domain.knowledge.retrieval import card_excerpt_for_llm, retrieve_docs
+from src.domain.agents.knowledge.retrieval.retrieval import card_excerpt_for_llm, retrieve_docs
 from src.infra.llm.client import use_offline_tools
 from src.infra.llm.schemas import DocsAnswer
 from src.infra.llm.structured import invoke_structured

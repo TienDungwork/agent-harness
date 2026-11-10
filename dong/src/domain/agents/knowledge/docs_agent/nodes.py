@@ -5,7 +5,7 @@ from src.domain.agents.state import AgentState
 from src.infra.monitoring.tracing import current_span, trace_step
 
 def retrieve_docs_node(state: AgentState) -> dict:
-    from src.domain.knowledge import retrieve_docs
+    from src.domain.agents.knowledge.retrieval import retrieve_docs
     q = state['question'] if 'question' in state else ''
     user_id = (state['user_id'] if 'user_id' in state else None) or 'default'
     session_id = (state['session_id'] if 'session_id' in state else None) or 'default'
@@ -17,7 +17,7 @@ def retrieve_docs_node(state: AgentState) -> dict:
     return {'events': [node_event('retrieve_docs', input={'question': q}, output={'cards': cards, 'card_count': len(cards), 'card_ids': card_ids, 'titles': titles}, meta={'user_id': user_id, 'session_id': session_id})], 'rows': cards}
 
 def answer_from_docs_node(state: AgentState) -> dict:
-    from src.domain.knowledge import answer_from_docs
+    from src.domain.agents.knowledge.retrieval import answer_from_docs
     from src.infra.memory.context import compress_tool_result
     q = state['question'] if 'question' in state else ''
     user_id = (state['user_id'] if 'user_id' in state else None) or 'default'

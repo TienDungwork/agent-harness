@@ -224,7 +224,7 @@ def test_docs_node_compresses_large_docs_answer():
         "session_id": "test_sess",
     }
 
-    with patch("src.domain.knowledge.answer_from_docs", return_value=mock_docs_answer):
+    with patch("src.domain.agents.knowledge.retrieval.answer.answer_from_docs", return_value=mock_docs_answer):
         with patch("src.infra.memory.context.use_offline_tools", return_value=True):
             out = answer_from_docs_node(state)
             ans = out.get("answer", "")

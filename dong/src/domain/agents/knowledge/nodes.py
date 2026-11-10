@@ -2,4 +2,4 @@
 
 from __future__ import annotations
 
-# Docs path nodes live in knowledge.docs_agent.nodes; graph wires them.
+# Docs path nodes: docs_agent.nodes; corpus: domain.retrieval.

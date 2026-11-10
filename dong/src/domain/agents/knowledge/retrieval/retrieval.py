@@ -2,7 +2,7 @@
 from __future__ import annotations
 import re
 from typing import Any
-from src.domain.knowledge.loader import load_published_cards
+from src.domain.agents.knowledge.retrieval.loader import load_published_cards
 _STOP = {'có', 'bao', 'nhiêu', 'nào', 'trong', 'của', 'và', 'the', 'a', 'an', 'là', 'đang', 'cho', 'tôi', 'những', 'các', 'một', 'làm', 'sao', 'thế', 'nào', 'cách', 'hướng', 'dẫn', 'giúp', 'gì', 'ở', 'đâu', 'được', 'không', 'với', 'hôm', 'nay', 'ngày', 'thời', 'tiết', 'mưa', 'nắng'}
 _PHRASES = sorted(['thêm camera', 'thêm một camera mới', 'thêm camera mới', 'thêm một camera', 'quy trình thêm camera', 'xóa camera', 'sửa camera', 'chỉnh sửa camera', 'trạng thái camera', 'trực tuyến', 'ngoại tuyến', 'bảo trì', 'quản lý camera', 'đăng nhập', 'đăng xuất', 'xem live', 'trực tiếp', 'playback', 'phát lại', 'xem lại camera', 'xem lại', 'biển số', 'khuôn mặt', 'chấm công', 'không xem được live', 'camera bị đen', 'đổi mật khẩu', 'đặt lại mật khẩu', 'quên mật khẩu', 'xe máy', 'ô tô', 'làm thế nào để xem', 'vẽ vùng giám sát', 'lịch sử nhận diện'], key=len, reverse=True)
 

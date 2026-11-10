@@ -1,1 +1,1 @@
-"""Domain logic — agents, knowledge."""
+"""Domain logic — agents (knowledge corpus nested under agents/knowledge/retrieval)."""

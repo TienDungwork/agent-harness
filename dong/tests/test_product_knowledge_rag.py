@@ -16,15 +16,15 @@ from src.infra.db.dataset_catalog import (
     get_table_for_keywords,
     load_dataset_catalog,
 )
-from src.domain.knowledge.answer import _offline_answer_from_cards, answer_from_docs
-from src.domain.knowledge.loader import (
+from src.domain.agents.knowledge.retrieval.answer import _offline_answer_from_cards, answer_from_docs
+from src.domain.agents.knowledge.retrieval.loader import (
     aioc_docs_root,
     clear_docs_cache,
     load_aioc_cards,
     load_published_cards,
     load_vms_cards,
 )
-from src.domain.knowledge.retrieval import retrieve_docs
+from src.domain.agents.knowledge.retrieval.retrieval import retrieve_docs
 from src.infra.llm.schemas import DocsAnswer
 
 
@@ -115,7 +115,7 @@ def test_retrieve_docs_aioc_other_queries():
     assert res_diff[0]["id"] == "aioc.vms_vs_devices"
 
 
-@patch("src.domain.knowledge.answer.use_offline_tools", return_value=True)
+@patch("src.domain.agents.knowledge.retrieval.answer.use_offline_tools", return_value=True)
 def test_answer_from_docs_offline_case_015(_mock_offline):
     """Offline answer cho case 015 phải chứa 'trực tuyến' từ card content."""
     q = "Trên AIOC devices, trạng thái camera Trực Tuyến / Ngoại Tuyến / Bảo Trì nghĩa là gì và đổi ở đâu?"
@@ -125,7 +125,7 @@ def test_answer_from_docs_offline_case_015(_mock_offline):
     assert "aioc.camera_status" in ans.card_ids
 
 
-@patch("src.domain.knowledge.answer.use_offline_tools", return_value=True)
+@patch("src.domain.agents.knowledge.retrieval.answer.use_offline_tools", return_value=True)
 def test_answer_from_docs_offline_case_017(_mock_offline):
     """Offline answer cho case 017 phải chứa 'camera' từ card content."""
     q = "Vẽ sơ đồ quy trình thêm một camera mới trên AIOC (từ mở form đến tạo xong)."
@@ -196,15 +196,15 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from src.domain.agents.knowledge.docs_agent.tools.docs import handle_docs_intent
-from src.domain.knowledge.answer import _offline_answer_from_cards, answer_from_docs
-from src.domain.knowledge.loader import (
+from src.domain.agents.knowledge.retrieval.answer import _offline_answer_from_cards, answer_from_docs
+from src.domain.agents.knowledge.retrieval.loader import (
     clear_docs_cache,
     docs_root,
     load_index,
     load_published_cards,
     load_vms_cards,
 )
-from src.domain.knowledge.retrieval import card_excerpt_for_llm, retrieve_docs
+from src.domain.agents.knowledge.retrieval.retrieval import card_excerpt_for_llm, retrieve_docs
 from src.infra.llm.schemas import DocsAnswer
 
 
@@ -304,8 +304,8 @@ def test_answer_from_docs_offline_empty_cards():
     assert "không tìm thấy hướng dẫn" in ans.answer_vi.lower() or "chưa có thông tin" in ans.answer_vi.lower()
 
 
-@patch("src.domain.knowledge.answer.use_offline_tools", return_value=False)
-@patch("src.domain.knowledge.answer.invoke_structured")
+@patch("src.domain.agents.knowledge.retrieval.answer.use_offline_tools", return_value=False)
+@patch("src.domain.agents.knowledge.retrieval.answer.invoke_structured")
 def test_answer_from_docs_online_mock_structured(mock_structured, mock_offline):
     """Kiểm tra answer_from_docs chế độ online gọi invoke_structured đúng schema."""
     expected_answer = DocsAnswer(
@@ -326,8 +326,8 @@ def test_answer_from_docs_online_mock_structured(mock_structured, mock_offline):
     assert any("Bạn là trợ lý hướng dẫn sử dụng hệ thống VMS" in m["content"] for m in messages if m["role"] == "system")
 
 
-@patch("src.domain.knowledge.answer.use_offline_tools", return_value=False)
-@patch("src.domain.knowledge.answer.invoke_structured", side_effect=RuntimeError("LLM API timeout"))
+@patch("src.domain.agents.knowledge.retrieval.answer.use_offline_tools", return_value=False)
+@patch("src.domain.agents.knowledge.retrieval.answer.invoke_structured", side_effect=RuntimeError("LLM API timeout"))
 def test_answer_from_docs_online_failure_fallback(mock_structured, mock_offline):
     """Kiểm tra khi invoke_structured lỗi thì fallback sang offline heuristic thay vì crash."""
     cards = retrieve_docs("thêm camera")
