@@ -102,11 +102,16 @@ def _build_graph(checkpointer=None):
     graph.add_edge('rewrite', 'classify')
 
     def route_classify(state: AgentState) -> str:
+        from src.domain.authz.domain_guard import is_access_capability_question
         ans = ((state['answer'] if 'answer' in state else None) or '').strip()
         intent = state['intent'] if 'intent' in state else 'query_data'
         q = state['question'] if 'question' in state else ''
+        original = (state['original_question'] if 'original_question' in state else None) or ''
         rewritten = state['rewritten'] if 'rewritten' in state else None
         q_text = rewritten.text if rewritten else q
+        # Meta phân quyền: không để rewrite kéo sang SQL
+        if is_access_capability_question(f'{original}\n{q}\n{q_text}'):
+            return 'respond_inline'
         if intent == 'out_of_scope' and is_stat_event_domain(q_text):
             return 'top_supervisor'
         if ans and intent in ('chat', 'clarify') or intent in ('chat', 'out_of_scope'):

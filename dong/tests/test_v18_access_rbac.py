@@ -210,6 +210,8 @@ def test_capability_question_lists_security_domains():
     from src.domain.authz.domain_guard import format_access_capability_reply, is_access_capability_question
 
     assert is_access_capability_question('phân quyền tôi có thể hỏi được những loại event nào hiện tại?')
+    assert is_access_capability_question('tôi có thể hỏi những câu hỏi liên quan đến loại event nào?')
+    assert not is_access_capability_question('Hôm nay có bao nhiêu event xâm nhập vùng cấm?')
     ctx = AccessContext(
         user_id='hp_anninh',
         effective_org_id=103,

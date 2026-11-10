@@ -65,6 +65,15 @@ def classify_node(state: AgentState) -> dict:
         out_state['answer'] = ''
     return out_state
 
+def _capability_probe_text(state: AgentState) -> str:
+    """Ưu tiên câu gốc — rewrite hay ghi đè question thành SQL-like."""
+    original = (state['original_question'] if 'original_question' in state else None) or ''
+    q = (state['question'] if 'question' in state else None) or ''
+    rewritten = state['rewritten'] if 'rewritten' in state else None
+    rw = rewritten.text if rewritten is not None and getattr(rewritten, 'text', None) else ''
+    return f'{original}\n{q}\n{rw}'
+
+
 def respond_inline_node(state: AgentState) -> dict:
     from src.domain.agents.nodes.inline_respond import generate_inline_response
     from src.domain.authz.domain_guard import format_access_capability_reply, is_access_capability_question
@@ -77,10 +86,12 @@ def respond_inline_node(state: AgentState) -> dict:
     session_id = (state['session_id'] if 'session_id' in state else None) or 'default'
     memories = (state['recalled_memories'] if 'recalled_memories' in state else None) or []
     access = state['access_context'] if 'access_context' in state else None
+    probe = _capability_probe_text(state)
+    is_capability = is_access_capability_question(probe)
     q_low = q_text.lower()
     is_identity = any((k in q_low for k in ('tôi là ai', 'tên tôi', 'tôi tên', 'biết gì về tôi', 'vai trò của tôi', 'tôi phụ trách gì')))
     with trace_step(current_span(), 'inline_response', input={'intent': intent}, as_type='tool') as sub:
-        if is_access_capability_question(q_text) or is_access_capability_question(q):
+        if is_capability:
             ans = format_access_capability_reply(access)
             intent = 'chat'
         elif is_identity and memories:
@@ -90,9 +101,9 @@ def respond_inline_node(state: AgentState) -> dict:
                 ans = generate_inline_response(q_text, intent=intent, memories=memories)
         elif intent == 'clarify' and (not ans):
             ans = 'Bạn có thể nói rõ hơn yêu cầu của mình được không?'
-        sub['output'] = {'answer_len': len(ans or ''), 'capability': bool(access and is_access_capability_question(q_text))}
+        sub['output'] = {'answer_len': len(ans or ''), 'capability': is_capability}
     resp_mode = 'out_of_scope' if intent == 'out_of_scope' else 'inline'
-    return {'answer': ans, 'respond_mode': resp_mode, 'events': [node_event('respond_inline', input={'question': q, 'intent': intent}, output={'answer': ans, 'respond_mode': resp_mode}, meta={'user_id': user_id, 'session_id': session_id})]}
+    return {'answer': ans, 'respond_mode': resp_mode, 'events': [node_event('respond_inline', input={'question': q, 'intent': intent}, output={'answer': ans, 'respond_mode': resp_mode}, meta={'user_id': user_id, 'session_id': session_id, 'capability': is_capability})]}
 
 def route_intent(state: AgentState) -> str:
     intent = state['intent'] if 'intent' in state else 'query_data'

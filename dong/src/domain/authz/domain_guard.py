@@ -30,21 +30,35 @@ _CAPABILITY_HINTS = (
     'phân quyền',
     'được hỏi',
     'được xem',
+    'có thể hỏi',
+    'được phép hỏi',
     'quyền của tôi',
     'phạm vi của tôi',
-    'loại event nào',
-    'loại sự kiện nào',
+    'loại event',
+    'loại sự kiện',
+    'những loại event',
+    'những loại sự kiện',
     'hỏi được những',
     'hỏi được gì',
+    'hỏi những câu',
     'domain nào',
     'lĩnh vực nào',
+    'liên quan đến loại',
 )
 
 
 def is_access_capability_question(question: str) -> bool:
     """Câu meta hỏi 'tôi được hỏi/xem gì' theo role — không phải truy vấn số liệu."""
     q = (question or '').lower()
-    return any(h in q for h in _CAPABILITY_HINTS)
+    if not q:
+        return False
+    if any(h in q for h in _CAPABILITY_HINTS):
+        # Tránh bắt nhầm câu hỏi số liệu thật: "có bao nhiêu event xâm nhập"
+        if any(x in q for x in ('bao nhiêu', 'hôm nay', 'thống kê', 'liệt kê theo', 'từ ngày', 'đến ngày')):
+            if 'phân quyền' not in q and 'có thể hỏi' not in q and 'được hỏi' not in q and 'được phép' not in q:
+                return False
+        return True
+    return False
 
 
 def format_access_capability_reply(ctx: AccessContext | None) -> str:
