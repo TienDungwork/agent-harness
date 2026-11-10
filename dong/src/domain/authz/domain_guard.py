@@ -11,7 +11,7 @@ DENY_REPLY = (
 
 _DOMAIN_LABELS: dict[str, str] = {
     'traffic': 'Phương tiện / biển số (ITS)',
-    'security_events': 'Vùng cấm / bất thường an ninh',
+    'security_events': 'Vùng cấm / bất thường (ẩu đả, đám đông, leo trèo)',
     'fire_smoke': 'Cháy khói (PCCC)',
     'face': 'Nhận diện khuôn mặt',
     'camera': 'Camera / live / registry',
@@ -28,22 +28,35 @@ _DOMAIN_LABELS: dict[str, str] = {
 
 _CAPABILITY_HINTS = (
     'phân quyền',
+    'có quyền',
+    'quyền xem',
+    'quyền hỏi',
     'được hỏi',
     'được xem',
     'có thể hỏi',
+    'có thể xem',
     'được phép hỏi',
+    'được phép xem',
     'quyền của tôi',
     'phạm vi của tôi',
     'loại event',
     'loại sự kiện',
     'những loại event',
     'những loại sự kiện',
+    'những sự kiện nào',
+    'sự kiện nào',
     'hỏi được những',
     'hỏi được gì',
     'hỏi những câu',
+    'xem những sự kiện',
     'domain nào',
     'lĩnh vực nào',
     'liên quan đến loại',
+)
+
+_CAPABILITY_STRONG = (
+    'phân quyền', 'có quyền', 'quyền xem', 'quyền hỏi', 'quyền của tôi',
+    'được hỏi', 'được xem', 'được phép', 'có thể hỏi', 'có thể xem', 'phạm vi của tôi',
 )
 
 
@@ -52,13 +65,13 @@ def is_access_capability_question(question: str) -> bool:
     q = (question or '').lower()
     if not q:
         return False
-    if any(h in q for h in _CAPABILITY_HINTS):
-        # Tránh bắt nhầm câu hỏi số liệu thật: "có bao nhiêu event xâm nhập"
-        if any(x in q for x in ('bao nhiêu', 'hôm nay', 'thống kê', 'liệt kê theo', 'từ ngày', 'đến ngày')):
-            if 'phân quyền' not in q and 'có thể hỏi' not in q and 'được hỏi' not in q and 'được phép' not in q:
-                return False
-        return True
-    return False
+    if not any(h in q for h in _CAPABILITY_HINTS):
+        return False
+    # Tránh bắt nhầm câu số liệu: "có bao nhiêu sự kiện ẩu đả hôm nay"
+    if any(x in q for x in ('bao nhiêu', 'hôm nay', 'thống kê', 'liệt kê theo', 'từ ngày', 'đến ngày')):
+        if not any(s in q for s in _CAPABILITY_STRONG):
+            return False
+    return True
 
 
 def format_access_capability_reply(ctx: AccessContext | None) -> str:
