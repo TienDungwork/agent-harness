@@ -36,3 +36,7 @@ src/
 - Docs team: `src.domain.agents.knowledge.docs_agent.*`
 
 Luồng: `guardrail → recall → rewrite → classify → top_supervisor ⇄ analytics_team|knowledge_team → respond`.
+
+## Current state
+
+- `infra/llm/params.py`: `GenerationParams` + preset `DETERMINISTIC` (SQL/structured, temp=0), `TASK` (`LLM_TEMPERATURE`), `RESPOND` (`LLM_RESPOND_TEMPERATURE`, mặc định 0.7).

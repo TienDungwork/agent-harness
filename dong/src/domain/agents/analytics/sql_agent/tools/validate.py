@@ -6,6 +6,7 @@ from src.domain.agents.nodes.io import node_event
 from src.shared.config import settings
 from src.infra.db.validator import ValidationResult, validate_sql
 from src.infra.llm.client import invoke_text, use_offline_tools
+from src.infra.llm.params import DETERMINISTIC
 from src.infra.monitoring.tracing import current_span, trace_step
 from src.infra.prompts import registry
 
@@ -98,7 +99,7 @@ def repair_sql_node(state: dict) -> dict:
         user_prompt = '\n\n'.join(user_parts)
         sub['output'] = {'user_prompt_len': len(user_prompt), 'reason': val_reason}
     max_tokens = settings.sql_generate_max_tokens
-    raw = invoke_text(system_prompt, user_prompt, max_tokens=max_tokens, substep='repair_sql')
+    raw = invoke_text(system_prompt, user_prompt, max_tokens=max_tokens, params=DETERMINISTIC, substep='repair_sql')
     with trace_step(current_span(), 'extract_sql', input={'raw_len': len(raw)}, as_type='tool') as sub:
         repaired_sql = extract_sql(raw)
         sub['output'] = {'sql_len': len(repaired_sql), 'empty': not bool(repaired_sql)}

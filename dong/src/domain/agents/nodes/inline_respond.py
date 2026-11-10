@@ -5,6 +5,7 @@ import re
 from datetime import datetime, timezone, timedelta
 from src.shared.config import settings
 from src.infra.llm.client import invoke_text, use_offline_tools
+from src.infra.llm.params import RESPOND
 from src.infra.prompts import registry
 logger = logging.getLogger(__name__)
 _DAYS_VN = {0: 'Thứ Hai', 1: 'Thứ Ba', 2: 'Thứ Tư', 3: 'Thứ Năm', 4: 'Thứ Sáu', 5: 'Thứ Bảy', 6: 'Chủ Nhật'}
@@ -43,7 +44,7 @@ def generate_inline_response(question: str, intent: str='chat', memories: list[s
             user_prompt = f'Thông tin đã biết về user:\n{mem_lines}\n\n{user_prompt}'
         if settings.llm_backend == 'self_hosted' or 'qwen' in settings.model_name.lower():
             user_prompt = f'/nothink\n{user_prompt}'
-        raw = invoke_text(system_prompt, user_prompt, max_tokens=settings.sql_respond_max_tokens or 256, substep='respond_inline')
+        raw = invoke_text(system_prompt, user_prompt, max_tokens=settings.sql_respond_max_tokens or 256, params=RESPOND, substep='respond_inline')
         cleaned = re.sub('<think>.*?</think>', '', raw or '', flags=re.DOTALL).strip()
         if cleaned:
             return cleaned

@@ -6,6 +6,7 @@ from collections import deque
 from dataclasses import dataclass
 from functools import lru_cache
 from langchain_openai import ChatOpenAI
+from src.infra.llm.params import GenerationParams, TASK
 from src.shared.config import settings
 
 @dataclass(frozen=True, slots=True)
@@ -59,25 +60,29 @@ class SafeChatOpenAI(ChatOpenAI):
             payload['max_tokens'] = payload.pop('max_completion_tokens')
         return payload
 
-def base_llm(model_override: str | None=None, backend_override: str | None=None, temperature_override: float | None=None, max_tokens_override: int | None=None):
+def base_llm(model_override: str | None=None, backend_override: str | None=None, temperature_override: float | None=None, max_tokens_override: int | None=None, params: GenerationParams | None=None):
     backend_name = (backend_override or settings.llm_backend).strip().lower()
     backend = _get_backend(backend_name)
+    gen = params or TASK
+    mt = max_tokens_override if max_tokens_override is not None else gen.max_tokens
     if backend_name == 'self_hosted':
         from src.infra.llm.gateway import cap_output_tokens, resolve_self_hosted_model
         api_key = settings.model_api_key or backend.dummy_key
         base_url = settings.model_base_url or backend.default_base_url
         model = resolve_self_hosted_model(model_override)
-        max_tokens_override = cap_output_tokens(max_tokens_override)
+        mt = cap_output_tokens(mt)
     else:
         api_key = _pool().get_key()
         base_url = settings.llm_base_url or None
         model = model_override or settings.llm_model or 'gpt-4o-mini'
-    temperature = settings.llm_temperature if temperature_override is None else temperature_override
+    temperature = gen.temperature if temperature_override is None else temperature_override
     kwargs: dict = {'model': model, 'temperature': temperature, 'api_key': api_key, 'max_retries': settings.llm_max_retries, 'request_timeout': settings.llm_request_timeout_s}
     if base_url:
         kwargs['base_url'] = base_url
-    if max_tokens_override is not None:
-        kwargs['max_tokens'] = max_tokens_override
+    if mt is not None:
+        kwargs['max_tokens'] = mt
+    if gen.top_p is not None:
+        kwargs['top_p'] = gen.top_p
     return SafeChatOpenAI(**kwargs)
 
 def invoke_with_tools(messages, tools=None, model_override: str | None=None, backend_override: str | None=None):
@@ -100,17 +105,20 @@ def _llm_model_label(backend_override: str | None=None) -> str:
         return resolve_self_hosted_model()
     return settings.llm_model or 'gpt-4o-mini'
 
-def invoke_text(system_prompt: str, user_prompt: str, model_override: str | None=None, backend_override: str | None=None, max_tokens: int | None=None, *, substep: str | None='llm_text', stop: list[str] | None=None) -> str:
+def invoke_text(system_prompt: str, user_prompt: str, model_override: str | None=None, backend_override: str | None=None, max_tokens: int | None=None, *, params: GenerationParams | None=None, substep: str | None='llm_text', stop: list[str] | None=None) -> str:
     """Lời gọi LLM đơn giản không tool — dùng cho bước Answer và SQL generator."""
     from src.infra.monitoring.trace_payload import llm_io_payload
     from src.infra.monitoring.tracing import add_request_tokens, current_span, extract_token_usage, trace_step
-    meta = {'model_name': _llm_model_label(backend_override), 'temperature': settings.llm_temperature}
+    gen = params or TASK
+    temp = gen.temperature
+    mt = max_tokens if max_tokens is not None else gen.max_tokens
+    meta = {'model_name': _llm_model_label(backend_override), 'temperature': temp}
     prompt_in = llm_io_payload(system_prompt or '', user_prompt or '', '')['input']
-    if max_tokens is not None:
-        prompt_in = {**prompt_in, 'max_tokens': max_tokens}
+    if mt is not None:
+        prompt_in = {**prompt_in, 'max_tokens': mt}
 
     def _call() -> tuple[str, dict[str, int]]:
-        llm = base_llm(model_override=model_override, backend_override=backend_override, max_tokens_override=max_tokens)
+        llm = base_llm(model_override=model_override, backend_override=backend_override, max_tokens_override=mt, params=gen)
         if stop:
             llm = llm.bind(stop=stop)
         response = llm.invoke([{'role': 'system', 'content': system_prompt}, {'role': 'user', 'content': user_prompt}])

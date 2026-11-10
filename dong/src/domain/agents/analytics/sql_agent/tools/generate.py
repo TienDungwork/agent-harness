@@ -6,6 +6,7 @@ from src.domain.agents.analytics.sql_agent.tools.pre_sql import format_time_rang
 from src.domain.agents.analytics.sql_agent.tools.scope import apply_organization_scope, format_org_scope_for_prompt
 from src.shared.config import settings
 from src.infra.llm.client import invoke_text, use_offline_tools
+from src.infra.llm.params import DETERMINISTIC
 from src.infra.monitoring.tracing import current_span, trace_step
 from src.infra.prompts import registry
 _SQL_FENCE = re.compile('```(?:sql)?\\s*(.*?)```', re.IGNORECASE | re.DOTALL)
@@ -67,7 +68,7 @@ def generate_sql_node(state: dict) -> dict:
             if settings.llm_backend == 'self_hosted' or 'qwen' in settings.model_name.lower():
                 user_parts.insert(0, '/nothink')
             user_prompt = '\n\n'.join(user_parts)
-            raw = invoke_text(system_prompt, user_prompt, max_tokens=settings.sql_generate_max_tokens, substep='generate_sql')
+            raw = invoke_text(system_prompt, user_prompt, max_tokens=settings.sql_generate_max_tokens, params=DETERMINISTIC, substep='generate_sql')
             sql_batch = build_sql_batch(batch_subs, raw_llm=raw)
         first_sql = sql_batch[0]['sql'] if sql_batch else ''
         return {'sql': first_sql, 'sql_batch': sql_batch, 'error': '', 'events': [node_event('generate_sql', input={'batch_sub_questions': batch_subs, 'schema_excerpt_len': len(schema_excerpt)}, output={'sql_batch': sql_batch, 'batch_size': len(sql_batch)}, meta={'user_id': user_id, 'session_id': session_id, 'batch': True})]}
@@ -119,7 +120,7 @@ def generate_sql_node(state: dict) -> dict:
         user_prompt = '\n\n'.join(user_parts)
         sub['output'] = {'user_prompt_len': len(user_prompt), 'schema_excerpt_len': len(schema_excerpt)}
     max_tokens = settings.sql_generate_max_tokens
-    raw = invoke_text(system_prompt, user_prompt, max_tokens=max_tokens, substep='generate_sql')
+    raw = invoke_text(system_prompt, user_prompt, max_tokens=max_tokens, params=DETERMINISTIC, substep='generate_sql')
     with trace_step(current_span(), 'extract_sql', input={'raw_len': len(raw)}, as_type='tool') as sub:
         sql = extract_sql(raw)
         sub['output'] = {'sql_len': len(sql), 'empty': not bool(sql)}

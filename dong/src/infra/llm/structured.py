@@ -7,6 +7,7 @@ from typing import TypeVar
 from pydantic import BaseModel, ValidationError
 
 from src.infra.llm.client import base_llm
+from src.infra.llm.params import DETERMINISTIC, GenerationParams
 
 T = TypeVar("T", bound=BaseModel)
 
@@ -18,16 +19,17 @@ def invoke_structured(
     model_override: str | None = None,
     backend_override: str | None = None,
     substep: str | None = None,
+    params: GenerationParams | None = None,
 ) -> T:
     """Gọi LLM với structured output; trả về instance `schema`."""
-    from src.shared.config import settings
     from src.infra.llm.client import _llm_model_label
     from src.infra.monitoring.tracing import current_span, trace_step
 
+    gen = params or DETERMINISTIC
     step_name = substep or schema.__name__
 
     def _call() -> T:
-        llm = base_llm(model_override=model_override, backend_override=backend_override)
+        llm = base_llm(model_override=model_override, backend_override=backend_override, params=gen)
         structured = llm.with_structured_output(schema)
         result = structured.invoke(messages)
         if isinstance(result, schema):
@@ -36,7 +38,7 @@ def invoke_structured(
 
     from src.infra.monitoring.trace_payload import redact_text
 
-    meta = {"model_name": _llm_model_label(backend_override), "temperature": settings.llm_temperature}
+    meta = {"model_name": _llm_model_label(backend_override), "temperature": gen.temperature}
     trace_in: dict = {"schema": schema.__name__}
     if isinstance(messages, list):
         safe_msgs = []

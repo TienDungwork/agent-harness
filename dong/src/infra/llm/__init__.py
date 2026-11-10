@@ -10,6 +10,12 @@ from src.infra.llm.client import (
     ping,
     use_offline_tools,
 )
+from src.infra.llm.params import (
+    DETERMINISTIC,
+    GenerationParams,
+    RESPOND,
+    TASK,
+)
 from src.infra.llm.schemas import (
     ChartSpec,
     DocsAnswer,
@@ -33,6 +39,10 @@ __all__ = [
     "invoke_structured",
     "ping",
     "use_offline_tools",
+    "GenerationParams",
+    "DETERMINISTIC",
+    "TASK",
+    "RESPOND",
     "RewrittenQuestion",
     "IntentResult",
     "QueryPlan",

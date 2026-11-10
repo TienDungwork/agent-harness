@@ -7,6 +7,7 @@ from src.domain.agents.nodes.io import node_event
 from src.domain.agents.state import AgentState, Agent_Output
 from src.infra.chart.render import _detect_chart_type, plan_chart, should_render_chart
 from src.shared.guardrails import OUT_OF_SCOPE_REPLY
+from src.infra.llm.params import RESPOND
 from src.infra.llm.schemas import QueryResult, StatAnswer
 from src.domain.agents.tools import effective_question, filter_memories_for_stat, memory_context_block, original_question, respond_event_input, strip_thinking
 from src.domain.agents.nodes.synth import _aggregate_all_events_rows, _build_orchestrator_query_result, _synthesize_orchestrator_answer
@@ -150,7 +151,7 @@ def respond_node(state: AgentState) -> dict:
                     sys_prompt = registry().render('respond_stat')
                     sys_prompt = f'{sys_prompt}\n\n[Nhắc lại chỉ dẫn]: {safety_instruction}'
                     with trace_step(current_span(), 'respond_stat', input={'row_count': len(rows)}, as_type='generation'):
-                        raw = invoke_text(sys_prompt, f'{memory_context_block(state, for_stat=True, question=q)}Câu hỏi: {q}\nDữ liệu:\n{template_ans}', max_tokens=settings.sql_respond_max_tokens, substep=None)
+                        raw = invoke_text(sys_prompt, f'{memory_context_block(state, for_stat=True, question=q)}Câu hỏi: {q}\nDữ liệu:\n{template_ans}', max_tokens=settings.sql_respond_max_tokens, params=RESPOND, substep=None)
                     polished = strip_thinking(raw)
                     if polished:
                         ans = polished

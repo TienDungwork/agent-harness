@@ -29,6 +29,10 @@ class Settings(BaseSettings):
     openai_api_keys: str = Field(default="", alias="OPENAI_API_KEYS")
     llm_model: str = Field(default="gpt-4o-mini", alias="LLM_MODEL")
     llm_temperature: float = Field(default=0.2, alias="LLM_TEMPERATURE")
+    # Temperature riêng bước respond (preset RESPOND trong infra/llm/params.py).
+    llm_respond_temperature: float = Field(default=0.7, alias="LLM_RESPOND_TEMPERATURE")
+    # top_p tùy chọn; None = không gửi (để backend dùng default).
+    llm_top_p: float | None = Field(default=None, alias="LLM_TOP_P")
     llm_max_retries: int = Field(default=3, alias="LLM_MAX_RETRIES")
     llm_api_key: str = Field(default="", alias="LLM_API_KEY")
     llm_request_timeout_s: float = Field(default=60.0, alias="LLM_REQUEST_TIMEOUT_S")
