@@ -1,1 +1,1 @@
-"""Domain logic — agents (knowledge corpus nested under agents/knowledge/retrieval)."""
+"""Domain logic — agents, retrieval corpus, authz."""

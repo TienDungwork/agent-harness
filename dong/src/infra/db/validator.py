@@ -82,8 +82,17 @@ def validate_sql(
     if hit:
         return ValidationResult(False, f"Cấm từ khóa ghi/DDL: {hit.group(0).upper()}.")
 
-    # Kiểm tra bảng
-    allowed = allowed_tables if allowed_tables is not None else get_allowed_tables()
+    # Kiểm tra bảng (+ giao RBAC bộ phận nếu AccessContext đang bind)
+    if allowed_tables is not None:
+        allowed = set(allowed_tables)
+    else:
+        allowed = set(get_allowed_tables())
+        from src.domain.authz.access_context import get_bound_access_context
+        from src.domain.authz.domain_guard import rbac_table_allowlist
+
+        rbac = rbac_table_allowlist(get_bound_access_context())
+        if rbac is not None:
+            allowed &= rbac
     scan = _FN_FROM.sub(" ", cleaned)
     ctes = {m.group(1).lower() for m in _CTE_NAME.finditer(scan)}
     referenced = [m.group(1).lower() for m in _TABLE_REF.finditer(scan)]

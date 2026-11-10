@@ -103,9 +103,15 @@ class Settings(BaseSettings):
     minio_public_base_url: str = Field(default="", alias="MINIO_PUBLIC_BASE_URL")
     chart_object_ttl_days: int = Field(default=10, alias="CHART_OBJECT_TTL_DAYS")
 
+    # ── IAM / RBAC (v18) ─────────────────────────────────────────────────────
+    iam_base_url: str = Field(default="", alias="IAM_BASE_URL")
+    iam_required: bool = Field(default=False, alias="IAM_REQUIRED")
+    iam_timeout_s: float = Field(default=5.0, alias="IAM_TIMEOUT_S")
+
     # ── API / CORS ───────────────────────────────────────────────────────────
     api_access_key: str = Field(default="", alias="API_ACCESS_KEY")
     cors_allow_origins: str = Field(default="*", alias="CORS_ALLOW_ORIGINS")
+
 
     # ── Cache / TTL response cache (trước graph) ─────────────────────────────
     cache_enabled: bool = Field(default=True, alias="CACHE_ENABLED")
@@ -123,6 +129,7 @@ class Settings(BaseSettings):
         "memory_long_term_enabled",
         "cache_enabled",
         "monitoring_enabled",
+        "iam_required",
         mode="before",
     )
     @classmethod

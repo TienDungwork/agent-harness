@@ -6,9 +6,13 @@ from src.infra.monitoring.tracing import current_span, trace_step
 
 def retrieve_docs_node(state: AgentState) -> dict:
     from src.domain.agents.knowledge.retrieval import retrieve_docs
+    from src.domain.authz.domain_guard import DENY_REPLY, docs_domain_allowed
     q = state['question'] if 'question' in state else ''
     user_id = (state['user_id'] if 'user_id' in state else None) or 'default'
     session_id = (state['session_id'] if 'session_id' in state else None) or 'default'
+    access = state['access_context'] if 'access_context' in state else None
+    if not docs_domain_allowed(q, access):
+        return {'answer': DENY_REPLY, 'respond_mode': 'out_of_scope', 'rows': [], 'events': [node_event('retrieve_docs', input={'question': q}, output={'denied': True, 'card_count': 0}, meta={'user_id': user_id, 'session_id': session_id})]}
     with trace_step(current_span(), 'retrieve_docs', input={'question': q}, as_type='tool') as sub:
         cards = retrieve_docs(q)
         sub['output'] = {'card_count': len(cards)}

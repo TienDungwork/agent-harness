@@ -28,6 +28,8 @@
     attachedImageBase64: null,
     attachedImageFilename: null,
     memoryFactsCount: 0,
+    authUser: null,
+    iamRequired: false,
   };
 
   // DOM Elements
@@ -67,6 +69,21 @@
     feedbackPreviewImg: document.getElementById('feedback-preview-img'),
     btnRemovePreview: document.getElementById('btn-remove-preview'),
     toastContainer: document.getElementById('toast-container'),
+    btnAuth: document.getElementById('btn-auth'),
+    authPillText: document.getElementById('auth-pill-text'),
+    authPillDot: document.getElementById('auth-pill-dot'),
+    authModal: document.getElementById('auth-modal'),
+    btnCloseAuth: document.getElementById('btn-close-auth'),
+    btnAuthLogin: document.getElementById('btn-auth-login'),
+    btnAuthLogout: document.getElementById('btn-auth-logout'),
+    btnAuthLoginText: document.getElementById('btn-auth-login-text'),
+    authUsername: document.getElementById('auth-username'),
+    authPassword: document.getElementById('auth-password'),
+    authError: document.getElementById('auth-error'),
+    authSession: document.getElementById('auth-session'),
+    authSessionName: document.getElementById('auth-session-name'),
+    authSessionMeta: document.getElementById('auth-session-meta'),
+    authQuickUsers: document.getElementById('auth-quick-users'),
   };
 
 
@@ -391,11 +408,187 @@
   }
 
 
+  function getAccessToken() {
+    return (
+      localStorage.getItem('agent_access_token') ||
+      localStorage.getItem('access_token') ||
+      sessionStorage.getItem('access_token') ||
+      sessionStorage.getItem('auth_access_token_memory') ||
+      ''
+    );
+  }
+
+  function setAuthSession(user, token) {
+    state.authUser = user || null;
+    if (token) {
+      localStorage.setItem('agent_access_token', token);
+    }
+    if (user && user.organization_id != null) {
+      localStorage.setItem('agent_organization_id', String(user.organization_id));
+    }
+    if (user && user.user_id) {
+      localStorage.setItem('agent_user_id', String(user.user_id));
+      state.userId = String(user.user_id);
+    }
+    renderAuthPill();
+    renderAuthSessionBox();
+  }
+
+  function clearAuthSession() {
+    state.authUser = null;
+    localStorage.removeItem('agent_access_token');
+    localStorage.removeItem('access_token');
+    sessionStorage.removeItem('access_token');
+    sessionStorage.removeItem('auth_access_token_memory');
+    renderAuthPill();
+    renderAuthSessionBox();
+  }
+
+  function renderAuthPill() {
+    if (!el.authPillText) return;
+    const u = state.authUser;
+    if (u) {
+      el.authPillText.textContent = `${u.user_id} · ${u.role_group}`;
+      if (el.authPillDot) el.authPillDot.classList.add('on');
+      if (el.btnAuth) el.btnAuth.title = `${u.full_name || u.user_id} (${u.role_group})`;
+    } else {
+      el.authPillText.textContent = state.iamRequired ? 'Đăng nhập để hỏi' : 'Chưa đăng nhập';
+      if (el.authPillDot) el.authPillDot.classList.remove('on');
+      if (el.btnAuth) el.btnAuth.title = 'Đăng nhập tài khoản IAM (VMS)';
+    }
+  }
+
+  function renderAuthSessionBox() {
+    if (!el.authSession) return;
+    const u = state.authUser;
+    if (!u) {
+      el.authSession.hidden = true;
+      return;
+    }
+    el.authSession.hidden = false;
+    if (el.authSessionName) el.authSessionName.textContent = u.full_name || u.user_id;
+    const sites = (u.scope && u.scope.site_ids) ? u.scope.site_ids.join(',') : '—';
+    if (el.authSessionMeta) {
+      el.authSessionMeta.textContent = `${u.role_group} · org ${u.organization_id} · site [${sites}]`;
+    }
+  }
+
+  function openAuthModal(message) {
+    if (!el.authModal) return;
+    if (el.authError) {
+      if (message) {
+        el.authError.hidden = false;
+        el.authError.textContent = message;
+      } else {
+        el.authError.hidden = true;
+        el.authError.textContent = '';
+      }
+    }
+    renderAuthSessionBox();
+    el.authModal.classList.add('active');
+    el.authModal.setAttribute('aria-hidden', 'false');
+    if (el.authUsername && !el.authUsername.value) el.authUsername.focus();
+    else if (el.authPassword) el.authPassword.focus();
+  }
+
+  function closeAuthModal() {
+    if (!el.authModal) return;
+    el.authModal.classList.remove('active');
+    el.authModal.setAttribute('aria-hidden', 'true');
+  }
+
+  async function refreshAuthFromToken() {
+    const token = getAccessToken();
+    if (!token) {
+      clearAuthSession();
+      return false;
+    }
+    try {
+      const res = await apiFetch('/api/auth/me');
+      if (!res.ok) {
+        clearAuthSession();
+        return false;
+      }
+      const user = await res.json();
+      setAuthSession(user, token);
+      return true;
+    } catch (err) {
+      console.warn('auth/me failed', err);
+      return false;
+    }
+  }
+
+  async function handleAuthLogin() {
+    const username = (el.authUsername && el.authUsername.value || '').trim();
+    const password = el.authPassword ? el.authPassword.value : '';
+    if (!username || !password) {
+      if (el.authError) {
+        el.authError.hidden = false;
+        el.authError.textContent = 'Nhập tên đăng nhập và mật khẩu.';
+      }
+      return;
+    }
+    if (el.btnAuthLogin) el.btnAuthLogin.disabled = true;
+    if (el.btnAuthLoginText) el.btnAuthLoginText.textContent = 'Đang đăng nhập…';
+    if (el.authError) el.authError.hidden = true;
+    try {
+      const res = await fetch('/api/auth/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username, password, remember: true }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        const detail = data.detail || `Đăng nhập thất bại (${res.status})`;
+        throw new Error(typeof detail === 'string' ? detail : JSON.stringify(detail));
+      }
+      setAuthSession(data.user, data.access_token);
+      if (el.authPassword) el.authPassword.value = '';
+      closeAuthModal();
+      showToast(`Đã đăng nhập ${data.user.user_id} (${data.user.role_group})`, 'success');
+      await initUserAndSessions();
+      renderSessionList();
+    } catch (err) {
+      if (el.authError) {
+        el.authError.hidden = false;
+        el.authError.textContent = err.message || 'Đăng nhập thất bại';
+      }
+    } finally {
+      if (el.btnAuthLogin) el.btnAuthLogin.disabled = false;
+      if (el.btnAuthLoginText) el.btnAuthLoginText.textContent = 'Đăng nhập';
+    }
+  }
+
+  function handleAuthLogout() {
+    clearAuthSession();
+    if (el.authPassword) el.authPassword.value = '';
+    showToast('Đã đăng xuất', 'success');
+    if (state.iamRequired) openAuthModal('Đăng nhập lại để tiếp tục hỏi đáp.');
+    else closeAuthModal();
+  }
+
   // Initialize
   async function init() {
     setupEventListeners();
     adjustTextareaHeight();
     checkSystemHealth();
+    try {
+      const cfgRes = await apiFetch('/api/config');
+      if (cfgRes.ok) {
+        const cfg = await cfgRes.json();
+        state.iamRequired = !!cfg.iam_required;
+        if (cfg.default_organization_id && !localStorage.getItem('agent_organization_id')) {
+          localStorage.setItem('agent_organization_id', String(cfg.default_organization_id));
+        }
+      }
+    } catch (err) {
+      console.warn('config load failed', err);
+    }
+    const ok = await refreshAuthFromToken();
+    renderAuthPill();
+    if (state.iamRequired && !ok) {
+      openAuthModal('Bật chế độ production: cần đăng nhập IAM trước khi hỏi.');
+    }
     await initUserAndSessions();
     await fetchUserMemoryStatus();
     renderSessionList();
@@ -415,6 +608,44 @@
     // Reset Memory Button (Phase 2 Core UI)
     if (el.btnResetMemory) {
       el.btnResetMemory.addEventListener('click', handleResetMemory);
+    }
+
+    if (el.btnAuth) {
+      el.btnAuth.addEventListener('click', () => openAuthModal());
+    }
+    if (el.btnCloseAuth) {
+      el.btnCloseAuth.addEventListener('click', () => {
+        if (state.iamRequired && !state.authUser) return;
+        closeAuthModal();
+      });
+    }
+    if (el.btnAuthLogin) {
+      el.btnAuthLogin.addEventListener('click', handleAuthLogin);
+    }
+    if (el.btnAuthLogout) {
+      el.btnAuthLogout.addEventListener('click', handleAuthLogout);
+    }
+    if (el.authPassword) {
+      el.authPassword.addEventListener('keydown', (ev) => {
+        if (ev.key === 'Enter') handleAuthLogin();
+      });
+    }
+    if (el.authQuickUsers) {
+      el.authQuickUsers.addEventListener('click', (ev) => {
+        const btn = ev.target.closest('.auth-user-chip');
+        if (!btn) return;
+        const user = btn.getAttribute('data-user') || '';
+        const pass = btn.getAttribute('data-pass') || 'Atin@123#';
+        if (el.authUsername) el.authUsername.value = user;
+        if (el.authPassword) el.authPassword.value = pass;
+        if (el.authError) {
+          el.authError.hidden = true;
+          el.authError.textContent = '';
+        }
+        el.authQuickUsers.querySelectorAll('.auth-user-chip').forEach((c) => c.classList.remove('active'));
+        btn.classList.add('active');
+        if (el.btnAuthLogin) el.btnAuthLogin.focus();
+      });
     }
 
     // Sample Questions Accordion Toggle (v2.yaml)
@@ -1435,6 +1666,24 @@
     const headers = { ...(opts.headers || {}) };
     const accessKey = localStorage.getItem('agent_api_access_key');
     if (accessKey) headers['X-API-Key'] = accessKey;
+    // v18 IAM: Bearer + org (token từ localStorage / query ?access_token=)
+    const bearer =
+      localStorage.getItem('agent_access_token') ||
+      localStorage.getItem('access_token') ||
+      sessionStorage.getItem('access_token') ||
+      sessionStorage.getItem('auth_access_token_memory') ||
+      '';
+    if (bearer && !headers['Authorization']) {
+      headers['Authorization'] = bearer.startsWith('Bearer ') ? bearer : `Bearer ${bearer}`;
+    }
+    const orgId =
+      localStorage.getItem('agent_organization_id') ||
+      localStorage.getItem('organization_id') ||
+      localStorage.getItem('company_id') ||
+      '';
+    if (orgId && !headers['X-Organization-Id']) {
+      headers['X-Organization-Id'] = String(orgId);
+    }
     opts.headers = headers;
     return fetch(url, opts);
   }
@@ -1442,6 +1691,12 @@
   async function handleSendMessage() {
     const question = el.questionInput.value.trim();
     if (!question || state.isGenerating) return;
+
+    if (state.iamRequired && !getAccessToken()) {
+      openAuthModal('Cần đăng nhập IAM trước khi gửi câu hỏi.');
+      showToast('Đăng nhập để hỏi theo phân quyền bộ phận', 'error');
+      return;
+    }
 
     state.lastQuestion = question;
     state.lastAgentTrace = [];
@@ -1507,7 +1762,11 @@
         let errText = '⚠️ **Lỗi kết nối**: Không thể kết nối tới backend/API. Vui lòng kiểm tra lại hệ thống.';
         try {
           const errData = await res.json();
-          if (res.status === 400 && (errData.detail || errData.reason)) {
+          if (res.status === 401 || res.status === 403) {
+            clearAuthSession();
+            openAuthModal(errData.detail || 'Phiên đăng nhập hết hạn hoặc không đủ quyền.');
+            errText = errData.detail || 'Cần đăng nhập lại (IAM).';
+          } else if (res.status === 400 && (errData.detail || errData.reason)) {
             errText = errData.detail || errData.reason;
           } else if (errData.detail) {
             errText = errData.detail;

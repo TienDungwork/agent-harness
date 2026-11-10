@@ -81,11 +81,17 @@ from src.api.helpers.errors import (
     format_error_message as _format_error_message,
     short_user_error as _short_user_error,
 )
-from src.api.routers.routes_agent import ask, chat, router as agent_router, stream_agent
-from src.api.routers.routes_feedback import router as feedback_router
-from src.api.routers.routes_memory import router as memory_router
-from src.api.routers.routes_meta import router as meta_router
-from src.api.routers.routes_sessions import router as sessions_router
+from src.api.routers import (
+    agent_router,
+    ask,
+    auth_router,
+    chat,
+    feedback_router,
+    memory_router,
+    meta_router,
+    sessions_router,
+    stream_agent,
+)
 from src.api.models.schemas import AskRequest, AskResponse, ChatRequest, ChatResponse
 from src.infra.memory.ttl_cache import _cache, get_ttl_cached, make_cache_key, set_ttl_cached
 
@@ -119,6 +125,7 @@ app.add_middleware(
 )
 
 app.include_router(meta_router)
+app.include_router(auth_router)
 app.include_router(sessions_router)
 app.include_router(memory_router)
 app.include_router(feedback_router)

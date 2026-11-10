@@ -94,7 +94,7 @@ def test_router_cache_miss_executes_graph_and_populates_cache(monkeypatch):
 
 def test_router_cache_hit_skips_graph_execution_completely(monkeypatch):
     """Cache Hit phản hồi tức thì và bỏ qua hoàn toàn việc thực thi graph."""
-    monkeypatch.setattr("src.api.routers.routes_agent.persist_session_turn", lambda **_: None)
+    monkeypatch.setattr("src.api.routers.agent.routes_agent.persist_session_turn", lambda **_: None)
     q = "Bao nhiêu xe máy vào cổng hôm nay?"
     set_ttl_cached(make_cache_key(q, route="query_data"), {
         "question": q,

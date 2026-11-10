@@ -34,4 +34,19 @@ def ping_llm():
 
 @router.get('/api/config')
 def get_config():
-    return {'llm_backend': settings.llm_backend, 'active_model': settings.effective_model, 'self_hosted_base_url': settings.model_base_url, 'self_hosted_chat_endpoint': settings.model_endpoint, 'self_hosted_model': settings.model_name, 'monitoring_enabled': settings.monitoring_enabled, 'supported_domains': ['Phương tiện (ITS)', 'Vùng cấm (Fence)', 'Khuôn mặt (Face)', 'Ẩu đả (Fight)', 'Đám đông (Crowd)', 'Leo trèo (Intrusion)', 'Cháy khói (Fire)', 'Mực nước (Water)']}
+    return {
+        'llm_backend': settings.llm_backend,
+        'active_model': settings.effective_model,
+        'self_hosted_base_url': settings.model_base_url,
+        'self_hosted_chat_endpoint': settings.model_endpoint,
+        'self_hosted_model': settings.model_name,
+        'monitoring_enabled': settings.monitoring_enabled,
+        'iam_required': bool(settings.iam_required),
+        'iam_configured': bool((settings.iam_base_url or '').strip()),
+        'default_organization_id': settings.db_organization_id or 103,
+        'supported_domains': [
+            'Phương tiện (ITS)', 'Vùng cấm (Fence)', 'Khuôn mặt (Face)',
+            'Ẩu đả (Fight)', 'Đám đông (Crowd)', 'Leo trèo (Intrusion)',
+            'Cháy khói (Fire)', 'Mực nước (Water)',
+        ],
+    }

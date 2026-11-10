@@ -14,6 +14,11 @@ def retrieve_schema_node(state: AgentState) -> dict:
     q_text = query_text_for_state(state)
     with trace_step(current_span(), 'select_tables', input={'question': q_text}, as_type='tool'):
         tables = select_relevant_tables(q_text, limit=4)
+    from src.domain.authz.domain_guard import DENY_REPLY, filter_tables_by_access
+    access = state['access_context'] if 'access_context' in state else None
+    tables = filter_tables_by_access(tables, access)
+    if not tables and access is not None and not access.allows_all_domains():
+        return {'schema_excerpt': '', 'selected_tables': [], 'answer': DENY_REPLY, 'respond_mode': 'out_of_scope', 'error': 'domain_denied', 'events': [node_event('retrieve_schema', input={'intent': intent, 'question': q}, output={'selected_tables': [], 'denied': True}, meta={'user_id': user_id, 'session_id': session_id})]}
     with trace_step(current_span(), 'build_schema_excerpt', input={'tables': tables}, as_type='tool') as sub:
         excerpt = build_schema_excerpt(tables)
         sub['output'] = {'selected_tables': tables, 'schema_length': len(excerpt)}

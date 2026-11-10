@@ -1,4 +1,4 @@
-# `src/` — layout (v16 hierarchical)
+# `src/` — layout (v16 hierarchical + v18 RBAC)
 
 Entry: `uvicorn src.main:app` từ `agent-harness/dong/`. Cấu hình: `src/shared/settings/` (shim `shared.config`) + `.env`.
 
@@ -8,6 +8,11 @@ Entry: `uvicorn src.main:app` từ `agent-harness/dong/`. Cấu hình: `src/shar
 src/
 ├── main.py
 ├── api/
+│   ├── routers/
+│   │   ├── agent/               # /api/chat, /ask, /api/agent/stream
+│   │   └── web_backend/         # sessions, memory, meta, feedback
+│   ├── helpers/
+│   └── models/
 ├── application/                 # AgentTurnService
 ├── domain/
 │   ├── agents/
@@ -19,6 +24,7 @@ src/
 │   │       ├── graph.py
 │   │       ├── docs_agent/      # nodes + camera/docs adapters
 │   │       └── retrieval/       # corpus YAML: loader / retrieve / answer
+│   └── authz/
 ├── infra/
 └── shared/
 ```

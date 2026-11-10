@@ -125,6 +125,9 @@ cp .env.example .env
 | | `MODEL_BASE_URL` | `http://192.168.1.198:18083/v1` | Endpoint gateway nội bộ |
 | | `MODEL_NAME` | `qwen3-4b` | Tên mô hình chạy trên gateway |
 | | `OPENAI_API_KEYS` | `sk-...` | Danh sách API Key OpenAI nếu dùng cloud |
+| **IAM / RBAC (v18)** | `IAM_BASE_URL` | `http://192.168.1.250:21601` (prod) / `:18641` (staging) | Base IAM B2B (`GET /api/v1/auth/me`); FE gửi Bearer + `X-Organization-Id` |
+| | `IAM_REQUIRED` | `false` | `true` = bắt buộc Bearer; `false` = bypass BOARD (local/eval). Demo login: [specs/rbac-demo-howto.md](specs/rbac-demo-howto.md) |
+| | `IAM_TIMEOUT_S` | `5.0` | Timeout gọi IAM |
 | **Cổng mạng (Ports)** | `BACKEND_PORT` | `8000` | Cổng Backend API FastAPI |
 | | `FRONTEND_PORT` | `8080` (hoặc `3001`) | Cổng Web UI qua Nginx |
 

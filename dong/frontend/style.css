@@ -1539,6 +1539,78 @@ html, body {
   opacity: 0.92;
 }
 
+.auth-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  max-width: 220px;
+  border: 1px solid var(--border-light);
+  background: var(--bg-elevated, #fff);
+  color: var(--text-primary);
+  border-radius: 999px;
+  padding: 0.35rem 0.75rem;
+  font-size: 0.78rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+.auth-pill-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #c45c26;
+  flex-shrink: 0;
+}
+.auth-pill-dot.on {
+  background: #2f9e44;
+}
+.auth-quick-users {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  margin: 0 0 1rem;
+}
+.auth-user-chip {
+  border: 1px solid var(--border-light);
+  background: transparent;
+  border-radius: 999px;
+  padding: 0.3rem 0.65rem;
+  font-size: 0.75rem;
+  cursor: pointer;
+}
+.auth-user-chip:hover,
+.auth-user-chip.active {
+  border-color: var(--accent-warm);
+  color: var(--accent-warm);
+}
+.auth-cred-list {
+  margin: 0 0 1rem;
+  padding: 0.65rem 0.75rem;
+  border-radius: var(--radius-md);
+  background: var(--bg-muted, #f6f4f1);
+  font-size: 0.78rem;
+  line-height: 1.55;
+  font-family: 'JetBrains Mono', ui-monospace, monospace;
+}
+.auth-cred-list code {
+  font-weight: 600;
+}
+.auth-error {
+  color: #c92a2a;
+  font-size: 0.85rem;
+  margin: 0.5rem 0 0;
+}
+.auth-session {
+  margin-top: 0.75rem;
+  padding: 0.75rem;
+  border-radius: var(--radius-md);
+  background: var(--bg-muted, #f6f4f1);
+  font-size: 0.85rem;
+}
+.auth-session-meta {
+  opacity: 0.75;
+  margin-top: 0.25rem;
+}
+
 /* ==========================================================================
    Responsive Adaptations
    ========================================================================== */

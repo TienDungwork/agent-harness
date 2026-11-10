@@ -190,6 +190,10 @@
           </div>
         </div>
         <div class="topbar-right">
+          <button type="button" class="auth-pill" id="btn-auth" title="Đăng nhập tài khoản IAM (VMS)">
+            <span class="auth-pill-dot" id="auth-pill-dot"></span>
+            <span id="auth-pill-text">Chưa đăng nhập</span>
+          </button>
           <div class="memory-badge" id="memory-status-badge" title="Bộ nhớ phiên: Số facts đã ghi nhớ">
             <span class="memory-badge-icon">🧠</span>
             <span id="memory-status-text">Bộ nhớ: 0 facts</span>
@@ -350,6 +354,54 @@
         <button type="button" class="btn-secondary" id="btn-cancel-feedback">Hủy bỏ</button>
         <button type="button" class="btn-primary" id="btn-submit-feedback">
           <span id="btn-submit-feedback-text">Xác nhận gửi phản hồi</span>
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- IAM Login Modal (demo / production-like) -->
+  <div class="modal-backdrop" id="auth-modal" aria-hidden="true">
+    <div class="modal-card auth-modal-card">
+      <div class="modal-header">
+        <div class="feedback-modal-title">
+          <h3>Đăng nhập IAM (VMS)</h3>
+        </div>
+        <button type="button" class="btn-close-modal" id="btn-close-auth">&times;</button>
+      </div>
+      <div class="modal-body">
+        <p class="feedback-desc">Bấm chip bộ phận → tự điền user/pass → chỉ cần <strong>Đăng nhập</strong>. Org: <strong>103</strong>. Mật khẩu demo chung: <code>Atin@123#</code></p>
+        <div class="auth-quick-users" id="auth-quick-users">
+          <button type="button" class="auth-user-chip" data-user="hp_anninh" data-pass="Atin@123#" title="hp_anninh / Atin@123#">An ninh</button>
+          <button type="button" class="auth-user-chip" data-user="hp_moitruong" data-pass="Atin@123#" title="hp_moitruong / Atin@123#">Môi trường</button>
+          <button type="button" class="auth-user-chip" data-user="hp_vanhanh" data-pass="Atin@123#" title="hp_vanhanh / Atin@123#">Vận hành</button>
+          <button type="button" class="auth-user-chip" data-user="hp_banlanhdao" data-pass="Atin@123#" title="hp_banlanhdao / Atin@123#">Ban lãnh đạo</button>
+          <button type="button" class="auth-user-chip" data-user="hp_orgadmin" data-pass="Atin@123#" title="hp_orgadmin / Atin@123#">Org admin</button>
+        </div>
+        <div class="auth-cred-list" aria-label="Danh sách tài khoản demo">
+          <div><code>hp_anninh</code> · An ninh · <code>Atin@123#</code></div>
+          <div><code>hp_moitruong</code> · Môi trường · <code>Atin@123#</code></div>
+          <div><code>hp_vanhanh</code> · Vận hành · <code>Atin@123#</code></div>
+          <div><code>hp_banlanhdao</code> · Ban lãnh đạo · <code>Atin@123#</code></div>
+          <div><code>hp_orgadmin</code> · Org admin · <code>Atin@123#</code></div>
+        </div>
+        <div class="form-group">
+          <label class="form-label" for="auth-username">Tên đăng nhập</label>
+          <input class="form-input" id="auth-username" type="text" autocomplete="username" placeholder="hp_anninh">
+        </div>
+        <div class="form-group">
+          <label class="form-label" for="auth-password">Mật khẩu (hiện rõ — demo)</label>
+          <input class="form-input" id="auth-password" type="text" autocomplete="off" placeholder="Atin@123#" spellcheck="false">
+        </div>
+        <p class="auth-error" id="auth-error" hidden></p>
+        <div class="auth-session" id="auth-session" hidden>
+          <div><strong id="auth-session-name">—</strong></div>
+          <div class="auth-session-meta" id="auth-session-meta">—</div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn-secondary" id="btn-auth-logout">Đăng xuất</button>
+        <button type="button" class="btn-primary" id="btn-auth-login">
+          <span id="btn-auth-login-text">Đăng nhập</span>
         </button>
       </div>
     </div>

@@ -1,5 +1,20 @@
 # Change Log — agent dong
 
+## 2026-11-10 — API layout: `routers/agent` + `routers/web_backend`
+
+- Chatbot → `src/api/routers/agent/`; sessions/memory/meta/feedback → `src/api/routers/web_backend/`.
+- URL + `src.main:app` không đổi.
+- Spec/plan: `docs/superpowers/specs/2026-11-10-api-agent-web-backend-layout-design.md`.
+
+## 2026-11-10 — v18 IAM RBAC + domain/geo scope + retrieval rename
+
+- Spec: `v18-rbac-iam-design.md` / `v18-rbac-iam-plan.md`; product AC-12.
+- IAM: `GET /auth/me` → `AccessContext`; org 403; `IAM_REQUIRED` bypass local.
+- Align Hưng Phú runtime: resolve `role_code` / `role_details.dashboard_role_group` (`security`…); alias `BLD_HP`/`VH_HP`; IAM B2B `:21601`/`:18641`.
+- **A+B:** allowlist bảng (schema + `validate_sql`); keyword phụ; SQL ép org (+ geo khi có cột).
+- Package docs: `agents/knowledge/retrieval/` (commit riêng `c11b1b8`).
+- Tests: `tests/test_v18_access_rbac.py` (15). FE Bearer + `X-Organization-Id`.
+
 ## 2026-11-10 — v17 rich traces + MinIO charts + cross-DB «và» decompose
 
 - Langfuse: `trace_payload` (redact prompts, slim `state_snapshot`); `invoke_text` full system/user.

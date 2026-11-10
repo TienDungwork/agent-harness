@@ -6,8 +6,24 @@
 **Trạng thái v14 (ai_backend layout):** 14.1–14.4 done — [v14-ai-backend-layout-design.md](v14-ai-backend-layout-design.md); 14.5 optional.  
 **Trạng thái v15 (leaf agents + flat graph):** 15.1–15.5 done — [v15-leaf-agents-flat-graph-design.md](v15-leaf-agents-flat-graph-design.md).  
 **Trạng thái v16 (hierarchical teams):** 16.1–16.7 code (continuous) — [v16-hierarchical-agents-design.md](v16-hierarchical-agents-design.md) · [v16-hierarchical-agents-plan.md](v16-hierarchical-agents-plan.md).  
+**Trạng thái v18 (IAM RBAC):** đang triển khai — [v18-rbac-iam-design.md](v18-rbac-iam-design.md) · [v18-rbac-iam-plan.md](v18-rbac-iam-plan.md).  
 **Nguồn:** `specs/product-spec.md`, `specs/superpowers-workflow-vi.md`  
 **Quy tắc:** Thực hiện tuần tự từng dòng `[ ]` một, kiểm tra kỹ lưỡng, sau đó đổi thành `[x]` và cập nhật `specs/change-log.md`. Không implement hàng loạt nhiều bước cùng lúc. **Task mới → thêm checklist ở đây trước khi code.**
+
+---
+
+## v18 — IAM RBAC + domain/geo + retrieval rename
+
+**Goal:** Bộ phận chỉ hỏi domain được phép; SQL geo/org; IAM `/auth/me`.  
+**Design:** [v18-rbac-iam-design.md](v18-rbac-iam-design.md) · **Plan:** [v18-rbac-iam-plan.md](v18-rbac-iam-plan.md) · **AC:** AC-12.
+
+- [x] 18.1 Spec + AC-12 + index
+- [x] 18.2 IAM gate + AccessContext
+- [x] 18.3 Domain RBAC
+- [x] 18.4 Geo SQL scope
+- [x] 18.5 Docs domain filter
+- [x] 18.6 Rename knowledge → retrieval
+- [x] 18.7 FE headers + smoke
 
 ---
 

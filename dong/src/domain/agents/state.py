@@ -16,6 +16,8 @@ class Agent_Input(BaseModel):
     rewritten: Any | None = None
     user_id: str = "default"
     stream_tokens: bool = False
+    access_context: Any | None = None
+
 
 
 class Agent_Output(BaseModel):
@@ -82,6 +84,8 @@ class AgentState(TypedDict, total=False):
     events: Annotated[list[dict], operator.add]
     result: Agent_Output
     guardrail_in_scope: bool
+    access_context: Any
+
 
 
 __all__ = [

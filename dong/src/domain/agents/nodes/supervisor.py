@@ -41,6 +41,7 @@ def _apply_orchestrator_batch(out: dict, plan: OrchestratorPlan, start_idx: int)
 
 def orchestrator_node(state: AgentState) -> dict:
     from src.domain.agents.nodes.plan import plan_orchestration
+    from src.domain.authz.domain_guard import DENY_REPLY, question_domains_allowed
     from src.infra.llm.client import use_offline_tools
     q = state['question'] if 'question' in state else ''
     rewritten = state['rewritten'] if 'rewritten' in state else None
@@ -49,6 +50,11 @@ def orchestrator_node(state: AgentState) -> dict:
     session_id = (state['session_id'] if 'session_id' in state else None) or 'default'
     intent = state['intent'] if 'intent' in state else 'query_data'
     llm_used = not use_offline_tools()
+    access = state['access_context'] if 'access_context' in state else None
+    allowed, forbidden = question_domains_allowed(q_text, access)
+    if not allowed:
+        plan = OrchestratorPlan(steps=[], is_multi=False, reason=f'domain_denied:{",".join(sorted(forbidden))}')
+        return {'orchestrator_plan': plan, 'answer': DENY_REPLY, 'respond_mode': 'out_of_scope', 'intent': 'out_of_scope', 'events': [node_event('orchestrator', input={'question': q_text, 'intent': intent}, output={'denied_domains': sorted(forbidden), 'answer': DENY_REPLY}, meta={'user_id': user_id, 'session_id': session_id, 'domain_denied': True})]}
     plan_existing: OrchestratorPlan | None = state['orchestrator_plan'] if 'orchestrator_plan' in state else None
     if (state['orchestrator_multi_active'] if 'orchestrator_multi_active' in state else None) and plan_existing and plan_existing.steps:
         idx = int((state['orchestrator_step_index'] if 'orchestrator_step_index' in state else None) or 0)

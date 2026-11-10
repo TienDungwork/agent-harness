@@ -178,7 +178,7 @@ def _trace_output_from_result(result: Agent_Output, *, status: str='ok', error: 
 
 def _fresh_invoke_state(question: str, inp: Agent_Input, uid: str, session_id: str) -> dict:
     """State khởi tạo mỗi lượt — xóa orchestrator cũ khỏi checkpointer."""
-    return {'question': question, 'original_question': question, 'rewritten': getattr(inp, 'rewritten', None), 'user_id': uid, 'session_id': session_id, 'stream_tokens': getattr(inp, 'stream_tokens', False), 'events': [], 'sql': '', 'repair_count': 0, 'error': '', 'rows': [], 'columns': [], 'orchestrator_plan': None, 'orchestrator_step_index': 0, 'orchestrator_batch_sub_questions': [], 'orchestrator_batch_end_index': 0, 'orchestrator_step_results': [], 'orchestrator_multi_active': False, 'sql_batch': [], 'sql_batch_results': [], 'multi_hop_ready': False, 'intent': '', 'chart_requested': False, 'chart_type': None, 'answer': '', 'respond_mode': '', 'docs_answer': None, 'guardrail_in_scope': True}
+    return {'question': question, 'original_question': question, 'rewritten': getattr(inp, 'rewritten', None), 'user_id': uid, 'session_id': session_id, 'stream_tokens': getattr(inp, 'stream_tokens', False), 'events': [], 'sql': '', 'repair_count': 0, 'error': '', 'rows': [], 'columns': [], 'orchestrator_plan': None, 'orchestrator_step_index': 0, 'orchestrator_batch_sub_questions': [], 'orchestrator_batch_end_index': 0, 'orchestrator_step_results': [], 'orchestrator_multi_active': False, 'sql_batch': [], 'sql_batch_results': [], 'multi_hop_ready': False, 'intent': '', 'chart_requested': False, 'chart_type': None, 'answer': '', 'respond_mode': '', 'docs_answer': None, 'guardrail_in_scope': True, 'access_context': getattr(inp, 'access_context', None)}
 
 def run_agent(inp: Agent_Input, parent_span: Any=None, session_id: str='default', user_id: str | None=None, *, trace_name: str='chat', trace_metadata: dict[str, Any] | None=None) -> Agent_Output:
     from src.infra.monitoring.tracing import trace_answer
@@ -196,6 +196,8 @@ def run_agent(inp: Agent_Input, parent_span: Any=None, session_id: str='default'
         span_token = None
         if not own_root and active_span is not None:
             span_token = bind_trace_root(active_span)
+        from src.domain.authz import bind_access_context, reset_access_context
+        access_token = bind_access_context(getattr(inp, 'access_context', None))
         try:
             state = _get_graph().invoke(_fresh_invoke_state(question, inp, uid, session_id), config=config)
             result = state['result'] if 'result' in state else None
@@ -206,6 +208,7 @@ def run_agent(inp: Agent_Input, parent_span: Any=None, session_id: str='default'
             threading.Thread(target=run_store_extract, args=(uid, session_id, question, result, active_span), daemon=True).start()
             return result
         finally:
+            reset_access_context(access_token)
             if span_token is not None:
                 reset_trace_root(span_token)
 
@@ -225,6 +228,8 @@ def run_agent_stream(inp: Agent_Input, parent_span: Any=None, session_id: str='d
         span_token = None
         active_span = parent_span
         trace_ctx = nullcontext({})
+        from src.domain.authz import bind_access_context, reset_access_context
+        access_token = bind_access_context(getattr(inp, 'access_context', None))
         if use_worker_trace:
             trace_ctx = trace_answer(trace_name, meta['trace_question'] if 'trace_question' in meta else question, metadata=meta, box=trace_box)
         try:
@@ -254,6 +259,7 @@ def run_agent_stream(inp: Agent_Input, parent_span: Any=None, session_id: str='d
                     if span_token is not None:
                         reset_trace_root(span_token)
         finally:
+            reset_access_context(access_token)
             q.put(None)
     t = threading.Thread(target=target)
     t.start()

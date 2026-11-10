@@ -56,7 +56,8 @@ def generate_sql_node(state: dict) -> dict:
             tr_hint = format_time_range_for_prompt(time_range)
             if tr_hint:
                 user_parts.append(tr_hint)
-            org_hint = format_org_scope_for_prompt()
+            ctx = state['access_context'] if 'access_context' in state else None
+            org_hint = format_org_scope_for_prompt(ctx)
             if org_hint:
                 user_parts.append(org_hint)
             if schema_excerpt:
@@ -87,7 +88,8 @@ def generate_sql_node(state: dict) -> dict:
             sql = 'SELECT count(*) FROM plate_event WHERE event_time >= CURRENT_DATE'
         else:
             sql = 'SELECT count(*) FROM plate_event'
-        sql = apply_organization_scope(sql)
+        ctx = state['access_context'] if 'access_context' in state else None
+        sql = apply_organization_scope(sql, ctx)
         return {'sql': sql, 'error': '', 'events': [node_event('generate_sql', input={'question': q_text, 'offline': True}, output={'sql': sql}, meta={'user_id': user_id, 'session_id': session_id, 'offline': True})]}
     system_prompt = registry().render('sql_agent')
     rewritten = state['rewritten'] if 'rewritten' in state else None
@@ -105,7 +107,8 @@ def generate_sql_node(state: dict) -> dict:
         chart_hint = build_chart_sql_hint(q_text)
         if chart_hint:
             user_parts.append(chart_hint)
-        org_hint = format_org_scope_for_prompt()
+        ctx = state['access_context'] if 'access_context' in state else None
+        org_hint = format_org_scope_for_prompt(ctx)
         if org_hint:
             user_parts.append(org_hint)
         if schema_excerpt:
@@ -123,6 +126,7 @@ def generate_sql_node(state: dict) -> dict:
     if not sql:
         return {'sql': '', 'error': 'Không thể tạo câu SQL từ câu hỏi.', 'events': [node_event('generate_sql', input={'question': q_text, 'schema_excerpt_len': len(schema_excerpt)}, output={'sql': '', 'error': 'empty_extract', 'raw_len': len(raw)}, meta={'user_id': user_id, 'session_id': session_id, 'max_tokens': max_tokens})]}
     with trace_step(current_span(), 'apply_org_scope', input={'sql': sql}, as_type='tool') as sub:
-        sql = apply_organization_scope(sql)
+        ctx = state['access_context'] if 'access_context' in state else None
+        sql = apply_organization_scope(sql, ctx)
         sub['output'] = {'sql': sql}
     return {'sql': sql, 'error': '', 'events': [node_event('generate_sql', input={'question': q_text, 'schema_excerpt_len': len(schema_excerpt)}, output={'sql': sql}, meta={'user_id': user_id, 'session_id': session_id, 'max_tokens': max_tokens})]}

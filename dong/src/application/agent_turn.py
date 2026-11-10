@@ -41,6 +41,7 @@ class TurnInput(BaseModel):
     request_id: str = ''
     stream_tokens: bool = False
     rewritten: Any | None = None
+    access_context: Any | None = None
 
 class TurnOutput(BaseModel):
     question: str
@@ -57,7 +58,7 @@ class AgentTurnService:
     def process(self, inp: TurnInput, **run_kwargs: Any) -> TurnOutput:
         import src.main as main_mod
         from src.domain.agents.graph import Agent_Input
-        out = main_mod.run_agent(Agent_Input(question=inp.question, rewritten=inp.rewritten, user_id=inp.user_id, stream_tokens=inp.stream_tokens), session_id=inp.session_id, user_id=inp.user_id, **run_kwargs)
+        out = main_mod.run_agent(Agent_Input(question=inp.question, rewritten=inp.rewritten, user_id=inp.user_id, stream_tokens=inp.stream_tokens, access_context=inp.access_context), session_id=inp.session_id, user_id=inp.user_id, **run_kwargs)
         query = getattr(out, 'query', None)
         detail = {'tool': getattr(query, 'tool', '') if query else '', 'columns': getattr(query, 'columns', []) if query else [], 'row_count': getattr(query, 'row_count', 0) if query else 0, 'agent_detail': out.detail}
         return TurnOutput(question=out.question, answer=out.answer, detail=detail, query=query)
@@ -66,7 +67,7 @@ class AgentTurnService:
         """Map legacy run_agent_stream dicts → v16 event dicts (token/node/complete)."""
         import src.main as main_mod
         from src.domain.agents.graph import Agent_Input
-        for event in main_mod.run_agent_stream(Agent_Input(question=inp.question, rewritten=inp.rewritten, user_id=inp.user_id, stream_tokens=inp.stream_tokens), session_id=inp.session_id, user_id=inp.user_id, **stream_kwargs):
+        for event in main_mod.run_agent_stream(Agent_Input(question=inp.question, rewritten=inp.rewritten, user_id=inp.user_id, stream_tokens=inp.stream_tokens, access_context=inp.access_context), session_id=inp.session_id, user_id=inp.user_id, **stream_kwargs):
             if not isinstance(event, dict):
                 continue
             if '__final_result__' in event:
