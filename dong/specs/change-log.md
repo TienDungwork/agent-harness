@@ -6,6 +6,12 @@
 - URL + `src.main:app` không đổi.
 - Spec/plan: `docs/superpowers/specs/2026-11-10-api-agent-web-backend-layout-design.md`.
 
+## 2026-11-10 — golden v2.4 + RBAC eval (31/33)
+
+- Dataset `eval/datasets/agent_stat/v2.yaml` → **v2.4**: +3 case `rbac` (#031 capability, #032 deny energy, #033 allow fire) với `role_group`.
+- `eval/run.py` inject `AccessContext`; `in_scope` thêm keyword môi trường/điện; `respond_inline` DENY sớm khi domain cấm.
+- Live eval `--judge`: **31/33** (`rbac` 3/3); fail cũ AIOC howto #012/#015 (thiếu `aioc.atin.vn` / `trực tuyến`). Báo cáo: `eval/results/golden-30.md`.
+
 ## 2026-11-10 — v18 IAM RBAC + domain/geo scope + retrieval rename
 
 - Spec: `v18-rbac-iam-design.md` / `v18-rbac-iam-plan.md`; product AC-12.

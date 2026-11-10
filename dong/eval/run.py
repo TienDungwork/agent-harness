@@ -99,7 +99,30 @@ class CaseEvalResult:
     answer: str = ""
 
 
-def run_pipeline(question: str) -> PipelineResult:
+def _access_context_for_case(case: dict):
+    """Optional YAML `role_group` / `user_id` → AccessContext (RBAC eval)."""
+    role = (case.get("role_group") or "").strip()
+    if not role:
+        return None
+    from src.domain.authz.access_context import AccessContext, GeoScope
+    from src.domain.authz.role_matrix import domains_for_role_group, tables_for_domains
+
+    domains = domains_for_role_group(role)
+    uid = (case.get("user_id") or f"eval_{role.lower()}").strip()
+    return AccessContext(
+        user_id=uid,
+        effective_org_id=int(case.get("organization_id") or 103),
+        role_group=role,
+        roles=[role],
+        dashboard_tabs=list(case.get("dashboard_tabs") or []),
+        allowed_domains=domains,
+        allowed_tables=tables_for_domains(domains),
+        scope=GeoScope(unrestricted=False, organization_ids=[103], site_ids=[5]),
+        bypass=False,
+    )
+
+
+def run_pipeline(question: str, *, case: dict | None = None) -> PipelineResult:
     """Lặp lại ĐÚNG pipeline của src/main.py::ask() (guardrail_input → agent
     → guardrail_output) — KHÔNG gọi thẳng run_agent(), vì bỏ qua guardrail
     thì case out_of_scope/injection trong dataset không bao giờ đúng kỳ vọng
@@ -110,17 +133,24 @@ def run_pipeline(question: str) -> PipelineResult:
     except GuardrailViolation as exc:
         return PipelineResult(answer=exc.reason)
 
-    if not in_scope(question):
+    access = _access_context_for_case(case or {})
+    # Case RBAC: luôn vào graph (để DENY_REPLY), không cắt sớm bằng in_scope product.
+    if access is None and not in_scope(question):
         return PipelineResult(answer=OUT_OF_SCOPE_REPLY)
 
     question = redact_pii(question)
+    uid = (access.user_id if access else None) or "eval"
     # Unique thread_id mỗi case — tránh dính checkpoint cũ (msgpack unregistered / hang).
     out = run_agent(
-        Agent_Input(question=question, user_id="eval"),
+        Agent_Input(question=question, user_id=uid, access_context=access),
         session_id=f"eval-{uuid.uuid4().hex[:12]}",
-        user_id="eval",
+        user_id=uid,
         trace_name="eval",
-        trace_metadata={"source": "eval", "trace_question": question},
+        trace_metadata={
+            "source": "eval",
+            "trace_question": question,
+            "role_group": access.role_group if access else "bypass",
+        },
     )
 
     query = out.query
@@ -262,7 +292,7 @@ def write_golden_30(
         "",
         "---",
         "",
-        "## Chi tiết câu hỏi và câu trả lời thực tế (30 cases)",
+        f"## Chi tiết câu hỏi và câu trả lời thực tế ({len(results)} cases)",
         "",
     ])
 
@@ -315,7 +345,7 @@ def run(
         t0 = time.perf_counter()
         pipeline_result: PipelineResult | None = None
         try:
-            pipeline_result = run_pipeline(case["question"])
+            pipeline_result = run_pipeline(case["question"], case=case)
             failures = check_case(case, pipeline_result)
         except Exception as exc:  # noqa: BLE001 — muốn thấy lỗi case nào, không dừng cả batch
             failures = [f"lỗi khi chạy pipeline: {type(exc).__name__}: {exc}"]

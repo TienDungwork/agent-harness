@@ -76,7 +76,12 @@ def _capability_probe_text(state: AgentState) -> str:
 
 def respond_inline_node(state: AgentState) -> dict:
     from src.domain.agents.nodes.inline_respond import generate_inline_response
-    from src.domain.authz.domain_guard import format_access_capability_reply, is_access_capability_question
+    from src.domain.authz.domain_guard import (
+        DENY_REPLY,
+        format_access_capability_reply,
+        is_access_capability_question,
+        question_domains_allowed,
+    )
     q = state['question'] if 'question' in state else ''
     rewritten = state['rewritten'] if 'rewritten' in state else None
     q_text = rewritten.text if rewritten else q
@@ -88,12 +93,17 @@ def respond_inline_node(state: AgentState) -> dict:
     access = state['access_context'] if 'access_context' in state else None
     probe = _capability_probe_text(state)
     is_capability = is_access_capability_question(probe)
+    domain_ok, forbidden = question_domains_allowed(probe, access)
     q_low = q_text.lower()
     is_identity = any((k in q_low for k in ('tôi là ai', 'tên tôi', 'tôi tên', 'biết gì về tôi', 'vai trò của tôi', 'tôi phụ trách gì')))
     with trace_step(current_span(), 'inline_response', input={'intent': intent}, as_type='tool') as sub:
         if is_capability:
             ans = format_access_capability_reply(access)
             intent = 'chat'
+        elif not domain_ok:
+            # Keyword domain cấm — deny trước greeting out_of_scope
+            ans = DENY_REPLY
+            intent = 'out_of_scope'
         elif is_identity and memories:
             ans = generate_inline_response(q_text, intent=intent, memories=memories)
         elif intent in ('chat', 'out_of_scope'):
@@ -101,9 +111,14 @@ def respond_inline_node(state: AgentState) -> dict:
                 ans = generate_inline_response(q_text, intent=intent, memories=memories)
         elif intent == 'clarify' and (not ans):
             ans = 'Bạn có thể nói rõ hơn yêu cầu của mình được không?'
-        sub['output'] = {'answer_len': len(ans or ''), 'capability': is_capability}
+        sub['output'] = {
+            'answer_len': len(ans or ''),
+            'capability': is_capability,
+            'domain_denied': (not domain_ok),
+            'forbidden_domains': sorted(forbidden) if forbidden else [],
+        }
     resp_mode = 'out_of_scope' if intent == 'out_of_scope' else 'inline'
-    return {'answer': ans, 'respond_mode': resp_mode, 'events': [node_event('respond_inline', input={'question': q, 'intent': intent}, output={'answer': ans, 'respond_mode': resp_mode}, meta={'user_id': user_id, 'session_id': session_id, 'capability': is_capability})]}
+    return {'answer': ans, 'respond_mode': resp_mode, 'events': [node_event('respond_inline', input={'question': q, 'intent': intent}, output={'answer': ans, 'respond_mode': resp_mode}, meta={'user_id': user_id, 'session_id': session_id, 'capability': is_capability, 'domain_denied': (not domain_ok)})]}
 
 def route_intent(state: AgentState) -> str:
     intent = state['intent'] if 'intent' in state else 'query_data'
