@@ -1,0 +1,45 @@
+---
+description: Trong dong/src, đọc field dict/mapping bằng key ['...'], không dùng .get
+globs: agent-harness/dong/src/**/*.py
+alwaysApply: false
+---
+
+# No dict `.get` — dùng `['key']`
+
+Áp dụng cho toàn bộ code dưới `agent-harness/dong/src`.
+
+## Bắt buộc
+
+- Đọc trường trên `dict` / mapping / payload / state / JSON object: dùng **`obj['key']`**, **không** dùng `obj.get('key')` hay `obj.get('key', default)`.
+- Thiếu key → để **KeyError** nổi (hoặc validate key trước). Không nuốt bằng default âm thầm.
+
+```python
+# ✅
+name = payload['name']
+row_count = state['row_count']
+
+# ❌
+name = payload.get('name')
+row_count = state.get('row_count', 0)
+```
+
+## Khi key có thể thiếu
+
+- Kiểm tra `'key' in obj` rồi mới `obj['key']`, hoặc
+- Bắt `KeyError` ở biên rõ ràng (API handler), không dùng `.get` để “cho qua”.
+
+```python
+# ✅
+if 'sql' in state:
+    sql = state['sql']
+```
+
+## Ngoại lệ hẹp
+
+- `os.environ.get` / `os.getenv` — đọc biến môi trường (không phải field nghiệp vụ).
+- API thư viện bên thứ ba bắt buộc dùng `.get` trong docs của chúng — chỉ tại biên adapter, không lan vào domain.
+
+## Phạm vi
+
+- Rule gắn `src/**/*.py` của dong: **code mới và mọi edit** phải tuân thủ.
+- Không bắt buộc rewrite hàng loạt file cũ trong cùng task trừ khi task đó đang đụng file / user yêu cầu migrate.
