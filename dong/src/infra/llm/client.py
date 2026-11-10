@@ -1,47 +1,32 @@
 """LLM client — openai cloud hoặc self_hosted (vLLM qua OpenAI-compatible gateway)."""
-
 from __future__ import annotations
-
 import os
 import time
 from collections import deque
 from dataclasses import dataclass
 from functools import lru_cache
 from langchain_openai import ChatOpenAI
-
 from src.shared.config import settings
-
 
 @dataclass(frozen=True, slots=True)
 class _Backend:
-    default_base_url: str  # "" = mặc định OpenAI Cloud
+    default_base_url: str
     requires_real_key: bool
-    dummy_key: str = "not-needed"
+    dummy_key: str = 'not-needed'
+_BACKENDS: dict[str, _Backend] = {'openai': _Backend(default_base_url='', requires_real_key=True), 'self_hosted': _Backend(default_base_url='http://192.168.1.198:18083/v1', requires_real_key=False, dummy_key='')}
 
-
-_BACKENDS: dict[str, _Backend] = {
-    "openai": _Backend(default_base_url="", requires_real_key=True),
-    "self_hosted": _Backend(
-        default_base_url="http://192.168.1.198:18083/v1",
-        requires_real_key=False,
-        dummy_key="",
-    ),
-}
-
-
-def _get_backend(name: str | None = None) -> _Backend:
+def _get_backend(name: str | None=None) -> _Backend:
     backend_name = (name or settings.llm_backend).strip().lower()
     if backend_name not in _BACKENDS:
         raise ValueError(f"LLM_BACKEND='{backend_name}' không hợp lệ — chọn: {', '.join(_BACKENDS)}.")
     return _BACKENDS[backend_name]
-
 
 class _RotatingKeyPool:
     """Round-robin nhiều API key, tự đưa key bị 429 vào cooldown."""
 
     def __init__(self, keys: list[str]):
         if not keys:
-            raise ValueError("Cần ít nhất 1 OPENAI_API_KEYS khi LLM_BACKEND=openai.")
+            raise ValueError('Cần ít nhất 1 OPENAI_API_KEYS khi LLM_BACKEND=openai.')
         self._keys = deque(keys)
         self._cooldown: dict[str, float] = {}
 
@@ -50,46 +35,35 @@ class _RotatingKeyPool:
         for _ in range(len(self._keys)):
             key = self._keys[0]
             self._keys.rotate(-1)
-            if self._cooldown.get(key, 0.0) <= now:
+            if (self._cooldown[key] if key in self._cooldown else 0.0) <= now:
                 return key
-        return self._keys[0]  # tất cả cooldown -> vẫn thử key đầu, để OpenAI SDK tự retry/raise
+        return self._keys[0]
 
-    def mark_limited(self, key: str, cooldown_seconds: float = 60.0) -> None:
+    def mark_limited(self, key: str, cooldown_seconds: float=60.0) -> None:
         self._cooldown[key] = time.time() + cooldown_seconds
-
 
 @lru_cache(maxsize=1)
 def _pool() -> _RotatingKeyPool:
     return _RotatingKeyPool(settings.api_keys)
 
-
-def use_offline_tools(backend_override: str | None = None) -> bool:
+def use_offline_tools(backend_override: str | None=None) -> bool:
     """Đã bỏ chế độ offline — luôn gọi LLM/DB thật."""
     return False
-
 
 class SafeChatOpenAI(ChatOpenAI):
     """ChatOpenAI wrapper preserving max_tokens for OpenAI-compatible endpoints."""
 
     def _get_request_payload(self, input_, *, stop=None, **kwargs):
         payload = super()._get_request_payload(input_, stop=stop, **kwargs)
-        if "max_completion_tokens" in payload:
-            payload["max_tokens"] = payload.pop("max_completion_tokens")
+        if 'max_completion_tokens' in payload:
+            payload['max_tokens'] = payload.pop('max_completion_tokens')
         return payload
 
-
-def base_llm(
-    model_override: str | None = None,
-    backend_override: str | None = None,
-    temperature_override: float | None = None,
-    max_tokens_override: int | None = None,
-):
+def base_llm(model_override: str | None=None, backend_override: str | None=None, temperature_override: float | None=None, max_tokens_override: int | None=None):
     backend_name = (backend_override or settings.llm_backend).strip().lower()
     backend = _get_backend(backend_name)
-
-    if backend_name == "self_hosted":
+    if backend_name == 'self_hosted':
         from src.infra.llm.gateway import cap_output_tokens, resolve_self_hosted_model
-
         api_key = settings.model_api_key or backend.dummy_key
         base_url = settings.model_base_url or backend.default_base_url
         model = resolve_self_hosted_model(model_override)
@@ -97,30 +71,16 @@ def base_llm(
     else:
         api_key = _pool().get_key()
         base_url = settings.llm_base_url or None
-        model = model_override or settings.llm_model or "gpt-4o-mini"
-
+        model = model_override or settings.llm_model or 'gpt-4o-mini'
     temperature = settings.llm_temperature if temperature_override is None else temperature_override
-
-    kwargs: dict = {
-        "model": model,
-        "temperature": temperature,
-        "api_key": api_key,
-        "max_retries": settings.llm_max_retries,
-        "request_timeout": settings.llm_request_timeout_s,
-    }
+    kwargs: dict = {'model': model, 'temperature': temperature, 'api_key': api_key, 'max_retries': settings.llm_max_retries, 'request_timeout': settings.llm_request_timeout_s}
     if base_url:
-        kwargs["base_url"] = base_url
+        kwargs['base_url'] = base_url
     if max_tokens_override is not None:
-        kwargs["max_tokens"] = max_tokens_override
+        kwargs['max_tokens'] = max_tokens_override
     return SafeChatOpenAI(**kwargs)
 
-
-def invoke_with_tools(
-    messages,
-    tools=None,
-    model_override: str | None = None,
-    backend_override: str | None = None,
-):
+def invoke_with_tools(messages, tools=None, model_override: str | None=None, backend_override: str | None=None):
     from src.infra.monitoring.tracing import extract_token_usage, add_request_tokens
     llm = base_llm(model_override=model_override, backend_override=backend_override)
     if tools:
@@ -131,84 +91,59 @@ def invoke_with_tools(
         add_request_tokens(usage)
         return response
     except Exception as e:
-        raise RuntimeError(f"Lỗi kết nối tới LLM: Không thể sinh phản hồi. Chi tiết: {e}")
+        raise RuntimeError(f'Lỗi kết nối tới LLM: Không thể sinh phản hồi. Chi tiết: {e}')
 
-
-def _llm_model_label(backend_override: str | None = None) -> str:
+def _llm_model_label(backend_override: str | None=None) -> str:
     backend_name = (backend_override or settings.llm_backend).strip().lower()
-    if backend_name == "self_hosted":
+    if backend_name == 'self_hosted':
         from src.infra.llm.gateway import resolve_self_hosted_model
-
         return resolve_self_hosted_model()
-    return settings.llm_model or "gpt-4o-mini"
+    return settings.llm_model or 'gpt-4o-mini'
 
-
-def invoke_text(
-    system_prompt: str,
-    user_prompt: str,
-    model_override: str | None = None,
-    backend_override: str | None = None,
-    max_tokens: int | None = None,
-    *,
-    substep: str | None = "llm_text",
-    stop: list[str] | None = None,
-) -> str:
+def invoke_text(system_prompt: str, user_prompt: str, model_override: str | None=None, backend_override: str | None=None, max_tokens: int | None=None, *, substep: str | None='llm_text', stop: list[str] | None=None) -> str:
     """Lời gọi LLM đơn giản không tool — dùng cho bước Answer và SQL generator."""
+    from src.infra.monitoring.trace_payload import llm_io_payload
     from src.infra.monitoring.tracing import add_request_tokens, current_span, extract_token_usage, trace_step
-
-    trace_in = {
-        "system_len": len(system_prompt or ""),
-        "user_len": len(user_prompt or ""),
-        "max_tokens": max_tokens,
-    }
-    meta = {"model_name": _llm_model_label(backend_override), "temperature": settings.llm_temperature}
+    meta = {'model_name': _llm_model_label(backend_override), 'temperature': settings.llm_temperature}
+    prompt_in = llm_io_payload(system_prompt or '', user_prompt or '', '')['input']
+    if max_tokens is not None:
+        prompt_in = {**prompt_in, 'max_tokens': max_tokens}
 
     def _call() -> tuple[str, dict[str, int]]:
-        llm = base_llm(
-            model_override=model_override,
-            backend_override=backend_override,
-            max_tokens_override=max_tokens,
-        )
+        llm = base_llm(model_override=model_override, backend_override=backend_override, max_tokens_override=max_tokens)
         if stop:
             llm = llm.bind(stop=stop)
-        response = llm.invoke([
-            {"role": "system", "content": system_prompt},
-            {"role": "user", "content": user_prompt},
-        ])
+        response = llm.invoke([{'role': 'system', 'content': system_prompt}, {'role': 'user', 'content': user_prompt}])
         usage = extract_token_usage(response)
         add_request_tokens(usage)
-        return str(response.content or ""), usage
-
+        return (str(response.content or ''), usage)
     try:
         if substep:
-            with trace_step(current_span(), substep, input=trace_in, metadata=meta, as_type="generation") as box:
+            with trace_step(current_span(), substep, input=prompt_in, metadata=meta, as_type='generation') as box:
                 text, usage = _call()
-                box["usage"] = usage
-                box["output"] = {"text_len": len(text)}
-                box["model_name"] = meta["model_name"]
+                payload = llm_io_payload(system_prompt or '', user_prompt or '', text)
+                box['usage'] = usage
+                box['input'] = payload['input']
+                box['output'] = payload['output']
+                box['model_name'] = meta['model_name']
                 return text
         text, _usage = _call()
         return text
     except Exception as e:
-        raise RuntimeError(f"Lỗi kết nối tới LLM: Không thể sinh phản hồi. Chi tiết: {e}") from e
-
+        raise RuntimeError(f'Lỗi kết nối tới LLM: Không thể sinh phản hồi. Chi tiết: {e}') from e
 
 def ping() -> str:
     """Kiểm tra LLM server có sẵn sàng không."""
-    backend = (settings.llm_backend or "").strip().lower()
-    if backend == "openai":
-        # OpenAI cloud — không ping MODEL_BASE_URL (self-host gateway).
+    backend = (settings.llm_backend or '').strip().lower()
+    if backend == 'openai':
         if not (settings.api_keys or settings.llm_api_key):
-            raise RuntimeError("LLM_BACKEND=openai nhưng thiếu OPENAI_API_KEYS / LLM_API_KEY")
-        return "OK"
-
+            raise RuntimeError('LLM_BACKEND=openai nhưng thiếu OPENAI_API_KEYS / LLM_API_KEY')
+        return 'OK'
     from src.infra.llm.gateway import fetch_gateway_catalog
-
-    base_url = settings.effective_base_url or "http://192.168.1.198:18083/v1"
+    base_url = settings.effective_base_url or 'http://192.168.1.198:18083/v1'
     url = f"{base_url.rstrip('/')}/models"
     data = fetch_gateway_catalog()
-    err = data.get("error")
+    err = data['error'] if 'error' in data else None
     if err:
-        raise RuntimeError(f"Lỗi kết nối tới LLM tại {url}: {err}")
-    return "OK"
-
+        raise RuntimeError(f'Lỗi kết nối tới LLM tại {url}: {err}')
+    return 'OK'

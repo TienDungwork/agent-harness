@@ -6,61 +6,22 @@ Bao gồm:
 - plan_chart: sinh ChartSpec từ rows và câu hỏi (structured LLM hoặc offline heuristic).
 - Format nhãn tiếng Việt chuẩn cho phương tiện, sự kiện, camera và thiết bị.
 """
-
 from __future__ import annotations
-
 import base64
 import io
 import re
 from datetime import date, datetime
 from typing import Any, Literal
-
 import matplotlib
-
-matplotlib.use("Agg")
-import matplotlib.pyplot as plt  # noqa: E402
-
+matplotlib.use('Agg')
+import matplotlib.pyplot as plt
 from src.infra.llm.client import use_offline_tools
 from src.infra.llm.schemas import ChartSpec, StatAnswer, normalize_chart_type
 from src.infra.llm.structured import invoke_structured
 from src.infra.prompts import registry
-
-_CHART_KEYWORD_RE = re.compile(
-    r"biểu\s*đồ|bieu\s*do|\bchart\b|\bplot\b|vẽ\s*(biểu|đồ|đường|cột|thị)?|"
-    r"đồ\s*thị|thống\s*kê\s*theo|so\s*sánh\s*theo|phân\s*bố|cơ\s*cấu|tỷ\s*lệ|tỉ\s*lệ|"
-    r"\bvẽ\b",
-    re.IGNORECASE,
-)
-
-_CATEGORY_LABELS: dict[str, str] = {
-    "CAR": "Ô tô",
-    "MOTORCYCLE": "Xe máy",
-    "TRUCK": "Xe tải",
-    "BUS": "Xe buýt",
-    "IN": "Vào",
-    "OUT": "Ra",
-    "CROWD_DETECTION": "Đám đông",
-    "INTRUSION_DETECTION": "Xâm nhập/Leo trèo",
-    "WATER_LEVEL_DETECTION": "Mực nước",
-    "FIGHT_DETECTION": "Ẩu đả",
-    "FIRE": "Cháy",
-    "SMOKE": "Khói",
-    "ONLINE": "Trực tuyến",
-    "OFFLINE": "Ngoại tuyến",
-    "MAINTENANCE": "Bảo trì",
-}
-
-_PIE_COLORS = [
-    "#1f5c4f",
-    "#2a8570",
-    "#3bba9c",
-    "#60d394",
-    "#aaf683",
-    "#ffd97d",
-    "#ff9b85",
-    "#ee6055",
-]
-
+_CHART_KEYWORD_RE = re.compile('biểu\\s*đồ|bieu\\s*do|\\bchart\\b|\\bplot\\b|vẽ\\s*(biểu|đồ|đường|cột|thị)?|đồ\\s*thị|thống\\s*kê\\s*theo|so\\s*sánh\\s*theo|phân\\s*bố|cơ\\s*cấu|tỷ\\s*lệ|tỉ\\s*lệ|\\bvẽ\\b', re.IGNORECASE)
+_CATEGORY_LABELS: dict[str, str] = {'CAR': 'Ô tô', 'MOTORCYCLE': 'Xe máy', 'TRUCK': 'Xe tải', 'BUS': 'Xe buýt', 'IN': 'Vào', 'OUT': 'Ra', 'CROWD_DETECTION': 'Đám đông', 'INTRUSION_DETECTION': 'Xâm nhập/Leo trèo', 'WATER_LEVEL_DETECTION': 'Mực nước', 'FIGHT_DETECTION': 'Ẩu đả', 'FIRE': 'Cháy', 'SMOKE': 'Khói', 'ONLINE': 'Trực tuyến', 'OFFLINE': 'Ngoại tuyến', 'MAINTENANCE': 'Bảo trì'}
+_PIE_COLORS = ['#1f5c4f', '#2a8570', '#3bba9c', '#60d394', '#aaf683', '#ffd97d', '#ff9b85', '#ee6055']
 
 def _is_number(v: Any) -> bool:
     if v is None or isinstance(v, bool):
@@ -68,11 +29,10 @@ def _is_number(v: Any) -> bool:
     if isinstance(v, (int, float)):
         return True
     try:
-        float(str(v).replace(",", ""))
+        float(str(v).replace(',', ''))
         return True
     except (ValueError, TypeError):
         return False
-
 
 def _to_float(v: Any) -> float:
     if v is None or isinstance(v, bool):
@@ -80,102 +40,80 @@ def _to_float(v: Any) -> float:
     if isinstance(v, (int, float)):
         return float(v)
     try:
-        return float(str(v).replace(",", ""))
+        return float(str(v).replace(',', ''))
     except (ValueError, TypeError):
         return 0.0
 
-
 def _format_label(v: Any) -> str:
     if v is None:
-        return "(null)"
+        return '(null)'
     if isinstance(v, datetime):
-        return v.strftime("%Y-%m-%d %H:%M")
+        return v.strftime('%Y-%m-%d %H:%M')
     if isinstance(v, date):
         return v.isoformat()
     s = str(v).strip()
-    mapped = _CATEGORY_LABELS.get(s.upper())
+    mapped = _CATEGORY_LABELS[s.upper()] if s.upper() in _CATEGORY_LABELS else None
     if mapped:
         return mapped
-    return s if len(s) <= 24 else s[:21] + "…"
-
+    return s if len(s) <= 24 else s[:21] + '…'
 
 def _pick_columns(rows: list[dict[str, Any]]) -> tuple[str, str]:
     """Chọn cặp cột (category_col, numeric_col) từ danh sách rows."""
     if not rows:
-        return "", ""
+        return ('', '')
     keys = list(rows[0].keys())
     if not keys:
-        return "", ""
+        return ('', '')
     if len(keys) == 1:
-        return keys[0], keys[0]
-
+        return (keys[0], keys[0])
     numeric: list[str] = []
     categorical: list[str] = []
     for k in keys:
-        vals = [r.get(k) for r in rows[:30]]
-        if all(v is None or _is_number(v) for v in vals) and any(_is_number(v) for v in vals):
+        vals = [r[k] if k in r else None for r in rows[:30]]
+        if all((v is None or _is_number(v) for v in vals)) and any((_is_number(v) for v in vals)):
             numeric.append(k)
         else:
             categorical.append(k)
-
     if numeric and categorical:
-        num_col = next(
-            (k for k in numeric if re.search(r"count|total|^n$|sum|số|luot|so_luong|value", k, re.I)),
-            numeric[0],
-        )
-        return categorical[0], num_col
+        num_col = next((k for k in numeric if re.search('count|total|^n$|sum|số|luot|so_luong|value', k, re.I)), numeric[0])
+        return (categorical[0], num_col)
     elif len(keys) >= 2:
-        return keys[0], keys[1]
-    return keys[0], keys[0]
+        return (keys[0], keys[1])
+    return (keys[0], keys[0])
 
+def _detect_chart_type(question: str, labels: list[str] | None=None) -> Literal['bar', 'pie', 'line']:
+    q = (question or '').lower()
+    if re.search('cột|\\bbar\\b', q) and (not re.search('tròn|pie|đường|line|xu\\s*hướng|tỷ\\s*lệ|cơ\\s*cấu', q)):
+        return 'bar'
+    if re.search('tỷ\\s*lệ|tỉ\\s*lệ|cơ\\s*cấu|phần\\s*trăm|pie|tròn|bánh', q):
+        return 'pie'
+    if re.search('theo\\s*(ngày|tháng|năm|giờ|tuần|time|thời\\s*gian)|đường|line|xu\\s*hướng|biến\\s*động|diễn\\s*biến|lịch\\s*trình', q):
+        return 'line'
+    if labels and sum((1 for x in labels if re.match('^\\d{4}[-/]\\d{2}', x) or re.match('^\\d{1,2}[-/]\\d{1,2}', x))) >= max(1, len(labels) // 2):
+        return 'line'
+    return 'bar'
 
-def _detect_chart_type(question: str, labels: list[str] | None = None) -> Literal["bar", "pie", "line"]:
-    q = (question or "").lower()
-    if re.search(r"cột|\bbar\b", q) and not re.search(r"tròn|pie|đường|line|xu\s*hướng|tỷ\s*lệ|cơ\s*cấu", q):
-        return "bar"
-    if re.search(r"tỷ\s*lệ|tỉ\s*lệ|cơ\s*cấu|phần\s*trăm|pie|tròn|bánh", q):
-        return "pie"
-    if re.search(r"theo\s*(ngày|tháng|năm|giờ|tuần|time|thời\s*gian)|đường|line|xu\s*hướng|biến\s*động|diễn\s*biến|lịch\s*trình", q):
-        return "line"
-    if labels and sum(1 for x in labels if re.match(r"^\d{4}[-/]\d{2}", x) or re.match(r"^\d{1,2}[-/]\d{1,2}", x)) >= max(1, len(labels) // 2):
-        return "line"
-    return "bar"
-
-
-def should_render_chart(question: str, stat_answer: StatAnswer | None = None) -> bool:
+def should_render_chart(question: str, stat_answer: StatAnswer | None=None) -> bool:
     """Xác định có cần vẽ biểu đồ hay không từ câu hỏi hoặc StatAnswer.
 
     True nếu câu hỏi chứa từ khóa biểu đồ (biểu đồ, chart, vẽ, plot, ...)
     HOẶC stat_answer.chart_requested là True.
     """
-    if stat_answer is not None and getattr(stat_answer, "chart_requested", False):
+    if stat_answer is not None and getattr(stat_answer, 'chart_requested', False):
         return True
     if not question:
         return False
     return bool(_CHART_KEYWORD_RE.search(question))
 
-
 def _offline_plan_chart(rows: list[dict[str, Any]], question: str) -> ChartSpec:
     cat_col, num_col = _pick_columns(rows)
-    labels = [_format_label(r.get(cat_col)) for r in rows[:30]] if cat_col else []
+    labels = [_format_label(r[cat_col] if cat_col in r else None) for r in rows[:30]] if cat_col else []
     chart_type = _detect_chart_type(question, labels)
-    cleaned_q = (question or "").strip()
-    title_vi = cleaned_q if cleaned_q and len(cleaned_q) <= 80 else (
-        f"Thống kê {num_col} theo {cat_col}" if num_col and cat_col else "Biểu đồ thống kê"
-    )
-    return ChartSpec(
-        chart_type=chart_type,
-        x_column=cat_col,
-        y_column=num_col,
-        title_vi=title_vi,
-    )
+    cleaned_q = (question or '').strip()
+    title_vi = cleaned_q if cleaned_q and len(cleaned_q) <= 80 else f'Thống kê {num_col} theo {cat_col}' if num_col and cat_col else 'Biểu đồ thống kê'
+    return ChartSpec(chart_type=chart_type, x_column=cat_col, y_column=num_col, title_vi=title_vi)
 
-
-def plan_chart(
-    rows: list[dict[str, Any]],
-    question: str,
-    chart_type: str | None = None,
-) -> ChartSpec:
+def plan_chart(rows: list[dict[str, Any]], question: str, chart_type: str | None=None) -> ChartSpec:
     """Xác định ChartSpec từ danh sách dòng kết quả và câu hỏi.
 
     - Nếu `chart_type` đã được xác định trước (từ bước classify), thực thi thuần túy
@@ -186,51 +124,25 @@ def plan_chart(
     """
     if not rows:
         c_type = normalize_chart_type(chart_type) if chart_type else _detect_chart_type(question)
-        return ChartSpec(
-            chart_type=c_type,
-            x_column="",
-            y_column="",
-            title_vi=(question or "").strip() or "Biểu đồ",
-        )
-
-    # Fast Path: chart_type đã được quyết định từ trước (ở classify) -> Chỉ trích xuất cột từ data rows
+        return ChartSpec(chart_type=c_type, x_column='', y_column='', title_vi=(question or '').strip() or 'Biểu đồ')
     if chart_type:
         cat_col, num_col = _pick_columns(rows)
-        cleaned_q = (question or "").strip()
-        title_vi = cleaned_q if cleaned_q and len(cleaned_q) <= 80 else (
-            f"Thống kê {num_col} theo {cat_col}" if num_col and cat_col else "Biểu đồ thống kê"
-        )
-        return ChartSpec(
-            chart_type=normalize_chart_type(chart_type),
-            x_column=cat_col,
-            y_column=num_col,
-            title_vi=title_vi,
-        )
-
+        cleaned_q = (question or '').strip()
+        title_vi = cleaned_q if cleaned_q and len(cleaned_q) <= 80 else f'Thống kê {num_col} theo {cat_col}' if num_col and cat_col else 'Biểu đồ thống kê'
+        return ChartSpec(chart_type=normalize_chart_type(chart_type), x_column=cat_col, y_column=num_col, title_vi=title_vi)
     if use_offline_tools():
         return _offline_plan_chart(rows, question)
-
     keys = list(rows[0].keys())
     sample_rows = rows[:3]
-    user_prompt = (
-        f"Câu hỏi của người dùng:\n{question}\n\n"
-        f"Các cột dữ liệu có sẵn:\n{keys}\n\n"
-        f"Dữ liệu mẫu (3 dòng đầu):\n{sample_rows}"
-    )
-    messages = [
-        {"role": "system", "content": registry().render("plan_chart")},
-        {"role": "user", "content": user_prompt},
-    ]
-
+    user_prompt = f'Câu hỏi của người dùng:\n{question}\n\nCác cột dữ liệu có sẵn:\n{keys}\n\nDữ liệu mẫu (3 dòng đầu):\n{sample_rows}'
+    messages = [{'role': 'system', 'content': registry().render('plan_chart')}, {'role': 'user', 'content': user_prompt}]
     try:
-        spec = invoke_structured(messages, ChartSpec, substep="plan_chart")
+        spec = invoke_structured(messages, ChartSpec, substep='plan_chart')
         if isinstance(spec, ChartSpec):
             return spec
         return _offline_plan_chart(rows, question)
     except Exception:
         return _offline_plan_chart(rows, question)
-
-
 
 def render_chart(rows: list[dict[str, Any]], spec: ChartSpec) -> str:
     """Vẽ biểu đồ bằng matplotlib Agg và trả về chuỗi PNG mã hóa base64.
@@ -240,71 +152,53 @@ def render_chart(rows: list[dict[str, Any]], spec: ChartSpec) -> str:
     Hỗ trợ các kiểu biểu đồ: 'bar', 'line', 'pie' (mặc định là 'bar').
     """
     if not rows or spec is None:
-        return ""
-
+        return ''
     x_col = spec.x_column
     y_col = spec.y_column
-
-    # Fallback chọn cột nếu spec để trống hoặc không tồn tại trong rows
-    if not x_col or not y_col or x_col not in rows[0] or y_col not in rows[0]:
+    if not x_col or not y_col or x_col not in rows[0] or (y_col not in rows[0]):
         picked_x, picked_y = _pick_columns(rows)
-        x_col = x_col if (x_col and x_col in rows[0]) else picked_x
-        y_col = y_col if (y_col and y_col in rows[0]) else picked_y
-
+        x_col = x_col if x_col and x_col in rows[0] else picked_x
+        y_col = y_col if y_col and y_col in rows[0] else picked_y
     if not x_col or not y_col:
-        return ""
-
-    # Giới hạn tối đa 50 điểm vẽ để đảm bảo biểu đồ rõ ràng
+        return ''
     data = rows[:50]
-    labels = [_format_label(r.get(x_col)) for r in data]
-    values = [_to_float(r.get(y_col)) for r in data]
-
-    chart_type = normalize_chart_type(getattr(spec, "chart_type", "bar"))
-    color = "#1f5c4f"
-
-    plt.rcParams["axes.unicode_minus"] = False
+    labels = [_format_label(r[x_col] if x_col in r else None) for r in data]
+    values = [_to_float(r[y_col] if y_col in r else None) for r in data]
+    chart_type = normalize_chart_type(getattr(spec, 'chart_type', 'bar'))
+    color = '#1f5c4f'
+    plt.rcParams['axes.unicode_minus'] = False
     fig, ax = plt.subplots(figsize=(8, 4.2), dpi=120)
     try:
-        fig.patch.set_facecolor("#f3f6f8")
-        ax.set_facecolor("#f8fafb")
-
-        if chart_type == "pie":
+        fig.patch.set_facecolor('#f3f6f8')
+        ax.set_facecolor('#f8fafb')
+        if chart_type == 'pie':
             valid_pairs = [(lbl, v) for lbl, v in zip(labels, values) if v > 0]
             if valid_pairs:
                 pie_labels, pie_vals = zip(*valid_pairs)
                 colors = _PIE_COLORS[:len(pie_vals)] if len(pie_vals) <= len(_PIE_COLORS) else None
-                ax.pie(
-                    pie_vals,
-                    labels=pie_labels,
-                    autopct="%1.0f%%",
-                    startangle=90,
-                    colors=colors,
-                    textprops={"fontsize": 9, "color": "#16262e"},
-                )
-                ax.axis("equal")
+                ax.pie(pie_vals, labels=pie_labels, autopct='%1.0f%%', startangle=90, colors=colors, textprops={'fontsize': 9, 'color': '#16262e'})
+                ax.axis('equal')
             else:
-                ax.text(0.5, 0.5, "Không có dữ liệu hợp lệ", ha="center", va="center", color="#5c6d76")
-        elif chart_type == "line":
-            ax.plot(range(len(values)), values, marker="o", color=color, linewidth=2.5, markersize=6)
+                ax.text(0.5, 0.5, 'Không có dữ liệu hợp lệ', ha='center', va='center', color='#5c6d76')
+        elif chart_type == 'line':
+            ax.plot(range(len(values)), values, marker='o', color=color, linewidth=2.5, markersize=6)
             ax.set_xticks(range(len(labels)))
-            ax.set_xticklabels(labels, rotation=35, ha="right", fontsize=8, color="#16262e")
-            ax.grid(True, axis="y", alpha=0.3, linestyle="--")
-            ax.set_ylabel(y_col, fontsize=9, color="#5c6d76")
-            ax.set_xlabel(x_col, fontsize=9, color="#5c6d76")
-        else:  # bar hoặc fallback
+            ax.set_xticklabels(labels, rotation=35, ha='right', fontsize=8, color='#16262e')
+            ax.grid(True, axis='y', alpha=0.3, linestyle='--')
+            ax.set_ylabel(y_col, fontsize=9, color='#5c6d76')
+            ax.set_xlabel(x_col, fontsize=9, color='#5c6d76')
+        else:
             ax.bar(range(len(values)), values, color=color, width=0.6)
             ax.set_xticks(range(len(labels)))
-            ax.set_xticklabels(labels, rotation=35, ha="right", fontsize=8, color="#16262e")
-            ax.grid(True, axis="y", alpha=0.3, linestyle="--")
-            ax.set_ylabel(y_col, fontsize=9, color="#5c6d76")
-            ax.set_xlabel(x_col, fontsize=9, color="#5c6d76")
-
-        title = spec.title_vi or "Biểu đồ"
-        ax.set_title(title, fontsize=11, fontweight="bold", color="#16262e", pad=10)
+            ax.set_xticklabels(labels, rotation=35, ha='right', fontsize=8, color='#16262e')
+            ax.grid(True, axis='y', alpha=0.3, linestyle='--')
+            ax.set_ylabel(y_col, fontsize=9, color='#5c6d76')
+            ax.set_xlabel(x_col, fontsize=9, color='#5c6d76')
+        title = spec.title_vi or 'Biểu đồ'
+        ax.set_title(title, fontsize=11, fontweight='bold', color='#16262e', pad=10)
         fig.tight_layout()
-
         buf = io.BytesIO()
-        fig.savefig(buf, format="png", bbox_inches="tight")
-        return base64.b64encode(buf.getvalue()).decode("ascii")
+        fig.savefig(buf, format='png', bbox_inches='tight')
+        return base64.b64encode(buf.getvalue()).decode('ascii')
     finally:
         plt.close(fig)

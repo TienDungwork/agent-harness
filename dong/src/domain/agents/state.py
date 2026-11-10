@@ -75,6 +75,7 @@ class AgentState(TypedDict, total=False):
     columns: list
     error: str
     chart_png_base64: str
+    chart_url: str
     chart_spec: ChartSpec
     chart_requested: bool
     chart_type: str | None

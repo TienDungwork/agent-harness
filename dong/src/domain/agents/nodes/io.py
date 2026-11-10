@@ -40,5 +40,5 @@ def node_event(
         "meta": json_safe(meta or {}),
     }
     for key, val in extra.items():
-        ev[key] = json_safe(val) if key not in ("chart_png_base64",) else val
+        ev[key] = json_safe(val) if key not in ("chart_png_base64", "chart_url") else val
     return ev

@@ -94,6 +94,15 @@ class Settings(BaseSettings):
     langfuse_secret_key: str = Field(default="", alias="LANGFUSE_SECRET_KEY")
     langfuse_host: str = Field(default="http://localhost:3000", alias="LANGFUSE_HOST")
 
+    # ── MinIO chart storage (chatbot-images/chatbot/) ─────────────────────────
+    minio_endpoint: str = Field(default="", alias="MINIO_ENDPOINT")
+    minio_access_key: str = Field(default="", alias="MINIO_ACCESS_KEY")
+    minio_secret_key: str = Field(default="", alias="MINIO_SECRET_KEY")
+    minio_bucket: str = Field(default="chatbot-images", alias="MINIO_BUCKET")
+    minio_chart_prefix: str = Field(default="chatbot", alias="MINIO_CHART_PREFIX")
+    minio_public_base_url: str = Field(default="", alias="MINIO_PUBLIC_BASE_URL")
+    chart_object_ttl_days: int = Field(default=10, alias="CHART_OBJECT_TTL_DAYS")
+
     # ── API / CORS ───────────────────────────────────────────────────────────
     api_access_key: str = Field(default="", alias="API_ACCESS_KEY")
     cors_allow_origins: str = Field(default="*", alias="CORS_ALLOW_ORIGINS")

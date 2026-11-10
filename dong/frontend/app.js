@@ -17,6 +17,7 @@
     activeSessionId: null,
     sessions: [],
     lastChart: null,
+    lastChartUrl: null,
     lastChartSpec: null,
     lastChartType: null,
     lastChartRows: null,
@@ -601,6 +602,7 @@
     state.nodeStartTimes = {};
     state.nodeDurations = {};
     state.lastChart = null;
+    state.lastChartUrl = null;
     state.lastChartSpec = null;
     state.lastChartType = null;
     state.lastChartRows = null;
@@ -1186,6 +1188,7 @@
     const chartRows = chartObj.rows || null;
     const chartType = chartObj.type || 'bar';
     const chartPng = chartObj.png || null;
+    const chartUrl = chartObj.url || chartObj.chart_url || null;
 
     const hasChartJsData = Boolean(
       chartSpec &&
@@ -1199,6 +1202,9 @@
 
     if (hasChartJsData) {
       renderChartJs(chartSlot, { chartType, chartSpec, rows: chartRows });
+      contentDiv.appendChild(chartSlot);
+    } else if (chartUrl) {
+      chartSlot.innerHTML = `<img src="${chartUrl}" alt="Biểu đồ" style="max-width:100%; border-radius:8px; display:block; margin:0 auto;">`;
       contentDiv.appendChild(chartSlot);
     } else if (chartPng) {
       chartSlot.innerHTML = `<img src="data:image/png;base64,${chartPng}" alt="Biểu đồ" style="max-width:100%; border-radius:8px; display:block; margin:0 auto;">`;
@@ -1553,12 +1559,16 @@
               }
               if (!event.node_id || !event.status) continue;
               
+              if (event.chart_url) {
+                state.lastChartUrl = event.chart_url;
+              }
               if (event.chart_png_base64) {
                 state.lastChart = event.chart_png_base64;
               }
 
               // Dedicated __chart__ event — update chart state
               if (event.node_id === '__chart__') {
+                state.lastChartUrl = event.chart_url || state.lastChartUrl || null;
                 state.lastChart = event.chart_png_base64 || state.lastChart || null;
                 state.lastChartSpec = event.chart_spec || null;
                 state.lastChartType = event.chart_type || null;
@@ -1634,13 +1644,15 @@
                 }
                 // Build full chart payload object (prefer rows from detail if available)
                 const detailRows = event.detail && Array.isArray(event.detail.chart_rows) ? event.detail.chart_rows : null;
-                const chartPayload = (state.lastChart || state.lastChartSpec) ? {
+                const chartPayload = (state.lastChart || state.lastChartUrl || state.lastChartSpec) ? {
                   png: state.lastChart || null,
+                  url: state.lastChartUrl || (event.detail && event.detail.chart_url) || null,
                   spec: state.lastChartSpec || (event.detail && event.detail.chart_spec) || null,
                   type: state.lastChartType || (event.detail && event.detail.chart_type) || 'bar',
                   rows: detailRows || state.lastChartRows || null,
                 } : null;
                 state.lastChart = null;
+                state.lastChartUrl = null;
                 state.lastChartSpec = null;
                 state.lastChartType = null;
                 state.lastChartRows = null;

@@ -1425,6 +1425,26 @@ def test_orchestrator_decomposes_cross_db_hay_comparison():
     assert "23/09/2026" in plan.steps[1].sub_question
 
 
+def test_orchestrator_decomposes_cross_db_va_conjunction():
+    """'cháy khói và xe cộ' phải multi-hop — không gộp plate_event + fire_smoke_event một SQL."""
+    from src.domain.agents.nodes.plan import (
+        is_cross_domain_conjunction,
+        is_multi_question,
+        plan_orchestration,
+    )
+
+    q = "Hôm nay có bao nhiêu event cháy khói và xe cộ?"
+    assert is_cross_domain_conjunction(q) is True
+    assert is_multi_question(q) is True
+    plan = plan_orchestration(q)
+    assert plan.is_multi is True
+    assert len(plan.steps) >= 2
+    assert all(s.agent == "query_data" for s in plan.steps)
+    joined = " ".join(s.sub_question.lower() for s in plan.steps)
+    assert "cháy" in joined or "khói" in joined
+    assert "xe" in joined or "phương tiện" in joined
+
+
 def test_same_db_hay_comparison_stays_single_query():
     """ẩu đả hay đám đông cùng anomaly_event — không ép orchestrator multi."""
     from src.domain.agents.nodes.plan import is_cross_domain_comparison, is_multi_question, plan_orchestration

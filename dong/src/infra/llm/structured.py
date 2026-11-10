@@ -34,11 +34,24 @@ def invoke_structured(
             return result
         return schema.model_validate(result)
 
+    from src.infra.monitoring.trace_payload import redact_text
+
     meta = {"model_name": _llm_model_label(backend_override), "temperature": settings.llm_temperature}
+    trace_in: dict = {"schema": schema.__name__}
+    if isinstance(messages, list):
+        safe_msgs = []
+        for m in messages:
+            if isinstance(m, dict) and "content" in m:
+                role = m["role"] if "role" in m else ""
+                safe_msgs.append({"role": role, "content": redact_text(str(m["content"]))})
+            else:
+                safe_msgs.append(redact_text(str(m)))
+        trace_in["messages"] = safe_msgs
     try:
-        with trace_step(current_span(), step_name, input={"schema": schema.__name__}, metadata=meta, as_type="generation") as box:
+        with trace_step(current_span(), step_name, input=trace_in, metadata=meta, as_type="generation") as box:
             out = _call()
-            box["output"] = out.model_dump() if hasattr(out, "model_dump") else str(out)
+            dumped = out.model_dump() if hasattr(out, "model_dump") else str(out)
+            box["output"] = dumped
             box["model_name"] = meta["model_name"]
             return out
     except ValidationError as e:

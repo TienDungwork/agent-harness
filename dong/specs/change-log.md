@@ -1,5 +1,12 @@
 # Change Log — agent dong
 
+## 2026-11-10 — v17 rich traces + MinIO charts + cross-DB «và» decompose
+
+- Langfuse: `trace_payload` (redact prompts, slim `state_snapshot`); `invoke_text` full system/user.
+- MinIO: upload chart → `chatbot-images/chatbot/…` (TTL 10d ops); SSE/FE ưu tiên `chart_url`, fallback base64.
+- Rule `.cursor/rules/no-dict-get.mdc` + migrate dict `.get` → `['key']` (giữ `@router.get` / ContextVar).
+- Fix multihop: câu «cháy khói và xe cộ» → `is_cross_domain_conjunction` + plan 2× `query_data` (không gộp SQL chéo DB); rewrite bổ sung `sub_questions`.
+
 ## 2026-11-10 — v16 layout = Design §1 (no vms/multi_agent root)
 
 - Nest: `analytics/sql_agent/`, `knowledge/docs_agent/`.

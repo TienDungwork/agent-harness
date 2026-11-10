@@ -11,47 +11,53 @@ graph TD;
 	rewrite(rewrite)
 	classify(classify)
 	respond_inline(respond_inline)
-	orchestrator(orchestrator)
+	top_supervisor(top_supervisor)
 	orchestrator_collect(orchestrator_collect)
-	retrieve_schema(retrieve_schema)
-	generate_sql(generate_sql)
-	validate_sql(validate_sql)
-	repair_sql(repair_sql)
-	execute_sql(execute_sql)
-	render_chart(render_chart)
 	respond(respond)
-	retrieve_docs(retrieve_docs)
-	answer_from_docs(answer_from_docs)
 	__end__([<p>__end__</p>]):::last
 	__start__ --> guardrail_input;
-	answer_from_docs -.-> orchestrator_collect;
-	answer_from_docs -.-> respond;
-	classify -.-> orchestrator;
+	analytics_team\3a__end__ -.-> orchestrator_collect;
+	analytics_team\3a__end__ -.-> respond;
 	classify -.-> respond_inline;
-	execute_sql -.-> orchestrator_collect;
-	execute_sql -.-> render_chart;
-	execute_sql -.-> repair_sql;
-	execute_sql -.-> respond;
-	generate_sql --> validate_sql;
+	classify -.-> top_supervisor;
 	guardrail_input --> recall;
-	orchestrator -.-> respond;
-	orchestrator -. &nbsp;out&nbsp; .-> respond_inline;
-	orchestrator -. &nbsp;docs&nbsp; .-> retrieve_docs;
-	orchestrator -. &nbsp;query_data&nbsp; .-> retrieve_schema;
-	orchestrator_collect -.-> orchestrator;
+	knowledge_team\3aanswer_from_docs -.-> orchestrator_collect;
+	knowledge_team\3aanswer_from_docs -.-> respond;
 	orchestrator_collect -.-> respond;
+	orchestrator_collect -. &nbsp;orchestrator&nbsp; .-> top_supervisor;
 	recall --> rewrite;
-	render_chart --> respond;
-	repair_sql --> validate_sql;
 	respond --> guardrail_output;
 	respond_inline --> respond;
-	retrieve_docs --> answer_from_docs;
-	retrieve_schema --> generate_sql;
 	rewrite --> classify;
-	validate_sql -.-> execute_sql;
-	validate_sql -.-> repair_sql;
-	validate_sql -.-> respond;
+	top_supervisor -. &nbsp;query_data&nbsp; .-> analytics_team\3aretrieve_schema;
+	top_supervisor -. &nbsp;docs&nbsp; .-> knowledge_team\3aretrieve_docs;
+	top_supervisor -.-> respond;
+	top_supervisor -. &nbsp;out&nbsp; .-> respond_inline;
 	guardrail_output --> __end__;
+	subgraph analytics_team
+	analytics_team\3aretrieve_schema(retrieve_schema)
+	analytics_team\3agenerate_sql(generate_sql)
+	analytics_team\3avalidate_sql(validate_sql)
+	analytics_team\3arepair_sql(repair_sql)
+	analytics_team\3aexecute_sql(execute_sql)
+	analytics_team\3arender_chart(render_chart)
+	analytics_team\3a__end__(<p>__end__</p>)
+	analytics_team\3aexecute_sql -. &nbsp;done&nbsp; .-> analytics_team\3a__end__;
+	analytics_team\3aexecute_sql -.-> analytics_team\3arender_chart;
+	analytics_team\3aexecute_sql -.-> analytics_team\3arepair_sql;
+	analytics_team\3agenerate_sql --> analytics_team\3avalidate_sql;
+	analytics_team\3arepair_sql --> analytics_team\3avalidate_sql;
+	analytics_team\3aretrieve_schema --> analytics_team\3agenerate_sql;
+	analytics_team\3avalidate_sql -. &nbsp;done&nbsp; .-> analytics_team\3a__end__;
+	analytics_team\3avalidate_sql -.-> analytics_team\3aexecute_sql;
+	analytics_team\3avalidate_sql -.-> analytics_team\3arepair_sql;
+	analytics_team\3arender_chart --> analytics_team\3a__end__;
+	end
+	subgraph knowledge_team
+	knowledge_team\3aretrieve_docs(retrieve_docs)
+	knowledge_team\3aanswer_from_docs(answer_from_docs)
+	knowledge_team\3aretrieve_docs --> knowledge_team\3aanswer_from_docs;
+	end
 	classDef default fill:#f2f0ff,line-height:1.2
 	classDef first fill-opacity:0
 	classDef last fill:#bfb6fc

@@ -37,6 +37,9 @@ if 'sql' in state:
 ## Ngoại lệ hẹp
 
 - `os.environ.get` / `os.getenv` — đọc biến môi trường (không phải field nghiệp vụ).
+- `ContextVar.get()` / `queue.Queue.get()` — method runtime, không phải dict field.
+- FastAPI / Starlette: `@router.get(...)`, `app.get(...)` — HTTP decorator, **cấm** rewrite.
+- Method instance `self.get(...)` (vd. prompt registry) — không phải dict.
 - API thư viện bên thứ ba bắt buộc dùng `.get` trong docs của chúng — chỉ tại biên adapter, không lan vào domain.
 
 ## Phạm vi

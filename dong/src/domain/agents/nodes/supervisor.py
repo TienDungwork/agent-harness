@@ -1,13 +1,8 @@
 """Orchestrator node, routing, batch SQL prep."""
-
 from __future__ import annotations
-
 import logging
 from typing import Any
-
 logger = logging.getLogger(__name__)
-
-
 from src.domain.agents.nodes.intent import is_stat_event_domain
 from src.domain.agents.nodes.io import node_event
 from src.domain.agents.state import AgentState
@@ -17,177 +12,114 @@ from src.infra.monitoring.tracing import current_span, trace_step
 def _is_multi_plan(plan: OrchestratorPlan | None) -> bool:
     return bool(plan and (plan.is_multi or len(plan.steps) >= 2))
 
-
 def _reset_pipeline_fields() -> dict:
-    return {
-        "sql": "",
-        "repair_count": 0,
-        "error": "",
-        "rows": [],
-        "columns": [],
-        "sql_validation": {},
-        "params": [],
-        "schema_excerpt": "",
-        "selected_tables": [],
-        "docs_answer": None,
-        "respond_mode": "",
-        "answer": "",
-        "chart_png_base64": "",
-        "chart_spec": None,
-        "sql_batch": [],
-        "sql_batch_results": [],
-    }
-
+    return {'sql': '', 'repair_count': 0, 'error': '', 'rows': [], 'columns': [], 'sql_validation': {}, 'params': [], 'schema_excerpt': '', 'selected_tables': [], 'docs_answer': None, 'respond_mode': '', 'answer': '', 'chart_png_base64': '', 'chart_spec': None, 'sql_batch': [], 'sql_batch_results': []}
 
 def _batch_steps_from_plan(plan: OrchestratorPlan, start_idx: int) -> tuple[list[str], int, str]:
     """Gom các bước liên tiếp cùng agent; trả (sub_questions, end_idx, agent)."""
     steps = plan.steps
     if start_idx >= len(steps):
-        return [], start_idx, ""
+        return ([], start_idx, '')
     agent = steps[start_idx].agent
     subs: list[str] = []
     i = start_idx
     while i < len(steps) and steps[i].agent == agent:
         subs.append(steps[i].sub_question)
         i += 1
-    return subs, i, agent
-
+    return (subs, i, agent)
 
 def _apply_orchestrator_batch(out: dict, plan: OrchestratorPlan, start_idx: int) -> None:
     subs, end_idx, agent = _batch_steps_from_plan(plan, start_idx)
-    out["orchestrator_batch_sub_questions"] = subs
-    out["orchestrator_batch_end_index"] = end_idx
+    out['orchestrator_batch_sub_questions'] = subs
+    out['orchestrator_batch_end_index'] = end_idx
     if subs:
-        out["question"] = subs[0]
-    out.setdefault("events", [])
-    if out["events"]:
-        out["events"][-1].setdefault("meta", {})["batch_agent"] = agent
-        out["events"][-1]["meta"]["batch_size"] = len(subs)
-
+        out['question'] = subs[0]
+    out.setdefault('events', [])
+    if out['events']:
+        out['events'][-1].setdefault('meta', {})['batch_agent'] = agent
+        out['events'][-1]['meta']['batch_size'] = len(subs)
 
 def orchestrator_node(state: AgentState) -> dict:
     from src.domain.agents.nodes.plan import plan_orchestration
     from src.infra.llm.client import use_offline_tools
-
-    q = state.get("question", "")
-    rewritten = state.get("rewritten")
+    q = state['question'] if 'question' in state else ''
+    rewritten = state['rewritten'] if 'rewritten' in state else None
     q_text = rewritten.text if rewritten else q
-    user_id = state.get("user_id") or "default"
-    session_id = state.get("session_id") or "default"
-    intent = state.get("intent", "query_data")
+    user_id = (state['user_id'] if 'user_id' in state else None) or 'default'
+    session_id = (state['session_id'] if 'session_id' in state else None) or 'default'
+    intent = state['intent'] if 'intent' in state else 'query_data'
     llm_used = not use_offline_tools()
-
-    plan_existing: OrchestratorPlan | None = state.get("orchestrator_plan")
-    if state.get("orchestrator_multi_active") and plan_existing and plan_existing.steps:
-        idx = int(state.get("orchestrator_step_index") or 0)
-        with trace_step(current_span(), "dispatch_batch", input={"from_index": idx}, as_type="tool") as sub:
+    plan_existing: OrchestratorPlan | None = state['orchestrator_plan'] if 'orchestrator_plan' in state else None
+    if (state['orchestrator_multi_active'] if 'orchestrator_multi_active' in state else None) and plan_existing and plan_existing.steps:
+        idx = int((state['orchestrator_step_index'] if 'orchestrator_step_index' in state else None) or 0)
+        with trace_step(current_span(), 'dispatch_batch', input={'from_index': idx}, as_type='tool') as sub:
             subs, end_idx, agent = _batch_steps_from_plan(plan_existing, idx)
-            sub["output"] = {"agent": agent, "batch_size": len(subs), "batch_end_index": end_idx}
-        out = {
-            **_reset_pipeline_fields(),
-            "orchestrator_batch_sub_questions": subs,
-            "orchestrator_batch_end_index": end_idx,
-            "events": [node_event(
-                "orchestrator",
-                input={"question": q_text, "dispatch_from": idx, "batch_sub_questions": subs},
-                output={"agent": agent, "batch_size": len(subs), "batch_end_index": end_idx},
-                meta={"user_id": user_id, "session_id": session_id, "is_multi": True},
-            )],
-        }
+            sub['output'] = {'agent': agent, 'batch_size': len(subs), 'batch_end_index': end_idx}
+        out = {**_reset_pipeline_fields(), 'orchestrator_batch_sub_questions': subs, 'orchestrator_batch_end_index': end_idx, 'events': [node_event('orchestrator', input={'question': q_text, 'dispatch_from': idx, 'batch_sub_questions': subs}, output={'agent': agent, 'batch_size': len(subs), 'batch_end_index': end_idx}, meta={'user_id': user_id, 'session_id': session_id, 'is_multi': True})]}
         if subs:
-            out["question"] = subs[0]
+            out['question'] = subs[0]
         return out
-
-    sub_questions = list(getattr(rewritten, "sub_questions", None) or [])
-    original_q = state.get("original_question") or q
-
+    sub_questions = list(getattr(rewritten, 'sub_questions', None) or [])
+    original_q = (state['original_question'] if 'original_question' in state else None) or q
     from src.domain.agents.nodes.plan import is_multi_question
-
     if not is_multi_question(q_text, rewritten=rewritten, original=original_q, intent=intent):
-        with trace_step(current_span(), "plan_passthrough", input={"intent": intent}, as_type="tool") as sub:
+        with trace_step(current_span(), 'plan_passthrough', input={'intent': intent}, as_type='tool') as sub:
             if is_stat_event_domain(q_text):
-                plan = OrchestratorPlan(steps=[OrchestratorStep(agent="query_data", sub_question=q_text)], is_multi=False, reason="Fast passthrough: stat domain")
-            elif intent == "out_of_scope":
-                plan = OrchestratorPlan(steps=[], is_multi=False, reason="Fast passthrough: out_of_scope")
-            elif intent in ("how_to", "troubleshoot", "concept"):
-                plan = OrchestratorPlan(steps=[OrchestratorStep(agent="docs", sub_question=q_text)], is_multi=False, reason="Fast passthrough: docs")
-            elif intent in ("chat", "clarify"):
-                plan = OrchestratorPlan(steps=[], is_multi=False, reason="Fast passthrough: inline")
+                plan = OrchestratorPlan(steps=[OrchestratorStep(agent='query_data', sub_question=q_text)], is_multi=False, reason='Fast passthrough: stat domain')
+            elif intent == 'out_of_scope':
+                plan = OrchestratorPlan(steps=[], is_multi=False, reason='Fast passthrough: out_of_scope')
+            elif intent in ('how_to', 'troubleshoot', 'concept'):
+                plan = OrchestratorPlan(steps=[OrchestratorStep(agent='docs', sub_question=q_text)], is_multi=False, reason='Fast passthrough: docs')
+            elif intent in ('chat', 'clarify'):
+                plan = OrchestratorPlan(steps=[], is_multi=False, reason='Fast passthrough: inline')
             else:
-                plan = OrchestratorPlan(steps=[OrchestratorStep(agent="query_data", sub_question=q_text)], is_multi=False, reason="Fast passthrough: query_data")
-            sub["output"] = {"step_count": len(plan.steps), "is_multi": plan.is_multi}
+                plan = OrchestratorPlan(steps=[OrchestratorStep(agent='query_data', sub_question=q_text)], is_multi=False, reason='Fast passthrough: query_data')
+            sub['output'] = {'step_count': len(plan.steps), 'is_multi': plan.is_multi}
         llm_used = False
-    elif intent == "out_of_scope" and is_stat_event_domain(q_text):
-        with trace_step(current_span(), "plan_orchestration", input={"intent": intent}, as_type="tool") as sub:
-            plan = plan_orchestration(
-                q_text, sub_questions=sub_questions, original=original_q, intent=intent,
-            )
-            sub["output"] = {"step_count": len(plan.steps)}
-    elif intent == "out_of_scope":
-        with trace_step(current_span(), "plan_passthrough", input={"intent": intent}, as_type="tool") as sub:
-            plan = OrchestratorPlan(steps=[], is_multi=False, reason="out_of_scope")
-            sub["output"] = {"step_count": 0}
+    elif intent == 'out_of_scope' and is_stat_event_domain(q_text):
+        with trace_step(current_span(), 'plan_orchestration', input={'intent': intent}, as_type='tool') as sub:
+            plan = plan_orchestration(q_text, sub_questions=sub_questions, original=original_q, intent=intent)
+            sub['output'] = {'step_count': len(plan.steps)}
+    elif intent == 'out_of_scope':
+        with trace_step(current_span(), 'plan_passthrough', input={'intent': intent}, as_type='tool') as sub:
+            plan = OrchestratorPlan(steps=[], is_multi=False, reason='out_of_scope')
+            sub['output'] = {'step_count': 0}
     else:
-        with trace_step(current_span(), "plan_orchestration", input={"intent": intent}, as_type="tool") as sub:
-            plan = plan_orchestration(
-                q_text, sub_questions=sub_questions, original=original_q, intent=intent,
-            )
-            sub["output"] = {"step_count": len(plan.steps), "is_multi": plan.is_multi}
-
-    out: dict = {
-        "orchestrator_plan": plan,
-        "events": [node_event(
-            "orchestrator",
-            input={"question": q_text, "intent": intent, "sub_questions": sub_questions},
-            output={"orchestrator_plan": plan.model_dump()},
-            meta={"llm_used": llm_used, "user_id": user_id, "session_id": session_id},
-        )],
-    }
+        with trace_step(current_span(), 'plan_orchestration', input={'intent': intent}, as_type='tool') as sub:
+            plan = plan_orchestration(q_text, sub_questions=sub_questions, original=original_q, intent=intent)
+            sub['output'] = {'step_count': len(plan.steps), 'is_multi': plan.is_multi}
+    out: dict = {'orchestrator_plan': plan, 'events': [node_event('orchestrator', input={'question': q_text, 'intent': intent, 'sub_questions': sub_questions}, output={'orchestrator_plan': plan.model_dump()}, meta={'llm_used': llm_used, 'user_id': user_id, 'session_id': session_id})]}
     if _is_multi_plan(plan):
-        out.update({
-            "orchestrator_multi_active": True,
-            "orchestrator_step_index": 0,
-            "orchestrator_step_results": [],
-            "multi_hop_ready": False,
-            **_reset_pipeline_fields(),
-        })
+        out.update({'orchestrator_multi_active': True, 'orchestrator_step_index': 0, 'orchestrator_step_results': [], 'multi_hop_ready': False, **_reset_pipeline_fields()})
         _apply_orchestrator_batch(out, plan, 0)
-        out["events"][0]["meta"]["is_multi"] = True
+        out['events'][0]['meta']['is_multi'] = True
     return out
 
-
 def route_orchestrator(state: AgentState) -> str:
-    intent = state.get("intent", "query_data")
-    rewritten = state.get("rewritten")
-    q_text = rewritten.text if rewritten else state.get("question", "")
-
-    plan: OrchestratorPlan | None = state.get("orchestrator_plan")
-    if state.get("orchestrator_multi_active") and plan and plan.steps:
-        idx = int(state.get("orchestrator_step_index") or 0)
+    intent = state['intent'] if 'intent' in state else 'query_data'
+    rewritten = state['rewritten'] if 'rewritten' in state else None
+    q_text = rewritten.text if rewritten else state['question'] if 'question' in state else ''
+    plan: OrchestratorPlan | None = state['orchestrator_plan'] if 'orchestrator_plan' in state else None
+    if (state['orchestrator_multi_active'] if 'orchestrator_multi_active' in state else None) and plan and plan.steps:
+        idx = int((state['orchestrator_step_index'] if 'orchestrator_step_index' in state else None) or 0)
         if idx >= len(plan.steps):
-            return "respond"
-        batch = state.get("orchestrator_batch_sub_questions") or []
+            return 'respond'
+        batch = (state['orchestrator_batch_sub_questions'] if 'orchestrator_batch_sub_questions' in state else None) or []
         if batch:
             agent = plan.steps[idx].agent
         else:
             agent = plan.steps[idx].agent
-        return "query_data" if agent == "query_data" else "docs"
-
+        return 'query_data' if agent == 'query_data' else 'docs'
     if is_stat_event_domain(q_text):
-        return "query_data"
-
-    if intent == "out_of_scope":
-        return "out"
-
+        return 'query_data'
+    if intent == 'out_of_scope':
+        return 'out'
     if plan and plan.steps:
         agent = plan.steps[0].agent
-        if agent == "docs":
-            return "docs"
-        elif agent == "query_data":
-            return "query_data"
-
-    if intent in ("how_to", "troubleshoot", "concept"):
-        return "docs"
-    return "query_data"
-
-
+        if agent == 'docs':
+            return 'docs'
+        elif agent == 'query_data':
+            return 'query_data'
+    if intent in ('how_to', 'troubleshoot', 'concept'):
+        return 'docs'
+    return 'query_data'
