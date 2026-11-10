@@ -67,6 +67,7 @@ def classify_node(state: AgentState) -> dict:
 
 def respond_inline_node(state: AgentState) -> dict:
     from src.domain.agents.nodes.inline_respond import generate_inline_response
+    from src.domain.authz.domain_guard import format_access_capability_reply, is_access_capability_question
     q = state['question'] if 'question' in state else ''
     rewritten = state['rewritten'] if 'rewritten' in state else None
     q_text = rewritten.text if rewritten else q
@@ -75,17 +76,21 @@ def respond_inline_node(state: AgentState) -> dict:
     user_id = (state['user_id'] if 'user_id' in state else None) or 'default'
     session_id = (state['session_id'] if 'session_id' in state else None) or 'default'
     memories = (state['recalled_memories'] if 'recalled_memories' in state else None) or []
+    access = state['access_context'] if 'access_context' in state else None
     q_low = q_text.lower()
     is_identity = any((k in q_low for k in ('tôi là ai', 'tên tôi', 'tôi tên', 'biết gì về tôi', 'vai trò của tôi', 'tôi phụ trách gì')))
     with trace_step(current_span(), 'inline_response', input={'intent': intent}, as_type='tool') as sub:
-        if is_identity and memories:
+        if is_access_capability_question(q_text) or is_access_capability_question(q):
+            ans = format_access_capability_reply(access)
+            intent = 'chat'
+        elif is_identity and memories:
             ans = generate_inline_response(q_text, intent=intent, memories=memories)
         elif intent in ('chat', 'out_of_scope'):
             if not ans:
                 ans = generate_inline_response(q_text, intent=intent, memories=memories)
         elif intent == 'clarify' and (not ans):
             ans = 'Bạn có thể nói rõ hơn yêu cầu của mình được không?'
-        sub['output'] = {'answer_len': len(ans or '')}
+        sub['output'] = {'answer_len': len(ans or ''), 'capability': bool(access and is_access_capability_question(q_text))}
     resp_mode = 'out_of_scope' if intent == 'out_of_scope' else 'inline'
     return {'answer': ans, 'respond_mode': resp_mode, 'events': [node_event('respond_inline', input={'question': q, 'intent': intent}, output={'answer': ans, 'respond_mode': resp_mode}, meta={'user_id': user_id, 'session_id': session_id})]}
 

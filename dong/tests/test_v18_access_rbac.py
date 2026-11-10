@@ -206,6 +206,24 @@ def test_deny_reply_nonempty():
     assert 'không có quyền' in DENY_REPLY.lower() or 'không có quyền' in DENY_REPLY
 
 
+def test_capability_question_lists_security_domains():
+    from src.domain.authz.domain_guard import format_access_capability_reply, is_access_capability_question
+
+    assert is_access_capability_question('phân quyền tôi có thể hỏi được những loại event nào hiện tại?')
+    ctx = AccessContext(
+        user_id='hp_anninh',
+        effective_org_id=103,
+        role_group='SECURITY_DEPT',
+        allowed_domains=domains_for_role_group('SECURITY_DEPT'),
+        allowed_tables=tables_for_domains(domains_for_role_group('SECURITY_DEPT')),
+        dashboard_tabs=['anninh', 'giaothong', 'pccc', 'tongquan'],
+    )
+    reply = format_access_capability_reply(ctx)
+    assert 'SECURITY_DEPT' in reply
+    assert 'Cháy khói' in reply or 'fire' in reply.lower()
+    assert 'Điện năng' not in reply
+
+
 def test_validate_sql_blocks_table_outside_role():
     from src.domain.authz.access_context import bind_access_context, reset_access_context
     from src.infra.db.validator import validate_sql

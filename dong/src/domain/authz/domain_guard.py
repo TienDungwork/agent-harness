@@ -9,6 +9,70 @@ DENY_REPLY = (
     'Vui lòng hỏi trong phạm vi dashboard được cấp, hoặc liên hệ quản trị viên.'
 )
 
+_DOMAIN_LABELS: dict[str, str] = {
+    'traffic': 'Phương tiện / biển số (ITS)',
+    'security_events': 'Vùng cấm / bất thường an ninh',
+    'fire_smoke': 'Cháy khói (PCCC)',
+    'face': 'Nhận diện khuôn mặt',
+    'camera': 'Camera / live / registry',
+    'iot_env': 'Môi trường / IoT / AQI',
+    'energy': 'Điện năng',
+    'water': 'Nước',
+    'lighting': 'Chiếu sáng',
+    'assets': 'Tài sản / thiết bị',
+    'maintenance': 'Bảo trì',
+    'docs_security': 'Tài liệu an ninh / AIOC',
+    'docs_env': 'Tài liệu môi trường',
+    'docs_ops': 'Tài liệu vận hành',
+}
+
+_CAPABILITY_HINTS = (
+    'phân quyền',
+    'được hỏi',
+    'được xem',
+    'quyền của tôi',
+    'phạm vi của tôi',
+    'loại event nào',
+    'loại sự kiện nào',
+    'hỏi được những',
+    'hỏi được gì',
+    'domain nào',
+    'lĩnh vực nào',
+)
+
+
+def is_access_capability_question(question: str) -> bool:
+    """Câu meta hỏi 'tôi được hỏi/xem gì' theo role — không phải truy vấn số liệu."""
+    q = (question or '').lower()
+    return any(h in q for h in _CAPABILITY_HINTS)
+
+
+def format_access_capability_reply(ctx: AccessContext | None) -> str:
+    """Trả lời phạm vi domain theo AccessContext hiện tại."""
+    if ctx is None:
+        return (
+            'Chưa có ngữ cảnh đăng nhập IAM. Hãy đăng nhập tài khoản bộ phận '
+            'rồi hỏi lại về phạm vi được phép.'
+        )
+    if ctx.allows_all_domains():
+        return (
+            f'Tài khoản **{ctx.user_id}** (nhóm **{ctx.role_group}**) được xem **toàn bộ** '
+            'lĩnh vực event/dashboard (Ban lãnh đạo / admin).\n'
+            'Bạn có thể hỏi xe, vùng cấm, cháy khói, khuôn mặt, môi trường, điện/nước, camera…'
+        )
+    labels = [_DOMAIN_LABELS[d] for d in sorted(ctx.allowed_domains) if d in _DOMAIN_LABELS]
+    if not labels:
+        labels = sorted(ctx.allowed_domains)
+    lines = '\n'.join(f'- {x}' for x in labels)
+    tabs = ', '.join(ctx.dashboard_tabs) if ctx.dashboard_tabs else '(không có tab)'
+    return (
+        f'Tài khoản **{ctx.user_id}** thuộc nhóm **{ctx.role_group}** '
+        f'(org {ctx.effective_org_id}).\n'
+        f'Tab dashboard: {tabs}.\n'
+        f'Bạn **được hỏi** các lĩnh vực:\n{lines}\n'
+        'Câu hỏi ngoài danh sách trên sẽ bị từ chối quyền (không chạy SQL domain cấm).'
+    )
+
 
 def rbac_table_allowlist(ctx: AccessContext | None) -> set[str] | None:
     """None = không siết thêm (dùng catalog). Set = chỉ các bảng role được phép."""

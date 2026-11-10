@@ -37,9 +37,12 @@ IAM_REQUIRED=true
 
 ## Kiểm tra nhanh
 
-1. Login An ninh → hỏi cháy → có trả lời.
-2. Cùng session hỏi điện năng → từ chối quyền.
-3. Đăng xuất → login Môi trường → hỏi điện → OK.
-4. (API) token org 103 + header `X-Organization-Id: 106` → **403**.
+1. Login An ninh → *"phân quyền tôi hỏi được loại event nào?"* → liệt kê traffic / an ninh / cháy / face (không điện).
+2. Hỏi *"có cảnh báo cháy khói?"* → SQL OK.
+3. Hỏi *"điện năng tiêu thụ hôm nay?"* → từ chối quyền.
+4. Đăng xuất → login Môi trường → hỏi điện → OK; hỏi cháy → deny.
+5. (API) token org 103 + `X-Organization-Id: 106` → **403**.
+
+**Lưu ý:** Câu meta về quyền trước đây bị classify `out_of_scope` → trả lời chung VMS (không đụng RBAC). Đã xử lý trong `respond_inline`. Cổng RBAC thật vẫn là hỏi **số liệu domain** (cháy vs điện).
 
 Pytest live: `IAM_LIVE=1` + `IAM_TEST_PASSWORD` → `tests/test_v18_iam_live.py`.
