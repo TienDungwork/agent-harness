@@ -10,7 +10,7 @@ from __future__ import annotations
 import re
 from typing import Any
 
-from src.infra.db.executor import execute_sql
+from src.infra.storage.sql.executor import execute_sql
 from src.infra.llm.client import use_offline_tools
 
 _DATE_RE = re.compile(r"(\d{1,2})[/.-](\d{1,2})[/.-](\d{4})")

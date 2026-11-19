@@ -1,1 +1,1 @@
-"""Shared config and cross-cutting policies."""
+"""Shared — `settings` (cấu hình duy nhất)."""

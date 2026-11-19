@@ -2,7 +2,7 @@
 from __future__ import annotations
 from src.domain.agents.nodes.io import node_event
 from src.domain.agents.state import AgentState
-from src.infra.monitoring.tracing import current_span, trace_step
+from src.domain.observability.tracing import current_span, trace_step
 
 def retrieve_docs_node(state: AgentState) -> dict:
     from src.domain.agents.knowledge.retrieval import retrieve_docs

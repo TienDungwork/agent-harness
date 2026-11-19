@@ -3,11 +3,11 @@ from __future__ import annotations
 from src.domain.agents.analytics.sql_agent.tools.generate import extract_sql
 from src.domain.agents.analytics.sql_agent.tools.scope import apply_organization_scope
 from src.domain.agents.nodes.io import node_event
-from src.shared.config import settings
-from src.infra.db.validator import ValidationResult, validate_sql
+from src.shared.settings import settings
+from src.infra.storage.sql.validator import ValidationResult, validate_sql
 from src.infra.llm.client import invoke_text, use_offline_tools
 from src.infra.llm.params import DETERMINISTIC
-from src.infra.monitoring.tracing import current_span, trace_step
+from src.domain.observability.tracing import current_span, trace_step
 from src.infra.prompts import registry
 
 def _trace_validate_sql(sql: str) -> ValidationResult:

@@ -25,7 +25,7 @@ def is_using_postgres_checkpointer() -> bool:
 
 
 def _create_postgres_checkpointer() -> BaseCheckpointSaver:
-    from src.shared.config import settings
+    from src.shared.settings import settings
 
     if not settings.memory_enabled:
         raise AgentStorageError("MEMORY_ENABLED=false — không dùng checkpointer.")
@@ -60,7 +60,7 @@ def _create_postgres_checkpointer() -> BaseCheckpointSaver:
 
 
 def get_checkpointer() -> BaseCheckpointSaver:
-    from src.shared.config import settings
+    from src.shared.settings import settings
 
     if not settings.memory_enabled:
         raise AgentStorageError("MEMORY_ENABLED=false — bật memory để chạy agent.")

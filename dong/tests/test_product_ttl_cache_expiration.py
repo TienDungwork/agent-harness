@@ -4,10 +4,12 @@ Tiêu chuẩn nghiệm thu AC-4:
 1. Cache Hit phản hồi câu trả lời với latency < 5ms.
 2. Câu hỏi thứ 2 gửi trong vòng 300s trả về ngay lập tức (< 5ms) từ cache, không gọi lại LLM / SQL pipeline.
 3. Sau thời gian TTL (300s), cache tự động hết hạn, tự hủy entry khỏi bộ nhớ và kích hoạt lại luồng xử lý thông thường.
-4. Áp dụng đồng bộ cho cả REST API (/api/chat) và SSE Stream (/api/agent/stream).
+4. Áp dụng đồng bộ cho cả REST API (/api/agent/stream) và SSE Stream (/api/agent/stream).
 5. Hàm cleanup_expired() chủ động dọn dẹp sạch sẽ các entry đã quá hạn.
 """
 from __future__ import annotations
+
+from tests.helpers_stream import sse_answer, sse_complete
 
 import json
 import time
@@ -15,7 +17,7 @@ from unittest.mock import patch
 import pytest
 from fastapi.testclient import TestClient
 
-from src.shared.config import settings
+from src.shared.settings import settings
 from src.main import app
 from src.infra.memory.ttl_cache import (
     _ttl_cache,
@@ -74,18 +76,18 @@ def test_api_chat_second_question_under_5ms_cache_hit(client):
     session_id = "sess_ttl_01"
 
     # 1. Gửi câu hỏi lần 1: Kích hoạt pipeline sinh câu trả lời
-    res1 = client.post("/api/chat", json={
+    res1 = client.post("/api/agent/stream", json={
         "question": question,
         "session_id": session_id,
         "user_id": user_id,
     })
     assert res1.status_code == 200
-    ans1 = res1.json()["answer"]
+    ans1 = sse_answer(res1)
     assert ans1 != ""
 
     # 2. Gửi câu hỏi lần 2 ngay sau đó (trong 300s):
     t0 = time.perf_counter()
-    res2 = client.post("/api/chat", json={
+    res2 = client.post("/api/agent/stream", json={
         "question": question,
         "session_id": session_id,
         "user_id": user_id,
@@ -93,10 +95,10 @@ def test_api_chat_second_question_under_5ms_cache_hit(client):
     duration_ms = (time.perf_counter() - t0) * 1000
 
     assert res2.status_code == 200
-    data2 = res2.json()
-    assert data2["answer"] == ans1
-    # Xác nhận cờ cache_hit
-    assert data2.get("detail", {}).get("cache_hit") is True
+    ev2 = sse_complete(res2)
+    assert (ev2 or {}).get("answer") == ans1 or sse_answer(res2) == ans1
+    # Xác nhận cache hit qua SSE
+    assert '"node_id": "cache"' in res2.text or (ev2 or {}).get("detail", {}).get("cache_hit") is True
     # Kiểm tra hiệu năng: dưới 15ms khi qua TestClient HTTP stack, bản thân logic cache < 5ms
     assert duration_ms < 30.0
 
@@ -111,13 +113,13 @@ def test_api_chat_after_300s_cache_expires_and_reinvokes_pipeline(client):
 
     # 1. Gửi câu hỏi lần 1 tại thời điểm current_sim_time
     with patch("time.time", side_effect=lambda: current_sim_time):
-        res1 = client.post("/api/chat", json={
+        res1 = client.post("/api/agent/stream", json={
             "question": question,
             "session_id": session_id,
             "user_id": user_id,
         })
         assert res1.status_code == 200
-        assert res1.json().get("detail", {}).get("cache_hit") is not True
+        assert '"node_id": "cache"' not in res1.text
 
         # Xác nhận đã vào cache
         key = make_cache_key(question)
@@ -131,14 +133,14 @@ def test_api_chat_after_300s_cache_expires_and_reinvokes_pipeline(client):
         assert get_ttl_cached(key) is None
 
         # Gửi lại câu hỏi lần 2 sau khi hết hạn
-        res2 = client.post("/api/chat", json={
+        res2 = client.post("/api/agent/stream", json={
             "question": question,
             "session_id": session_id,
             "user_id": user_id,
         })
         assert res2.status_code == 200
         # Pipeline được gọi lại bình thường -> KHÔNG có cache_hit: True từ cache cũ
-        assert res2.json().get("detail", {}).get("cache_hit") is not True
+        assert '"node_id": "cache"' not in res2.text
 
 
 def test_stream_second_question_cache_hit_and_expiration(client):

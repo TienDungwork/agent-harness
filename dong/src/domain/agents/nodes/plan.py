@@ -7,7 +7,7 @@ Hỗ trợ offline heuristics phục vụ pytest và fallback, cùng online LLM 
 from __future__ import annotations
 import re
 from typing import Literal
-from src.infra.db.catalog import get_database_for_table
+from src.infra.storage.sql.catalog import get_database_for_table
 from src.infra.llm.client import use_offline_tools
 from src.infra.llm.schemas import OrchestratorPlan, OrchestratorStep
 from src.infra.llm.structured import invoke_structured

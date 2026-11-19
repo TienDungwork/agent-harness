@@ -13,7 +13,7 @@ def is_stat_event_domain(text: str) -> bool:
         return True
     return any((k in low for k in ('phát hiện', 'cảnh báo'))) and any((t in low for t in ('hôm nay', 'hôm qua', 'ngày', 'tuần', 'tháng', 'khoảng', 'từ', 'đến')))
 from src.infra.chart.render import should_render_chart, _detect_chart_type
-from src.shared.guardrails import CHAT_GREETING_KEYWORDS, is_chat_greeting
+from src.domain.guardrails import CHAT_GREETING_KEYWORDS, is_chat_greeting
 is_chat_like = is_chat_greeting
 
 def _offline_classify(text: str) -> IntentResult:

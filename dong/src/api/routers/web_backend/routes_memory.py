@@ -6,7 +6,7 @@ from fastapi import APIRouter, HTTPException, Query
 
 from src.api.models.schemas import MemoryDeleteResponse, MemoryListResponse
 from src.infra.memory.longterm import clear_long_term, recall_long_term
-from src.shared.config import settings
+from src.shared.settings import settings
 
 router = APIRouter(tags=["memory"])
 

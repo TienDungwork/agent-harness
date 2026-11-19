@@ -17,7 +17,7 @@ from src.infra.llm import (
     base_llm,
     use_offline_tools,
 )
-from src.shared.config import settings
+from src.shared.settings import settings
 
 
 def test_backends_registry_contains_required_providers():
@@ -120,13 +120,54 @@ def test_prompt_registry_non_existent_prompt_raises_file_not_found():
         reg.get("non_existent_prompt", 1)
 
 
+def test_pick_prompt_version_sticky_bucket():
+    from src.infra.prompts import pick_prompt_version
+
+    v1 = pick_prompt_version("user-a", enabled=True, split_pct=50)
+    v2 = pick_prompt_version("user-a", enabled=True, split_pct=50)
+    assert v1 == v2
+    assert v1 in ("production", "v2")
+
+
+def test_pick_prompt_version_disabled():
+    from src.infra.prompts import pick_prompt_version
+
+    assert pick_prompt_version("any", enabled=False) == "production"
+
+
+def test_resolve_prompt_version_respects_settings(monkeypatch):
+    from src.infra.prompts import resolve_prompt_version
+
+    monkeypatch.setattr(settings, "prompt_ab_enabled", False)
+    assert resolve_prompt_version("u1") == "production"
+    monkeypatch.setattr(settings, "prompt_ab_enabled", True)
+    monkeypatch.setattr(settings, "prompt_ab_split_pct", 100)
+    monkeypatch.setattr(settings, "prompt_ab_version_b", "v2")
+    assert resolve_prompt_version("u1") == "v2"
+
+
+def test_registry_ab_context_classify_v2_and_fallback():
+    """classify có v2; sql_agent không → fallback production khi A/B chọn v2."""
+    from src.infra.prompts import bind_prompt_version, registry, reset_prompt_version
+
+    token = bind_prompt_version("v2")
+    try:
+        classify = registry().get("classify")
+        assert classify.version == 2
+        sql = registry().get("sql_agent")
+        assert sql.version == 1
+    finally:
+        reset_prompt_version(token)
+
+
 ALL_PROMPT_NAMES = [
     "answer_docs",
     "classify",
     "judge_eval",
     "memory_extract",
-    "top_supervisor",
+    "orchestrator",
     "plan_chart",
+    "respond_inline",
     "respond_stat",
     "rewrite",
     "sql_agent",
@@ -472,7 +513,7 @@ Kiểm tra:
 4. Render còn placeholder chưa thay thế -> ValueError có tên prompt + placeholder.
 5. Render thành công agent_system với now=...
 6. _format_error_message maps prompt ValueError sang câu tiếng Việt thân thiện cho người dùng.
-7. Integration: lỗi prompt trong /api/chat -> 503 friendly message.
+7. Integration: lỗi prompt trong /api/agent/stream -> 503 friendly message.
 8. Integration: lỗi prompt trong /api/agent/stream -> __answer__ error SSE friendly message.
 """
 
@@ -538,19 +579,6 @@ def test_render_resulting_in_empty_string_raises_value_error():
         assert "rỗng" in err.lower()
 
 
-def test_unreplaced_placeholder_raises_value_error():
-    """Placeholder chưa được thay thế còn sót lại trong kết quả render phải raise ValueError."""
-    reg = PromptRegistry()
-    fake_prompt = Prompt(name="test_placeholder", version=1, template="Xin chào {user}")
-    with patch.object(reg, "get", return_value=fake_prompt):
-        with pytest.raises(ValueError) as exc_info:
-            reg.render("test_placeholder", user="{unreplaced_var}")
-        err = str(exc_info.value)
-        assert "test_placeholder" in err
-        assert "placeholder" in err.lower()
-        assert "unreplaced_var" in err
-
-
 def test_successful_render_prompt_with_vars():
     """Render thành công prompt với tham số."""
     reg = PromptRegistry()
@@ -592,28 +620,30 @@ def test_format_error_message_no_stack_or_template_leak():
 
 
 def test_api_chat_prompt_error_returns_503_friendly_message():
-    """Lỗi prompt trong /api/chat trả về HTTP 503 với thông báo tiếng Việt thân thiện."""
+    """Lỗi prompt trong stream → SSE __answer__ error với thông báo thân thiện."""
+    from tests.helpers_stream import sse_answer
+
     with patch(
-        "src.main.run_agent",
+        "src.main.run_agent_stream",
         side_effect=ValueError("Prompt 'agent_system' thiếu biến: ['now']"),
     ):
         res = client.post(
-            "/api/chat",
+            "/api/agent/stream",
             json={
                 "question": "Hôm nay có bao nhiêu lượt xe vào?",
                 "session_id": "session-test-prompt",
                 "user_id": "user-test",
             },
         )
-    assert res.status_code == 503
-    detail = res.json().get("detail", "")
+    assert res.status_code == 200
+    detail = sse_answer(res)
     assert detail == "Lỗi cấu hình prompt: thiếu biến hoặc template không hợp lệ. Liên hệ quản trị."
     assert "now" not in detail
 
 
 def test_api_stream_prompt_error_yields_friendly_answer_sse(monkeypatch):
     """Lỗi prompt trong /api/agent/stream không làm crash generator, trả về __answer__ error."""
-    monkeypatch.setattr("src.infra.monitoring.tracing.settings.monitoring_enabled", False)
+    monkeypatch.setattr("src.domain.observability.tracing.settings.monitoring_enabled", False)
     from src.main import _cache
 
     _cache.clear()

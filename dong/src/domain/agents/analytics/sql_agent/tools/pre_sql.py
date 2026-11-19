@@ -1,7 +1,7 @@
 """Pre-SQL helpers: time_range hints, chart hints, prompt context injection (dong v7 Phase 3b)."""
 from __future__ import annotations
 import re
-from src.infra.db.catalog import get_catalog
+from src.infra.storage.sql.catalog import get_catalog
 _VEHICLE_CHART_RE = re.compile('phương\\s*tiện|\\bxe\\b|vehicle|loại\\s*xe|theo\\s*loại', re.IGNORECASE)
 _DIRECTION_CHART_RE = re.compile('hướng|direction|ra\\s*vào|vào\\s*ra|\\bra\\b|\\bvào\\b', re.IGNORECASE)
 

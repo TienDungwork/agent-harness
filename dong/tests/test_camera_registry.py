@@ -18,7 +18,7 @@ from src.domain.agents.knowledge.docs_agent.tools.camera_registry import (
     format_camera_list_answer,
     FALLBACK_CAMERAS,
 )
-from src.domain.agents.graph import Agent_Input, run_agent
+from src.domain.agents.graph import (Agent_Input, run_agent)
 
 
 def test_load_camera_registry_success():

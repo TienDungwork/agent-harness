@@ -8,7 +8,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from src.main import app
-from src.shared.config import settings
+from src.shared.settings import settings
 
 client = TestClient(app)
 

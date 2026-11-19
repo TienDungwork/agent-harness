@@ -7,7 +7,7 @@ from contextlib import contextmanager
 from typing import Generator
 
 from src.infra.memory.agent_schema import load_agent_storage_ddl
-from src.shared.config import settings
+from src.shared.settings import settings
 
 logger = logging.getLogger(__name__)
 

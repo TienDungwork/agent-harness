@@ -9,10 +9,10 @@ from __future__ import annotations
 import re
 from typing import Any
 
-from src.shared.config import settings
-from src.infra.db.catalog import get_database_for_sql
-from src.infra.db.connection import get_connection
-from src.infra.db.validator import validate_sql
+from src.shared.settings import settings
+from src.infra.storage.sql.catalog import get_database_for_sql
+from src.infra.storage.sql.connection import get_connection
+from src.infra.storage.sql.validator import validate_sql
 
 _TABLE_REF = re.compile(
     r'\b(?:from|join)\s+(?:only\s+)?(?:(?:"?[a-zA-Z_][\w]*"?)\.)?"?([a-zA-Z_][\w]*)"?',

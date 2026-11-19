@@ -5,8 +5,8 @@ import re
 from typing import Any
 
 from src.domain.authz.access_context import AccessContext, get_bound_access_context
-from src.infra.db.catalog import get_catalog
-from src.shared.config import settings
+from src.infra.storage.sql.catalog import get_catalog
+from src.shared.settings import settings
 
 
 _TABLE_REF = re.compile(

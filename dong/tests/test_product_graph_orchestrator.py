@@ -25,10 +25,10 @@ Kiểm tra:
 
 from unittest.mock import patch
 
-from src.domain.agents.graph import Agent_Input, _build_graph, run_agent, run_agent_stream
+from src.domain.agents.graph import (Agent_Input, _build_graph, run_agent, run_agent_stream)
 from src.domain.agents.analytics.sql_agent.tools.generate import generate_sql_node
 from src.domain.agents.nodes.plan import plan_orchestration
-from src.infra.db.catalog import select_relevant_tables
+from src.infra.storage.sql.catalog import select_relevant_tables
 from src.infra.llm.schemas import OrchestratorPlan, OrchestratorStep
 
 
@@ -243,7 +243,7 @@ def test_plan_orchestration_mock_online(mock_invoke, _mock_offline):
 from unittest.mock import patch
 
 from src.domain.agents import classify_intent, classify_intent_str, rewrite_question, sanitize_intent_result
-from src.domain.agents.graph import Agent_Input, _build_graph, run_agent
+from src.domain.agents.graph import (Agent_Input, _build_graph, run_agent)
 from src.infra.llm.schemas import IntentResult, RewrittenQuestion
 
 
@@ -353,7 +353,7 @@ def test_rewrite_compound_question_calls_llm():
 def test_rewrite_caps_max_sub_questions():
     from src.domain.agents.nodes.rewrite import _normalize_rewritten
     from src.infra.llm.schemas import RewrittenQuestion
-    from src.shared.config import settings
+    from src.shared.settings import settings
 
     many = [f"câu {i}" for i in range(6)]
     out = _normalize_rewritten(RewrittenQuestion(text="tóm tắt", sub_questions=many))
@@ -580,7 +580,7 @@ import uuid
 from unittest.mock import patch
 import pytest
 
-from src.domain.agents.graph import Agent_Input, _get_graph, run_agent
+from src.domain.agents.graph import (Agent_Input, _get_graph, run_agent)
 from src.infra.llm.schemas import IntentResult, RewrittenQuestion
 from src.infra.memory.ttl_cache import clear_ttl_cache
 
@@ -902,7 +902,7 @@ def test_stat_question_with_hallucinated_answer_sanitized_and_routes_to_sql():
 
 import pytest
 from unittest.mock import patch, MagicMock
-from src.domain.agents.graph import run_agent, Agent_Input, _compiled
+from src.domain.agents.graph import (run_agent, Agent_Input, _compiled)
 
 @pytest.fixture(autouse=True)
 def reset_graph():
@@ -1062,11 +1062,15 @@ def test_multi_heuristic_hits_orchestrator():
 from unittest.mock import MagicMock, patch
 import pytest
 
-from src.domain.agents.graph import Agent_Input, rewrite_node, run_agent
+from src.domain.agents.graph import (Agent_Input, run_agent)
+
+from src.domain.agents.nodes.rewrite_classify import rewrite_node
 from src.domain.agents.nodes.intent import is_chat_greeting, is_chat_like
 from src.domain.agents.nodes.rewrite import rewrite_question, rewrite_question_safe
 from src.infra.llm.schemas import RewrittenQuestion
-from src.main import AskRequest, ChatRequest, ask, chat, stream_agent
+from fastapi.testclient import TestClient
+from src.main import app
+from tests.helpers_stream import post_stream, sse_answer
 from src.infra.memory.ttl_cache import clear_ttl_cache, make_cache_key, set_ttl_cached
 
 
@@ -1172,8 +1176,8 @@ def test_rewrite_node_meta_llm_used_true_for_stat(mock_invoke):
 
 def test_ttl_cache_hit_chat_skips_rewrite_and_agent(monkeypatch):
     """Chat endpoint on TTL cache hit returns answer without calling rewrite or agent."""
-    monkeypatch.setattr("src.shared.config.settings.cache_enabled", True)
-    monkeypatch.setattr("src.shared.config.settings.memory_ttl_seconds", 300)
+    monkeypatch.setattr("src.shared.settings.settings.cache_enabled", True)
+    monkeypatch.setattr("src.shared.settings.settings.memory_ttl_seconds", 300)
 
     q = "Hôm nay có bao nhiêu lượt xe vào?"
     store_key = make_cache_key(q, route="query_data")
@@ -1189,11 +1193,10 @@ def test_ttl_cache_hit_chat_skips_rewrite_and_agent(monkeypatch):
     mock_rewrite = MagicMock()
     mock_run = MagicMock()
     monkeypatch.setattr("src.domain.agents.nodes.rewrite.rewrite_question_safe", mock_rewrite)
-    monkeypatch.setattr("src.main.run_agent", mock_run)
+    monkeypatch.setattr("src.main.run_agent_stream", mock_run)
 
-    resp = chat(ChatRequest(question=q))
-    assert resp.answer == "Hôm nay có 150 lượt xe vào."
-    assert resp.detail.get("cache_hit") is True
+    res = post_stream(TestClient(app), q)
+    assert sse_answer(res) == "Hôm nay có 150 lượt xe vào."
     mock_rewrite.assert_not_called()
     mock_run.assert_not_called()
 
@@ -1203,8 +1206,8 @@ def test_ttl_cache_hit_stream_skips_rewrite_and_stream(monkeypatch):
     from fastapi.testclient import TestClient
     from src.main import app
 
-    monkeypatch.setattr("src.shared.config.settings.cache_enabled", True)
-    monkeypatch.setattr("src.shared.config.settings.memory_ttl_seconds", 300)
+    monkeypatch.setattr("src.shared.settings.settings.cache_enabled", True)
+    monkeypatch.setattr("src.shared.settings.settings.memory_ttl_seconds", 300)
 
     q = "Hôm nay có bao nhiêu lượt xe vào cổng?"
     store_key = make_cache_key(q, route="query_data")
@@ -1223,7 +1226,7 @@ def test_ttl_cache_hit_stream_skips_rewrite_and_stream(monkeypatch):
     monkeypatch.setattr("src.domain.agents.graph.run_agent_stream", mock_stream)
 
     client = TestClient(app)
-    res = client.post("/api/agent/stream", json={"question": q})
+    res = post_stream(client, q)
     assert res.status_code == 200
     body = res.text
 
@@ -1234,9 +1237,9 @@ def test_ttl_cache_hit_stream_skips_rewrite_and_stream(monkeypatch):
 
 
 def test_ttl_cache_hit_ask_skips_rewrite_and_agent(monkeypatch):
-    """Ask endpoint on TTL cache hit returns answer without calling rewrite or agent."""
-    monkeypatch.setattr("src.shared.config.settings.cache_enabled", True)
-    monkeypatch.setattr("src.shared.config.settings.memory_ttl_seconds", 300)
+    """Stream on TTL cache hit returns answer without calling rewrite or agent."""
+    monkeypatch.setattr("src.shared.settings.settings.cache_enabled", True)
+    monkeypatch.setattr("src.shared.settings.settings.memory_ttl_seconds", 300)
 
     q = "Hôm nay có bao nhiêu lượt xe vào cổng?"
     store_key = make_cache_key(q, route="query_data")
@@ -1252,28 +1255,33 @@ def test_ttl_cache_hit_ask_skips_rewrite_and_agent(monkeypatch):
     mock_rewrite = MagicMock()
     mock_run = MagicMock()
     monkeypatch.setattr("src.domain.agents.nodes.rewrite.rewrite_question_safe", mock_rewrite)
-    monkeypatch.setattr("src.main.run_agent", mock_run)
+    monkeypatch.setattr("src.main.run_agent_stream", mock_run)
 
-    resp = ask(AskRequest(question=q))
-    assert resp.answer == "Tổng cộng 200 lượt xe."
+    res = post_stream(TestClient(app), q)
+    assert sse_answer(res) == "Tổng cộng 200 lượt xe."
     mock_rewrite.assert_not_called()
     mock_run.assert_not_called()
 
 
-def test_main_chat_greeting_skips_rewrite_safe_before_agent(monkeypatch):
-    """Chat endpoint for greetings bypasses rewrite_question_safe completely."""
-    monkeypatch.setattr("src.shared.config.settings.cache_enabled", True)
-    monkeypatch.setattr("src.shared.config.settings.memory_ttl_seconds", 300)
+def test_main_ask_greeting_skips_rewrite_safe_before_agent(monkeypatch):
+    """Stream greetings bypass rewrite_question_safe (graph path)."""
+    monkeypatch.setattr("src.shared.settings.settings.cache_enabled", True)
+    monkeypatch.setattr("src.shared.settings.settings.memory_ttl_seconds", 300)
 
     mock_rewrite_safe = MagicMock()
     monkeypatch.setattr("src.domain.agents.nodes.rewrite.rewrite_question_safe", mock_rewrite_safe)
 
+    from src.domain.agents.graph import Agent_Output
+
+    def fake_stream(*_a, **_k):
+        yield {"__final_result__": Agent_Output(question="xin chào bạn", answer="Xin chào!", detail="respond_inline")}
+
+    monkeypatch.setattr("src.main.run_agent_stream", fake_stream)
     with patch("src.infra.llm.client.use_offline_tools", return_value=True):
-        resp = chat(ChatRequest(question="xin chào bạn"))
+        res = post_stream(TestClient(app), "xin chào bạn")
 
     mock_rewrite_safe.assert_not_called()
-    assert resp.answer
-    assert resp.detail.get("agent_detail") in ("chat", "clarify")
+    assert sse_answer(res)
 
 # ==============================================================================
 # --- Sourced from test_phase5_domain_route.py ---
@@ -1286,9 +1294,9 @@ from unittest.mock import patch
 
 import pytest
 
-from src.domain.agents.graph import Agent_Input, run_agent
+from src.domain.agents.graph import (Agent_Input, run_agent)
 from src.domain.agents.nodes.intent import classify_intent_safe, is_stat_event_domain
-from src.infra.db.catalog import select_relevant_tables
+from src.infra.storage.sql.catalog import select_relevant_tables
 from src.infra.llm.schemas import IntentResult, RewrittenQuestion
 
 
@@ -1461,7 +1469,7 @@ def test_cross_db_hay_comparison_routes_through_respond_node():
     """Multihop so sánh cross-DB phải qua node respond và trả lời đúng vế 'nhiều hơn'."""
     import uuid
     from unittest.mock import patch
-    from src.domain.agents.graph import _get_graph, reset_graph
+    from src.domain.agents.graph import (_get_graph, reset_graph)
 
     reset_graph()
     q = "Trong khoảng từ 23/09/2026 đến 24/09/2026, phương tiện hay vùng cấm xảy ra nhiều hơn?"
@@ -1496,7 +1504,7 @@ def test_cross_db_hay_comparison_routes_through_respond_node():
 
 def test_hay_comparison_synthesis_picks_winner():
     """Template so sánh phải kết luận đúng vế nhiều hơn từ số liệu 2 bước."""
-    from src.domain.agents.graph import _try_format_hay_comparison_answer
+    from src.domain.agents.nodes.synth import _try_format_hay_comparison_answer
 
     q = "Trong khoảng từ 22/09/2026 đến 24/09/2026, phương tiện hay vùng cấm xảy ra nhiều hơn?"
     steps = [
@@ -1524,7 +1532,7 @@ def test_hay_comparison_synthesis_picks_winner():
 
 def test_hay_comparison_synthesis_less_direction():
     """Câu 'ít hơn' phải kết luận loại có số lượng nhỏ hơn."""
-    from src.domain.agents.graph import _try_format_hay_comparison_answer
+    from src.domain.agents.nodes.synth import _try_format_hay_comparison_answer
 
     q = "Trong tháng này, phương tiện hay vùng cấm xảy ra ít hơn?"
     steps = [
@@ -1539,8 +1547,8 @@ def test_hay_comparison_synthesis_less_direction():
 
 def test_orchestrator_multi_answer_passes_guardrail():
     """Số liệu gom đủ bước — check_output không gắn disclaimer oan."""
-    from src.shared.guardrails import check_output
-    from src.domain.agents.graph import _build_orchestrator_query_result
+    from src.domain.guardrails import check_output
+    from src.domain.agents.nodes.synth import _build_orchestrator_query_result
 
     question = (
         "Trong khoảng từ 22/09/2026 đến 24/09/2026, phương tiện hay vùng cấm xảy ra nhiều hơn?"
@@ -1564,7 +1572,7 @@ def test_orchestrator_multi_answer_passes_guardrail():
 def test_same_thread_docs_then_stat_clears_respond_mode():
     """Lượt hỏi sau không được kế thừa respond_mode=docs từ checkpointer."""
     from unittest.mock import patch
-    from src.domain.agents.graph import _get_graph, reset_graph
+    from src.domain.agents.graph import (_get_graph, reset_graph)
 
     reset_graph()
     thread = "docs_then_stat_same_thread"
@@ -1590,7 +1598,7 @@ def test_all_branches_terminate_at_respond_node():
     """Mọi nhánh graph đi qua respond rồi kết thúc tại guardrail_output."""
     import uuid
     from unittest.mock import patch
-    from src.domain.agents.graph import _get_graph, reset_graph
+    from src.domain.agents.graph import (_get_graph, reset_graph)
 
     reset_graph()
     cases = [
@@ -1628,7 +1636,7 @@ def test_single_query_after_multi_on_same_thread_not_polluted():
     """Checkpointer không để orchestrator_step_results cũ làm lệch câu đơn."""
     import uuid
     from unittest.mock import patch
-    from src.domain.agents.graph import run_agent, Agent_Input, reset_graph
+    from src.domain.agents.graph import (run_agent, Agent_Input, reset_graph)
 
     reset_graph()
     thread = f"pollution_{uuid.uuid4().hex}"
@@ -1647,7 +1655,7 @@ def test_chart_after_multihop_does_not_leak_zone_from_memory():
     """Memory số liệu multihop không được đưa vào câu trả lời chart phương tiện."""
     import uuid
     from unittest.mock import patch
-    from src.domain.agents.graph import run_agent, Agent_Input, reset_graph
+    from src.domain.agents.graph import (run_agent, Agent_Input, reset_graph)
 
     reset_graph()
     thread = f"chart_mem_{uuid.uuid4().hex}"
@@ -1678,7 +1686,7 @@ def test_respond_input_includes_rewritten_question():
     """Node respond phải ghi cả câu hỏi gốc và câu sau rewrite."""
     import uuid
     from unittest.mock import patch
-    from src.domain.agents.graph import _get_graph, reset_graph
+    from src.domain.agents.graph import (_get_graph, reset_graph)
 
     reset_graph()
     thread = f"respond_rw_{uuid.uuid4().hex}"
@@ -1733,7 +1741,7 @@ def test_data_chart_intent_override_not_howto():
 
 
 def test_all_events_synthesis_and_chart():
-    from src.domain.agents.graph import _try_format_all_events_answer, _aggregate_all_events_rows
+    from src.domain.agents.nodes.synth import (_try_format_all_events_answer, _aggregate_all_events_rows)
     from src.domain.agents.nodes.plan import _plan_all_events_aggregate
     from src.infra.llm.schemas import OrchestratorPlan
 
@@ -1759,7 +1767,7 @@ def test_all_events_synthesis_and_chart():
 def test_all_events_multihop_routes_through_respond_with_template():
     import uuid
     from unittest.mock import patch
-    from src.domain.agents.graph import _get_graph, reset_graph
+    from src.domain.agents.graph import (_get_graph, reset_graph)
 
     reset_graph()
     q = "Vẽ sơ đồ số lượng tất cả event ngày hôm nay"
@@ -1793,7 +1801,7 @@ def test_all_events_multihop_routes_through_respond_with_template():
 
 
 def test_select_relevant_tables_all_events_fallback():
-    from src.infra.db.catalog import select_relevant_tables
+    from src.infra.storage.sql.catalog import select_relevant_tables
 
     tables = select_relevant_tables("Thống kê tất cả event hôm nay")
     assert "plate_event" in tables

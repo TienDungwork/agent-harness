@@ -8,8 +8,10 @@ import pytest
 
 from src.domain.agents.nodes.guardrails import _build_output_evidence
 from src.domain.agents.nodes.inline_respond import generate_inline_response, get_system_time_vietnam
-from src.domain.agents.graph import Agent_Output, respond_inline_node, respond_node
-from src.shared.guardrails import check_output
+from src.domain.agents.graph import Agent_Output
+from src.domain.agents.nodes.rewrite_classify import respond_inline_node
+from src.domain.agents.nodes.respond import respond_node
+from src.domain.guardrails import check_output
 
 
 def test_get_system_time_vietnam():

@@ -5,16 +5,11 @@ from __future__ import annotations
 import pytest
 from unittest.mock import MagicMock, patch
 
-from src.domain.agents.graph import (
-    Agent_Input,
-    Agent_Output,
-    _memory_context_block,
-    extract_memory_node,
-    recall_memory_node,
-    recall_node,
-    run_agent,
-    run_agent_stream,
-)
+from src.domain.agents.graph import (Agent_Input, Agent_Output, run_agent, run_agent_stream)
+
+from src.domain.agents.tools import memory_context_block as _memory_context_block
+
+from src.domain.agents.nodes.memory import (extract_memory_node, recall_memory_node, recall_node)
 from src.domain.agents.nodes.inline_respond import generate_inline_response
 from src.infra.memory import (
     clear_long_term,
@@ -83,7 +78,7 @@ def test_extract_memory_node_stores_facts_directly():
 
 def test_sliding_window_prunes_long_history(monkeypatch):
     """Lịch sử hội thoại dài trên 20 tin nhắn được sliding_window thu gọn an toàn."""
-    from src.domain.agents.graph import rewrite_node
+    from src.domain.agents.nodes.rewrite_classify import rewrite_node
 
     long_messages = [HumanMessage(content=f"Câu hỏi số {i}") for i in range(25)]
     state = {

@@ -2,9 +2,9 @@
 from __future__ import annotations
 from typing import Any
 from src.domain.agents.nodes.io import node_event
-from src.infra.monitoring.tracing import current_span, trace_step
+from src.domain.observability.tracing import current_span, trace_step
 AgentState = dict[str, Any]
-from src.shared.guardrails import OUT_OF_SCOPE_REPLY, _is_tool_empty, check_input, check_output, in_scope, redact_pii
+from src.domain.guardrails import OUT_OF_SCOPE_REPLY, _is_tool_empty, check_input, check_output, in_scope, redact_pii
 
 def _question(state: AgentState) -> str:
     return ((state['question'] if 'question' in state else None) or '').strip()
@@ -67,7 +67,7 @@ def _build_output_evidence(state: AgentState, result: Any) -> list[str]:
     return ev
 
 def guardrail_output_node(state: AgentState) -> dict:
-    from src.domain.agents.graph import Agent_Output
+    from src.domain.agents.state import Agent_Output
     result = state['result'] if 'result' in state else None
     user_id = (state['user_id'] if 'user_id' in state else None) or 'default'
     session_id = (state['session_id'] if 'session_id' in state else None) or 'default'

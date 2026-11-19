@@ -5,8 +5,8 @@ from pathlib import Path
 import re
 from typing import Any
 import yaml
-from src.shared.config import settings
-_CATALOG_PATH = Path(__file__).resolve().parents[3] / 'resource' / 'db' / 'catalog.yaml'
+from src.shared.settings import settings
+_CATALOG_PATH = Path(__file__).resolve().parents[4] / 'resource' / 'db' / 'catalog.yaml'
 
 @lru_cache(maxsize=1)
 def _load_catalog() -> dict[str, dict[str, Any]]:
@@ -78,7 +78,7 @@ def describe_table(table: str, dbname: str | None=None) -> dict[str, Any]:
         return {'database': db, 'table': tbl, 'description': info['description'], 'time_column': info['time_column'], 'columns': [{'column_name': col_name, 'data_type': meta['type'], 'description': meta['description'], 'sample_values': meta['sample_values'] if 'sample_values' in meta else []} for col_name, meta in info['columns'].items()]}
     if settings.db_configured and dbname:
         try:
-            from src.infra.db.connection import get_connection
+            from src.infra.storage.sql.connection import get_connection
             with get_connection(dbname) as conn, conn.cursor() as cur:
                 cur.execute('\n                    SELECT column_name, data_type\n                    FROM information_schema.columns\n                    WHERE table_name = %s\n                    ORDER BY ordinal_position\n                    ', (tbl,))
                 cols = cur.fetchall()

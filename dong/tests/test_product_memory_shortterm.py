@@ -17,7 +17,7 @@ import pytest
 from langgraph.checkpoint.base import BaseCheckpointSaver, empty_checkpoint
 from langgraph.checkpoint.memory import MemorySaver
 
-from src.shared.config import settings
+from src.shared.settings import settings
 from src.infra.memory.shortterm import (
     get_checkpointer,
     is_using_postgres_checkpointer,

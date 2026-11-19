@@ -1,5 +1,44 @@
 # Change Log — agent dong
 
+## 2026-11-12 — `guardrails` → domain; `infra/db` → `infra/storage`
+
+- `src/guardrails` → `src/domain/guardrails` (import `src.domain.guardrails`).
+- `infra/db` → `infra/storage/sql`; `infra/feedback/store.py` → `infra/storage/feedback/postgres.py`; `infra/storage/minio_charts.py` → `infra/storage/objects/`.
+- I/O feedback local (SQLite/JSON/ảnh đính kèm) tách khỏi `domain/observability/feedback.py` → `infra/storage/feedback/local.py`; domain chỉ dựng record + chọn backend.
+- Sửa `DATA_DIR` về `dong/data/` (sau khi dời vào `domain/` bị lệch thành `src/data/`); `catalog.yaml` path `parents[4]`.
+- Test: `pytest tests/test_feedback_api.py tests/test_minio_charts.py` (11 passed); full suite không đổi so với trước (102 failed có sẵn).
+
+## 2026-11-11 — Feedback data path → `dong/data/` (not `src/data/`)
+
+- `observability/feedback.py`: `DATA_DIR` = repo root `data/` (`parents[2]`), khớp volume `./data:/app/data`.
+- `.gitignore`: ignore `src/data/`; chuyển attachment cũ khỏi `src/data/` nếu còn.
+
+## 2026-11-18 — Observability → domain + respond `trace_stream`
+
+- `src/observability` → `src/domain/observability` (tracing / redaction / feedback).
+- `respond` LLM: `chat_stream` + `trace_stream` + stream writer (như vn-stock answer_node).
+
+## 2026-11-11 — Align invoke với vn-stock
+
+- `run_agent` / `run_agent_stream`: `invoke`/`stream` + `context={trace_span, access_context, prompt_version}`.
+- Bỏ `invoke.py` / `node_wrap.py`; bare nodes; chunks qua `get_stream_writer`.
+- `get_bound_access_context` / `current_prompt_version` fallback runtime context.
+
+## 2026-11-11 — Bỏ shim `shared.config` / `feedback` / `guardrails`; `settings.py`
+
+- Xóa `shared/config.py`, `shared/feedback.py`, `shared/guardrails.py` (chỉ re-export).
+- Gộp `shared/settings/` → `shared/settings.py`; import: `from src.shared.settings import settings`.
+- Guardrails → `src.guardrails`; feedback → `src.observability.feedback`.
+
+## 2026-11-11 — Bỏ `/ask`; stream là API duy nhất
+
+- Xóa `POST /ask` + `AgentTurnService.ask` + AskRequest/AskResponse.
+- `POST /api/agent/stream`: `check_input` → `redact_pii` (gán lại question) → graph; nginx bỏ `location /ask`.
+
+## 2026-11-11 — Bỏ `POST /api/chat`
+
+- FE vốn không gọi `/api/chat`; sau đó bỏ luôn `/ask`, chỉ còn stream.
+
 ## 2026-11-10 — API layout: `routers/agent` + `routers/web_backend`
 
 - Chatbot → `src/api/routers/agent/`; sessions/memory/meta/feedback → `src/api/routers/web_backend/`.

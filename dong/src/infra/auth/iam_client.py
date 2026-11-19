@@ -7,7 +7,7 @@ import urllib.error
 import urllib.request
 from typing import Any
 
-from src.shared.config import settings
+from src.shared.settings import settings
 
 logger = logging.getLogger(__name__)
 

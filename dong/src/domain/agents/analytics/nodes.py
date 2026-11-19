@@ -2,7 +2,7 @@
 from __future__ import annotations
 from src.domain.agents.state import AgentState
 from src.infra.chart.render import should_render_chart
-from src.shared.config import settings
+from src.shared.settings import settings
 
 def after_validate(state: AgentState) -> str:
     val = (state['sql_validation'] if 'sql_validation' in state else None) or {}

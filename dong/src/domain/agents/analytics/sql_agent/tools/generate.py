@@ -4,10 +4,10 @@ import re
 from src.domain.agents.nodes.io import node_event
 from src.domain.agents.analytics.sql_agent.tools.pre_sql import format_time_range_for_prompt, build_chart_sql_hint
 from src.domain.agents.analytics.sql_agent.tools.scope import apply_organization_scope, format_org_scope_for_prompt
-from src.shared.config import settings
+from src.shared.settings import settings
 from src.infra.llm.client import invoke_text, use_offline_tools
 from src.infra.llm.params import DETERMINISTIC
-from src.infra.monitoring.tracing import current_span, trace_step
+from src.domain.observability.tracing import current_span, trace_step
 from src.infra.prompts import registry
 _SQL_FENCE = re.compile('```(?:sql)?\\s*(.*?)```', re.IGNORECASE | re.DOTALL)
 _THINKING_BLOCK = re.compile('\\x3cthink\\x3e.*?\\x3c/think\\x3e', re.DOTALL | re.IGNORECASE)

@@ -7,7 +7,7 @@ import uuid
 import boto3
 from botocore.client import Config
 
-from src.shared.config import settings
+from src.shared.settings import settings
 
 
 def upload_chart_png(png_bytes: bytes, *, session_id: str) -> str:

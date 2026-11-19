@@ -1,4 +1,4 @@
-from src.infra.storage import minio_charts
+from src.infra.storage.objects import minio_charts
 
 
 def test_upload_chart_png_builds_chatbot_key(monkeypatch):

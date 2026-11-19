@@ -16,7 +16,7 @@ import pytest
 import yaml
 from fastapi.testclient import TestClient
 
-from src.shared.config import Settings, settings
+from src.shared.settings import Settings, settings
 from src.main import app
 
 client = TestClient(app)
@@ -299,8 +299,8 @@ def test_mock_testclient_session_api_lifecycle():
 def test_mock_testclient_ttl_cache_stream_hit(monkeypatch):
     """Lần 2 cùng câu hỏi stat trong TTL window -> SSE stream kích hoạt node 'cache' và cache_hit=true."""
     clear_ttl_cache()
-    monkeypatch.setattr("src.shared.config.settings.cache_enabled", True)
-    monkeypatch.setattr("src.shared.config.settings.memory_ttl_seconds", 300)
+    monkeypatch.setattr("src.shared.settings.settings.cache_enabled", True)
+    monkeypatch.setattr("src.shared.settings.settings.memory_ttl_seconds", 300)
 
     question = "Hôm nay có bao nhiêu lượt xe vào?"
     session_id = "smoke_ttl_session"

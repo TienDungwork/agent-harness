@@ -5,7 +5,7 @@ import logging
 import time
 import urllib.request
 from typing import Any
-from src.shared.config import settings
+from src.shared.settings import settings
 logger = logging.getLogger(__name__)
 _catalog_cache: dict[str, Any] | None = None
 _catalog_cached_at: float = 0.0

@@ -37,6 +37,12 @@ class Settings(BaseSettings):
     llm_api_key: str = Field(default="", alias="LLM_API_KEY")
     llm_request_timeout_s: float = Field(default=60.0, alias="LLM_REQUEST_TIMEOUT_S")
 
+    # A/B prompt (sticky theo user_id) — mặc định tắt như vn-stock
+    prompt_ab_enabled: bool = Field(default=False, alias="PROMPT_AB_ENABLED")
+    prompt_ab_version_a: str = Field(default="production", alias="PROMPT_AB_VERSION_A")
+    prompt_ab_version_b: str = Field(default="v2", alias="PROMPT_AB_VERSION_B")
+    prompt_ab_split_pct: int = Field(default=50, alias="PROMPT_AB_SPLIT_PCT")
+
     # vLLM gateway (khi LLM_BACKEND=self_hosted)
     model_base_url: str = Field(default="http://192.168.1.198:18083/v1", alias="MODEL_BASE_URL")
     model_name: str = Field(default="bonsai-27b", alias="MODEL_NAME")
@@ -134,6 +140,7 @@ class Settings(BaseSettings):
         "cache_enabled",
         "monitoring_enabled",
         "iam_required",
+        "prompt_ab_enabled",
         mode="before",
     )
     @classmethod
@@ -201,7 +208,8 @@ class Settings(BaseSettings):
         raw = self.docs_root or "resource/docs/vms_yaml"
         p = Path(raw)
         if not p.is_absolute():
-            project_root = Path(__file__).resolve().parents[3]
+            # src/shared/settings.py → parents[2] = project root (dong/)
+            project_root = Path(__file__).resolve().parents[2]
             p = (project_root / p).resolve()
         if not p.exists() or not (p / "index.yaml").exists():
             raise FileNotFoundError(f"DOCS_ROOT không hợp lệ hoặc thiếu index.yaml: {p}")

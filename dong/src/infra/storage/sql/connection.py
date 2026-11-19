@@ -17,7 +17,7 @@ from __future__ import annotations
 
 from contextlib import contextmanager
 
-from src.shared.config import settings
+from src.shared.settings import settings
 
 
 def is_configured() -> bool:

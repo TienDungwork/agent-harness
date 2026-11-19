@@ -15,15 +15,13 @@ from src.domain.agents.state import AgentState
 
 def build_analytics_graph():
     """Return compiled SQL/chart team graph (use as parent node ``analytics_team``)."""
-    from src.domain.agents.graph import _wrap_node
-
     g = StateGraph(AgentState)
-    g.add_node("retrieve_schema", _wrap_node("retrieve_schema", retrieve_schema_node))
-    g.add_node("generate_sql", _wrap_node("generate_sql", generate_sql_node))
-    g.add_node("validate_sql", _wrap_node("validate_sql", validate_sql_node))
-    g.add_node("repair_sql", _wrap_node("repair_sql", repair_sql_node))
-    g.add_node("execute_sql", _wrap_node("execute_sql", execute_sql_node))
-    g.add_node("render_chart", _wrap_node("render_chart", render_chart_node))
+    g.add_node("retrieve_schema", retrieve_schema_node)
+    g.add_node("generate_sql", generate_sql_node)
+    g.add_node("validate_sql", validate_sql_node)
+    g.add_node("repair_sql", repair_sql_node)
+    g.add_node("execute_sql", execute_sql_node)
+    g.add_node("render_chart", render_chart_node)
 
     g.add_edge(START, "retrieve_schema")
     g.add_edge("retrieve_schema", "generate_sql")

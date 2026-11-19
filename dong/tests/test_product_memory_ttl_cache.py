@@ -18,7 +18,7 @@ from unittest.mock import patch
 
 import pytest
 
-from src.shared.config import settings
+from src.shared.settings import settings
 from src.infra.memory.ttl_cache import (
     cleanup_expired,
     clear_ttl_cache,

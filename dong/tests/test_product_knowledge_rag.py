@@ -10,7 +10,7 @@ from __future__ import annotations
 
 from unittest.mock import patch
 
-from src.infra.db.dataset_catalog import (
+from src.infra.storage.sql.dataset_catalog import (
     clear_dataset_catalog_cache,
     get_case_hints,
     get_table_for_keywords,
@@ -352,17 +352,17 @@ def test_handle_docs_intent_adapter():
 
 def test_how_to_path_does_not_call_db():
     """Kiểm tra nhánh how-to tài liệu VMS hoàn toàn không gọi DB."""
-    with patch("src.infra.db.executor.execute_sql") as mock_exec, \
-         patch("src.infra.db.connection.get_connection") as mock_conn:
+    with patch("src.infra.storage.sql.executor.execute_sql") as mock_exec, \
+         patch("src.infra.storage.sql.connection.get_connection") as mock_conn:
         ans = handle_docs_intent("Làm thế nào để thêm camera?")
         assert ans != ""
         mock_exec.assert_not_called()
         mock_conn.assert_not_called()
 
     # Thử gọi qua Agent graph v4
-    from src.domain.agents.graph import Agent_Input, run_agent
-    with patch("src.infra.db.executor.execute_sql") as mock_exec, \
-         patch("src.infra.db.connection.get_connection") as mock_conn, \
+    from src.domain.agents.graph import (Agent_Input, run_agent)
+    with patch("src.infra.storage.sql.executor.execute_sql") as mock_exec, \
+         patch("src.infra.storage.sql.connection.get_connection") as mock_conn, \
          patch("src.domain.agents.nodes.intent.use_offline_tools", return_value=False), \
          patch("src.domain.agents.nodes.intent.invoke_structured") as mock_intent:
         from src.infra.llm.schemas import IntentResult
@@ -385,8 +385,8 @@ def test_how_to_path_does_not_call_db():
 
 import pytest
 
-from src.domain.agents.graph import retrieve_schema_node
-from src.infra.db import (
+from src.domain.agents.analytics.sql_agent.tools.schema import retrieve_schema_node
+from src.infra.storage.sql import (
     build_schema_excerpt,
     get_allowed_tables,
     select_relevant_tables,
@@ -400,7 +400,7 @@ def allowed_tables() -> set[str]:
 
 
 def test_import_from_src_db():
-    from src.infra.db import select_relevant_tables as fn
+    from src.infra.storage.sql import select_relevant_tables as fn
 
     assert callable(fn)
 
@@ -663,7 +663,7 @@ def test_graph_run_emits_scoped_retrieve_schema_event():
     """Graph execution emits retrieve_schema event containing scoped tables and schema_excerpt."""
     import uuid
     from unittest.mock import patch
-    from src.domain.agents.graph import Agent_Input, run_agent_stream
+    from src.domain.agents.graph import (Agent_Input, run_agent_stream)
 
     mock_rows = [{"so_luot": 42}]
     inp = Agent_Input(question="Hôm nay có bao nhiêu lượt xe vào?")
@@ -716,8 +716,8 @@ from unittest.mock import patch
 import pytest
 
 from src.domain.agents.analytics.sql_agent.tools.generate import generate_sql_node
-from src.domain.agents.graph import retrieve_schema_node
-from src.infra.db.catalog import build_schema_excerpt, select_relevant_tables
+from src.domain.agents.analytics.sql_agent.tools.schema import retrieve_schema_node
+from src.infra.storage.sql.catalog import build_schema_excerpt, select_relevant_tables
 from src.infra.llm.schemas import RewrittenQuestion
 
 
@@ -1048,7 +1048,7 @@ class TestGraphLevelOfflineSmoke:
         """Offline graph stream: retrieve_schema event for vehicle question has
         selected_tables ≤ 4 and scoped schema_excerpt (plate_event present,
         unrelated absent)."""
-        from src.domain.agents.graph import Agent_Input, run_agent_stream
+        from src.domain.agents.graph import (Agent_Input, run_agent_stream)
 
         full_len = len(_full_catalog_excerpt())
         inp = Agent_Input(question="Hôm nay có bao nhiêu lượt xe vào?")
@@ -1084,7 +1084,7 @@ class TestGraphLevelOfflineSmoke:
 
     def test_graph_retrieve_schema_event_scoped_fire(self):
         """Offline graph stream: retrieve_schema for fire question → fire_smoke_event selected."""
-        from src.domain.agents.graph import Agent_Input, run_agent_stream
+        from src.domain.agents.graph import (Agent_Input, run_agent_stream)
 
         inp = Agent_Input(question="Có cảnh báo cháy nào hôm nay không?")
         mock_rows = [{"so_luot": 0}]
@@ -1131,8 +1131,8 @@ class TestGraphLevelOfflineSmoke:
 
 from pathlib import Path
 
-from src.shared.config import get_settings
-from src.infra.db.catalog import get_catalog
+from src.shared.settings import get_settings
+from src.infra.storage.sql.catalog import get_catalog
 from src.infra.prompts.registry import registry
 
 

@@ -22,8 +22,8 @@ def invoke_structured(
     params: GenerationParams | None = None,
 ) -> T:
     """Gọi LLM với structured output; trả về instance `schema`."""
-    from src.infra.llm.client import _llm_model_label
-    from src.infra.monitoring.tracing import current_span, trace_step
+    from src.infra.llm.client import llm_model_label
+    from src.domain.observability.tracing import current_span, trace_step
 
     gen = params or DETERMINISTIC
     step_name = substep or schema.__name__
@@ -36,9 +36,9 @@ def invoke_structured(
             return result
         return schema.model_validate(result)
 
-    from src.infra.monitoring.trace_payload import redact_text
+    from src.domain.observability.redaction import redact_text
 
-    meta = {"model_name": _llm_model_label(backend_override), "temperature": gen.temperature}
+    meta = {"model_name": llm_model_label(backend_override), "temperature": gen.temperature}
     trace_in: dict = {"schema": schema.__name__}
     if isinstance(messages, list):
         safe_msgs = []

@@ -7,9 +7,11 @@ import pytest
 
 @pytest.fixture(autouse=True)
 def _enable_memory_layers_for_tests(monkeypatch):
-    from src.shared.config import settings
+    from src.shared.settings import settings
 
     monkeypatch.setattr(settings, "memory_enabled", True, raising=False)
     monkeypatch.setattr(settings, "memory_short_term_enabled", True, raising=False)
     monkeypatch.setattr(settings, "memory_long_term_enabled", True, raising=False)
     monkeypatch.setattr(settings, "cache_enabled", True, raising=False)
+    # Product tests dùng TestClient offline — không bắt Bearer IAM từ .env local.
+    monkeypatch.setattr(settings, "iam_required", False, raising=False)

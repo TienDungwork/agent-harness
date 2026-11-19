@@ -14,7 +14,7 @@ import pytest
 from src.domain.authz.domain_guard import question_domains_allowed
 from src.domain.authz.resolve import AccessDenied, access_context_from_user_ctx
 from src.infra.auth.iam_client import fetch_auth_me
-from src.shared.config import settings
+from src.shared.settings import settings
 
 _LIVE = (os.getenv('IAM_LIVE') or '').strip() in ('1', 'true', 'True', 'yes')
 _PASS = (os.getenv('IAM_TEST_PASSWORD') or '').strip()

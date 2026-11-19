@@ -1,7 +1,7 @@
 """Meta: health, models, config, LLM ping."""
 from __future__ import annotations
 from fastapi import APIRouter, HTTPException
-from src.shared.config import settings
+from src.shared.settings import settings
 from src.infra.llm import ping as llm_ping
 router = APIRouter(tags=['meta'])
 

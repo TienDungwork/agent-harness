@@ -10,7 +10,7 @@ import re
 from dataclasses import dataclass
 from typing import Any
 
-from src.infra.db.catalog import get_allowed_columns, get_allowed_tables
+from src.infra.storage.sql.catalog import get_allowed_columns, get_allowed_tables
 
 _START_OK = re.compile(r"^\s*(select|with)\b", re.IGNORECASE)
 _STRINGS = re.compile(r"('([^']|'')*')|(\"([^\"]|\"\")*\")", re.DOTALL)
@@ -110,7 +110,7 @@ def validate_sql(
     # Kiểm tra đa database trong cùng một câu SQL (Cross-database query isolation)
     used_tables = [t for t in referenced if t in allowed]
     if len(used_tables) > 1:
-        from src.infra.db.catalog import get_database_for_table
+        from src.infra.storage.sql.catalog import get_database_for_table
         dbs = {get_database_for_table(t) for t in used_tables}
         if len(dbs) > 1:
             tbl_db_map = ", ".join(f"'{t}' (db {get_database_for_table(t)})" for t in used_tables)

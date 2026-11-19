@@ -1,19 +1,12 @@
-"""Preset GenerationParams — tách SQL deterministic vs respond."""
+"""Preset GenerationParams — DETERMINISTIC / BALANCED / CREATIVE."""
 
-from src.infra.llm.params import DETERMINISTIC, GenerationParams, RESPOND, TASK
-from src.shared.config import settings
+from src.infra.llm.params import BALANCED, CREATIVE, DETERMINISTIC, GenerationParams
 
 
-def test_deterministic_is_zero_temp():
+def test_preset_temperatures():
     assert DETERMINISTIC.temperature == 0.0
-
-
-def test_respond_uses_respond_temperature_setting():
-    assert RESPOND.temperature == settings.llm_respond_temperature
-
-
-def test_task_uses_default_temperature():
-    assert TASK.temperature == settings.llm_temperature
+    assert BALANCED.temperature == 0.5
+    assert CREATIVE.temperature == 0.9
 
 
 def test_to_langchain_kwargs_omits_none_max_tokens():

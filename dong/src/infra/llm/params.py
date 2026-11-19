@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from pydantic import BaseModel, Field
 
-from src.shared.config import settings
+from src.shared.settings import settings
 
 
 class GenerationParams(BaseModel):
@@ -27,8 +27,12 @@ class GenerationParams(BaseModel):
             out["top_p"] = self.top_p
         return out
 
+    def to_openai_kwargs(self) -> dict:
+        """Map sang OpenAI Chat Completions API (async_client / SDK)."""
+        return self.to_langchain_kwargs()
 
-# Preset theo task — SQL/cấu trúc vs diễn giải câu trả lời.
-DETERMINISTIC = GenerationParams(temperature=0.0)  # text-to-SQL, repair, structured
-TASK = GenerationParams()  # mặc định pipeline (LLM_TEMPERATURE)
-RESPOND = GenerationParams(temperature=settings.llm_respond_temperature)  # respond_stat / inline
+
+# Preset — chọn temperature theo task (giống vn-stock).
+DETERMINISTIC = GenerationParams(temperature=0.0)  # SQL, structured, fact extraction
+BALANCED = GenerationParams(temperature=0.5)  # chatbot, Q&A / respond
+CREATIVE = GenerationParams(temperature=0.9)  # brainstorming, creative writing

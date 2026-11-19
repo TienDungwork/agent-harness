@@ -23,7 +23,10 @@ from src.infra.memory.context import (
     should_compact_route,
     summarize_old_messages,
 )
-from src.domain.agents.graph import AgentState, answer_from_docs_node, respond_node, rewrite_node
+from src.domain.agents.state import AgentState
+from src.domain.agents.knowledge.docs_agent.nodes import answer_from_docs_node
+from src.domain.agents.nodes.respond import respond_node
+from src.domain.agents.nodes.rewrite_classify import rewrite_node
 from src.infra.llm.schemas import RewrittenQuestion
 
 

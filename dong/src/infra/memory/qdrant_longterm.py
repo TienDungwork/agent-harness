@@ -5,7 +5,7 @@ import time
 import uuid
 from functools import lru_cache
 from typing import Any
-from src.shared.config import settings
+from src.shared.settings import settings
 logger = logging.getLogger(__name__)
 
 class LongTermMemoryError(RuntimeError):

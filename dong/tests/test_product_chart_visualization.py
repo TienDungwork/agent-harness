@@ -19,7 +19,7 @@ import base64
 
 import pytest
 
-from src.domain.agents.graph import Agent_Input, run_agent_stream
+from src.domain.agents.graph import (Agent_Input, run_agent_stream)
 from src.infra.chart import normalize_chart_type, plan_chart, render_chart, should_render_chart
 from src.infra.llm.schemas import ChartSpec
 
@@ -337,7 +337,10 @@ from src.domain.agents.analytics.chart_fallback import (
     fallback_chart_query,
     should_retry_chart_query,
 )
-from src.domain.agents.graph import Agent_Input, AgentState, render_chart_node, reset_graph, respond_node, run_agent
+from src.domain.agents.graph import (Agent_Input, reset_graph, run_agent)
+from src.domain.agents.state import AgentState
+from src.domain.agents.nodes.render_chart import render_chart_node
+from src.domain.agents.nodes.respond import respond_node
 from src.domain.agents.nodes.simple_answer import _fmt_num, try_format_simple_answer
 from src.infra.chart.render import (
     _detect_chart_type,
@@ -346,7 +349,7 @@ from src.infra.chart.render import (
     render_chart,
     should_render_chart,
 )
-from src.shared.config import settings
+from src.shared.settings import settings
 from src.infra.llm.schemas import ChartSpec, IntentResult
 
 
@@ -788,7 +791,7 @@ def _mock_stream_no_chart(*args, **kwargs):
 
 def test_stream_emits_chart_event_on_render_chart(monkeypatch):
     """POST /api/agent/stream phải emit __chart__ event khi render_chart node có chart_png_base64."""
-    monkeypatch.setattr("src.infra.monitoring.tracing.settings.monitoring_enabled", False)
+    monkeypatch.setattr("src.domain.observability.tracing.settings.monitoring_enabled", False)
     from src.main import _cache
     _cache.clear()
 
@@ -814,7 +817,7 @@ def test_stream_emits_chart_event_on_render_chart(monkeypatch):
 
 def test_stream_answer_detail_includes_chart_when_present(monkeypatch):
     """__answer__ SSE event detail phải có chart_type và chart_spec khi chart được render."""
-    monkeypatch.setattr("src.infra.monitoring.tracing.settings.monitoring_enabled", False)
+    monkeypatch.setattr("src.domain.observability.tracing.settings.monitoring_enabled", False)
     from src.main import _cache
     _cache.clear()
 
@@ -866,7 +869,7 @@ def test_chart_sse_event_schema_fields():
 
 def test_stream_no_chart_event_when_no_chart(monkeypatch):
     """Không có __chart__ event khi stream không có render_chart node với chart_png_base64."""
-    monkeypatch.setattr("src.infra.monitoring.tracing.settings.monitoring_enabled", False)
+    monkeypatch.setattr("src.domain.observability.tracing.settings.monitoring_enabled", False)
     from src.main import _cache
     _cache.clear()
 
@@ -895,7 +898,7 @@ def test_stream_no_chart_event_when_no_chart(monkeypatch):
 
 def test_stream_chart_event_includes_chart_rows(monkeypatch):
     """__chart__ SSE event phải có chart_rows khi render_chart event input có rows."""
-    monkeypatch.setattr("src.infra.monitoring.tracing.settings.monitoring_enabled", False)
+    monkeypatch.setattr("src.domain.observability.tracing.settings.monitoring_enabled", False)
     from src.main import _cache
     _cache.clear()
 
@@ -922,7 +925,7 @@ def test_stream_chart_event_includes_chart_rows(monkeypatch):
 
 def test_stream_answer_detail_includes_chart_rows(monkeypatch):
     """__answer__ SSE event detail phải có chart_rows khi chart được render với rows."""
-    monkeypatch.setattr("src.infra.monitoring.tracing.settings.monitoring_enabled", False)
+    monkeypatch.setattr("src.domain.observability.tracing.settings.monitoring_enabled", False)
     from src.main import _cache
     _cache.clear()
 
@@ -1558,9 +1561,9 @@ from unittest.mock import patch
 import pytest
 from fastapi.testclient import TestClient
 
-from src.domain.agents.graph import respond_node
+from src.domain.agents.nodes.respond import respond_node
 from src.infra.llm.schemas import QueryResult
-from src.shared.guardrails import EMPTY_TOOL_REPLY, check_output, empty_stat_reply
+from src.domain.guardrails import EMPTY_TOOL_REPLY, check_output, empty_stat_reply
 from src.main import app
 
 client = TestClient(app)
@@ -1615,9 +1618,12 @@ def test_api_chat_empty_query_answer_has_zero():
         detail="query_data",
     )
 
-    with patch("src.domain.agents.graph.run_agent", return_value=empty_out):
+    def fake_stream(*_a, **_k):
+        yield {"__final_result__": empty_out}
+
+    with patch("src.main.run_agent_stream", side_effect=fake_stream):
         res = client.post(
-            "/api/chat",
+            "/api/agent/stream",
             json={
                 "question": "Hôm nay có phát hiện leo trèo không?",
                 "session_id": "sess-empty",
@@ -1625,6 +1631,8 @@ def test_api_chat_empty_query_answer_has_zero():
             },
         )
 
+    from tests.helpers_stream import sse_answer
+
     assert res.status_code == 200
-    assert "0" in res.json()["answer"]
+    assert "0" in sse_answer(res)
 

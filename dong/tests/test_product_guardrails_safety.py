@@ -9,7 +9,7 @@ from __future__ import annotations
 
 
 import pytest
-from src.shared.guardrails import (
+from src.domain.guardrails import (
     EMPTY_TOOL_REPLY,
     GuardrailViolation,
     OUT_OF_SCOPE_REPLY,
@@ -115,7 +115,7 @@ def test_in_scope_vms_how_to_guide(how_to_text: str):
 
 
 import pytest
-from src.shared.guardrails import (
+from src.domain.guardrails import (
     EMPTY_TOOL_REPLY,
     _DISCLAIMER,
     _FALLBACK,
@@ -207,7 +207,7 @@ def test_check_output_toxic_triggers_fallback():
 
 def test_check_output_max_length_truncation(monkeypatch):
     """Kiểm tra giới hạn độ dài câu trả lời."""
-    monkeypatch.setattr("src.shared.guardrails.settings.guardrails_max_answer_len", 50)
+    monkeypatch.setattr("src.domain.guardrails.checks.settings.guardrails_max_answer_len", 50)
     evidence = ["báo cáo"]
     answer = "A" * 100
     result = check_output(answer, evidence)
@@ -255,8 +255,8 @@ def test_check_output_tool_not_empty_unverified():
 
 import pytest
 
-from src.shared.config import settings
-from src.infra.db.connection import get_connection
+from src.shared.settings import settings
+from src.infra.storage.sql.connection import get_connection
 
 pytestmark = pytest.mark.skipif(
     not settings.db_configured,
@@ -324,25 +324,25 @@ def test_grant_layer_delete_bi_insufficient_privilege():
             conn.close()
 
 def test_is_tool_empty_none():
-    from src.shared.guardrails import _is_tool_empty
+    from src.domain.guardrails import _is_tool_empty
     assert _is_tool_empty(None) is False
 
 def test_is_tool_empty_string_only_rows():
-    from src.shared.guardrails import _is_tool_empty
+    from src.domain.guardrails import _is_tool_empty
     class DummyQuery:
         row_count = 1
         rows = [["CAM_01", "CAR"]]
     assert _is_tool_empty(DummyQuery()) is False
 
 def test_is_tool_empty_row_count_zero():
-    from src.shared.guardrails import _is_tool_empty
+    from src.domain.guardrails import _is_tool_empty
     class DummyQuery:
         row_count = 0
         rows = []
     assert _is_tool_empty(DummyQuery()) is True
 
 def test_is_tool_empty_all_numeric_zeros():
-    from src.shared.guardrails import _is_tool_empty
+    from src.domain.guardrails import _is_tool_empty
     class DummyQuery:
         row_count = 2
         rows = [["CAM_01", 0], ["CAM_02", 0.0], ["CAM_03", "0"]]
@@ -360,7 +360,7 @@ import json
 import pytest
 from fastapi.testclient import TestClient
 
-from src.shared.guardrails import (
+from src.domain.guardrails import (
     INJECTION_REJECT_MESSAGE,
     OUT_OF_SCOPE_REPLY,
     TOXIC_REJECT_MESSAGE,
@@ -404,7 +404,7 @@ def test_rejection_detail_vietnamese():
 
 def test_api_chat_injection_detail_vi_reason_code():
     res = client.post(
-        "/api/chat",
+        "/api/agent/stream",
         json={"question": _INJECTION_Q, "session_id": "s1", "user_id": "u1"},
     )
     assert res.status_code == 400
@@ -416,7 +416,7 @@ def test_api_chat_injection_detail_vi_reason_code():
 
 def test_api_chat_toxic_detail_vi():
     res = client.post(
-        "/api/chat",
+        "/api/agent/stream",
         json={"question": _TOXIC_Q, "session_id": "s1", "user_id": "u1"},
     )
     assert res.status_code == 400
@@ -427,11 +427,13 @@ def test_api_chat_toxic_detail_vi():
 
 def test_api_chat_out_of_scope_vietnamese():
     res = client.post(
-        "/api/chat",
+        "/api/agent/stream",
         json={"question": _OOS_Q, "session_id": "s1", "user_id": "u1"},
     )
     assert res.status_code == 200
-    ans = res.json()["answer"].lower()
+    from tests.helpers_stream import sse_answer
+
+    ans = sse_answer(res).lower()
     assert any(kw in ans for kw in ("kcn hưng phú", "vms", "ngoài phạm vi"))
 
 
@@ -471,4 +473,32 @@ def test_api_agent_stream_out_of_scope_sse_vietnamese():
     assert "classify" in node_ids
     assert "respond_inline" in node_ids
     assert "guardrail_output" in node_ids
+
+
+def test_stream_redacts_pii_before_graph(monkeypatch):
+    """Router gán question đã redact_pii trước khi vào run_agent_stream."""
+    from unittest.mock import MagicMock
+
+    from src.domain.agents.graph import Agent_Output
+
+    captured = {}
+
+    def fake_stream(inp, **_kwargs):
+        captured["question"] = inp.question
+        yield {"__final_result__": Agent_Output(question=inp.question, answer="ok", detail="chat")}
+
+    monkeypatch.setattr("src.main.run_agent_stream", fake_stream)
+    res = client.post(
+        "/api/agent/stream",
+        json={
+            "question": "Liên hệ tôi 0912345678 hoặc a@b.com về xe vào",
+            "session_id": "sess-pii",
+            "user_id": "user-pii",
+        },
+    )
+    assert res.status_code == 200
+    q = captured.get("question") or ""
+    assert "0912345678" not in q
+    assert "a@b.com" not in q
+    assert "[SĐT ẩn]" in q or "[email ẩn]" in q
 

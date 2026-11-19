@@ -6,7 +6,7 @@ from typing import Any
 
 from fastapi import APIRouter, HTTPException
 
-from src.shared.feedback import get_all_feedback, save_feedback_record
+from src.domain.observability.feedback import get_all_feedback, save_feedback_record
 from src.infra.llm.schemas import FeedbackRequest
 
 router = APIRouter(tags=["feedback"])

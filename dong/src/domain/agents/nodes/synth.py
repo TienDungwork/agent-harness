@@ -9,10 +9,10 @@ from src.domain.agents.state import AgentState, Agent_Output
 from src.infra.chart.render import should_render_chart, plan_chart, render_chart, _detect_chart_type
 from src.domain.agents.tools import memory_context_block, original_question, strip_thinking
 from src.domain.agents.nodes.supervisor import _reset_pipeline_fields
-from src.shared.config import settings
-from src.infra.llm.params import RESPOND
+from src.shared.settings import settings
+from src.infra.llm.params import BALANCED
 from src.infra.llm.schemas import OrchestratorPlan, QueryResult, StatAnswer
-from src.infra.monitoring.tracing import current_span, trace_step
+from src.domain.observability.tracing import current_span, trace_step
 from src.infra.prompts import registry
 
 def _extract_primary_count(rows: list, columns: list) -> float | int | None:
@@ -165,7 +165,7 @@ def _synthesize_orchestrator_answer(question: str, step_results: list[dict], sta
             sys_prompt = registry().render('respond_stat')
             sys_prompt = f'{sys_prompt}\n\n[Nhắc lại chỉ dẫn]: {safety_instruction}'
             with trace_step(current_span(), 'respond_stat', input={'multi_hop': True}, as_type='generation'):
-                raw = invoke_text(sys_prompt, f'{memory_context_block(state, for_stat=True, question=question)}Câu hỏi gốc: {question}\nKết quả từng bước:\n{evidence}', max_tokens=settings.sql_respond_max_tokens, params=RESPOND, substep=None)
+                raw = invoke_text(sys_prompt, f'{memory_context_block(state, for_stat=True, question=question)}Câu hỏi gốc: {question}\nKết quả từng bước:\n{evidence}', max_tokens=settings.sql_respond_max_tokens, params=BALANCED, substep=None)
             polished = strip_thinking(raw)
             if polished:
                 return (polished, 'llm_text')
@@ -234,3 +234,10 @@ def route_after_orchestrator_collect(state: AgentState) -> str:
     if idx < len(plan.steps):
         return 'orchestrator'
     return 'respond'
+
+
+def route_after_team(state: AgentState) -> str:
+    """Sau analytics/knowledge team: multi-step → collect, không thì respond."""
+    if state["orchestrator_multi_active"] if "orchestrator_multi_active" in state else None:
+        return "orchestrator_collect"
+    return "respond"

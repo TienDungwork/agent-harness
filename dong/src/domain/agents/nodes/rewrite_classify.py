@@ -6,8 +6,8 @@ logger = logging.getLogger(__name__)
 from langchain_core.messages import HumanMessage
 from src.domain.agents.nodes.io import node_event
 from src.domain.agents.state import AgentState
-from src.shared.config import settings
-from src.infra.monitoring.tracing import current_span, trace_step
+from src.shared.settings import settings
+from src.domain.observability.tracing import current_span, trace_step
 
 def rewrite_node(state: AgentState) -> dict:
     from src.domain.agents.nodes.intent import is_chat_greeting
@@ -36,12 +36,12 @@ def rewrite_node(state: AgentState) -> dict:
     skip_llm = is_chat or (not raw_messages and (not _needs_rewrite_llm(q.strip())))
     llm_used = not skip_llm
     if not rewritten:
-        import src.domain.agents.graph as graph_mod
+        from src.domain.agents.nodes.rewrite import rewrite_question
         from src.infra.session import get_session_messages
         session_msgs = get_session_messages(session_id=session_id or 'default', user_id=user_id or 'default') or []
         rewrite_history: list[Any] = [m.model_dump() if hasattr(m, 'model_dump') else m for m in session_msgs] if session_msgs else raw_messages
         with trace_step(current_span(), 'rewrite_question', input={'question': q}, as_type='tool') as sub:
-            rewritten = graph_mod.rewrite_question(q, history=rewrite_history)
+            rewritten = rewrite_question(q, history=rewrite_history)
             sub['output'] = {'text_len': len(rewritten.text or ''), 'sub_question_count': len(rewritten.sub_questions or [])}
     return {'rewritten': rewritten, 'question': rewritten.text, 'messages': diff_messages + [HumanMessage(q)], 'events': [node_event('rewrite', input={'question': q}, output={'rewritten': rewritten.model_dump()}, meta={'llm_used': llm_used, 'user_id': user_id, 'session_id': session_id, 'sub_question_count': len(rewritten.sub_questions or []), **({'skipped': True} if skip_llm else {})})]}
 
@@ -51,9 +51,9 @@ def classify_node(state: AgentState) -> dict:
     user_id = (state['user_id'] if 'user_id' in state else None) or 'default'
     session_id = (state['session_id'] if 'session_id' in state else None) or 'default'
     llm_used = not use_offline_tools()
-    import src.domain.agents.graph as graph_mod
+    from src.domain.agents.nodes.intent import classify_intent_safe, sanitize_intent_result
     with trace_step(current_span(), 'classify_intent', input={'rewritten_text': rewritten.text}, as_type='tool') as sub:
-        res = graph_mod.sanitize_intent_result(graph_mod.classify_intent_safe(rewritten))
+        res = sanitize_intent_result(classify_intent_safe(rewritten))
         sub['output'] = {'intent': res.intent, 'has_answer': bool(res.answer)}
     intent = res.intent
     chart_req = getattr(res, 'chart_requested', False)
@@ -127,3 +127,23 @@ def route_intent(state: AgentState) -> str:
     elif intent == 'out_of_scope':
         return 'out'
     return 'query_data'
+
+
+def route_classify(state: AgentState) -> str:
+    """Sau classify: inline chat/clarify/OOS, hoặc top_supervisor."""
+    from src.domain.agents.nodes.intent import is_stat_event_domain
+    from src.domain.authz.domain_guard import is_access_capability_question
+
+    ans = ((state["answer"] if "answer" in state else None) or "").strip()
+    intent = state["intent"] if "intent" in state else "query_data"
+    q = state["question"] if "question" in state else ""
+    original = (state["original_question"] if "original_question" in state else None) or ""
+    rewritten = state["rewritten"] if "rewritten" in state else None
+    q_text = rewritten.text if rewritten else q
+    if is_access_capability_question(f"{original}\n{q}\n{q_text}"):
+        return "respond_inline"
+    if intent == "out_of_scope" and is_stat_event_domain(q_text):
+        return "top_supervisor"
+    if ans and intent in ("chat", "clarify") or intent in ("chat", "out_of_scope"):
+        return "respond_inline"
+    return "top_supervisor"

@@ -5,10 +5,10 @@ from typing import Any
 logger = logging.getLogger(__name__)
 from src.domain.agents.nodes.io import node_event
 from src.domain.agents.state import AgentState, Agent_Output
-from src.infra.monitoring.tracing import current_span, trace_step
+from src.domain.observability.tracing import current_span, trace_step
 
 def recall_node(state: AgentState) -> dict:
-    from src.shared.config import settings
+    from src.shared.settings import settings
     from src.infra.memory.longterm import recall_long_term
     q = state['question'] if 'question' in state else ''
     user_id = (state['user_id'] if 'user_id' in state else None) or 'default'
@@ -29,7 +29,7 @@ recall_memory_node = recall_node
 
 def extract_memory_node(state: AgentState) -> dict:
     """Node trích xuất fact từ question và answer của state hiện tại và lưu vào PostgreSQL."""
-    from src.shared.config import settings
+    from src.shared.settings import settings
     from src.infra.memory.extract import extract_and_store_memory, memory_detail_includes_answer
     if not settings.long_term_memory_enabled:
         return {'extracted_memories': []}
@@ -45,7 +45,7 @@ def extract_memory_node(state: AgentState) -> dict:
 
 def run_store_extract(user_id: str, session_id: str, question: str, result: Agent_Output | None, parent_span: Any=None) -> list[dict]:
     """Post-pipeline: extract + store memory sau khi đã trả lời (không chặn respond)."""
-    from src.shared.config import settings
+    from src.shared.settings import settings
     from src.infra.memory.extract import extract_and_store_memory, memory_detail_includes_answer
     if not settings.long_term_memory_enabled:
         return []

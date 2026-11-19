@@ -3,7 +3,7 @@ from __future__ import annotations
 from typing import Any
 from src.domain.agents.nodes.intent import is_chat_greeting
 from src.infra.chart.render import should_render_chart
-from src.shared.config import settings
+from src.shared.settings import settings
 from src.infra.llm.schemas import RewrittenQuestion
 from src.infra.llm.structured import invoke_structured
 from src.infra.prompts import registry

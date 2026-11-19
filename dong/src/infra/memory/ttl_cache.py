@@ -20,13 +20,13 @@ _cache = _ttl_cache
 _ttl_lock = threading.Lock()
 
 def _is_cache_enabled() -> bool:
-    from src.shared.config import settings
+    from src.shared.settings import settings
     if hasattr(settings, 'ttl_cache_enabled'):
         return bool(settings.ttl_cache_enabled)
     return bool(getattr(settings, 'cache_enabled', True))
 
 def _get_ttl_seconds() -> int:
-    from src.shared.config import settings
+    from src.shared.settings import settings
     return int(getattr(settings, 'memory_ttl_seconds', 300))
 
 def make_cache_key(question: str, route: str='') -> str:
@@ -76,7 +76,7 @@ def get_ttl_cached(key: str) -> Optional[dict]:
         return None
 
 def _enforce_cache_size_cap() -> None:
-    from src.shared.config import settings
+    from src.shared.settings import settings
     cap = int(getattr(settings, 'cache_max_entries', 0) or 0)
     if cap <= 0:
         return

@@ -4,7 +4,7 @@ from functools import lru_cache
 from pathlib import Path
 from typing import Any
 import yaml
-_DATASET_CATALOG_PATH = Path(__file__).resolve().parents[3] / 'resource' / 'db' / 'dataset_catalog.yaml'
+_DATASET_CATALOG_PATH = Path(__file__).resolve().parents[4] / 'resource' / 'db' / 'dataset_catalog.yaml'
 
 @lru_cache(maxsize=1)
 def load_dataset_catalog(path: Path | None=None) -> dict[str, Any]:

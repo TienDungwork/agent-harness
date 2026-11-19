@@ -5,8 +5,8 @@ from typing import Any
 from src.domain.agents.analytics.sql_agent.tools.generate import extract_sql
 from src.domain.agents.analytics.sql_agent.tools.pre_sql import get_time_column_for_table, time_range_to_filter
 from src.domain.agents.analytics.sql_agent.tools.scope import apply_organization_scope
-from src.infra.db.executor import execute_sql as db_execute
-from src.infra.db.validator import validate_sql
+from src.infra.storage.sql.executor import execute_sql as db_execute
+from src.infra.storage.sql.validator import validate_sql
 _SQL_FENCE_ALL = re.compile('```(?:sql)?\\s*(.*?)```', re.IGNORECASE | re.DOTALL)
 _DATE_RANGE_RE = re.compile('từ\\s*(\\d{1,2})/(\\d{1,2})/(\\d{4})\\s*đến\\s*(\\d{1,2})/(\\d{1,2})/(\\d{4})', re.IGNORECASE)
 

@@ -1,3 +1,4 @@
+from tests.helpers_stream import sse_answer
 """Comprehensive test suite for User Isolation (AC-2) — Phase 5 Validation.
 
 Tiêu chuẩn nghiệm thu AC-2:
@@ -15,7 +16,8 @@ import pytest
 from fastapi.testclient import TestClient
 
 from src.main import app
-from src.domain.agents.graph import Agent_Input, recall_node, run_agent
+from src.domain.agents.graph import (Agent_Input, run_agent)
+from src.domain.agents.nodes.memory import recall_node
 from src.infra.memory.longterm import clear_long_term, recall_long_term, save_to_long_term
 from src.infra.memory.ttl_cache import clear_ttl_cache, make_cache_key, get_ttl_cached
 from src.infra.session import create_session, append_session_messages
@@ -51,13 +53,13 @@ def test_two_users_chat_isolation_identity_not_leaked(client):
     save_to_long_term(user_a, "Tôi phụ trách giám sát an ninh ca đêm khu vực cổng 1", category="role")
 
     # 2. User B (chưa giới thiệu bản thân) hỏi "Tôi là ai?"
-    res_b1 = client.post("/api/chat", json={
+    res_b1 = client.post("/api/agent/stream", json={
         "question": "Tôi là ai?",
         "session_id": sess_b,
         "user_id": user_b,
     })
     assert res_b1.status_code == 200
-    ans_b1 = res_b1.json()["answer"]
+    ans_b1 = sse_answer(res_b1)
     # Xác nhận câu trả lời cho User B TUYỆT ĐỐI KHÔNG chứa danh tính của User A
     assert "Nguyễn Văn An" not in ans_b1
     assert "nguyen van an" not in ans_b1.lower()
@@ -68,26 +70,26 @@ def test_two_users_chat_isolation_identity_not_leaked(client):
     save_to_long_term(user_b, "Tôi là ca trưởng ca sáng", category="role")
 
     # 4. User A hỏi lại "Tôi là ai?"
-    res_a = client.post("/api/chat", json={
+    res_a = client.post("/api/agent/stream", json={
         "question": "Tôi là ai?",
         "session_id": sess_a,
         "user_id": user_a,
     })
     assert res_a.status_code == 200
-    ans_a = res_a.json()["answer"]
+    ans_a = sse_answer(res_a)
     # User A nhận đúng thông tin của An, không có thông tin của Bình
     assert "Nguyễn Văn An" in ans_a or "cổng 1" in ans_a
     assert "Trần Thị Bình" not in ans_a
     assert "ca sáng" not in ans_a
 
     # 5. User B hỏi "Tôi là ai?"
-    res_b2 = client.post("/api/chat", json={
+    res_b2 = client.post("/api/agent/stream", json={
         "question": "Tôi là ai?",
         "session_id": sess_b,
         "user_id": user_b,
     })
     assert res_b2.status_code == 200
-    ans_b2 = res_b2.json()["answer"]
+    ans_b2 = sse_answer(res_b2)
     # User B nhận đúng thông tin của Bình, không có thông tin của An
     assert "Trần Thị Bình" in ans_b2 or "ca sáng" in ans_b2
     assert "Nguyễn Văn An" not in ans_b2
@@ -126,26 +128,26 @@ def test_ttl_cache_does_not_leak_identity_between_users(client):
     save_to_long_term(user_a, "Tôi tên là Đỗ Minh Quân, Giám đốc an ninh")
 
     # User A hỏi "Tôi là ai?"
-    res_a = client.post("/api/chat", json={
+    res_a = client.post("/api/agent/stream", json={
         "question": "Tôi là ai?",
         "session_id": "sess_a",
         "user_id": user_a,
     })
     assert res_a.status_code == 200
-    assert "Đỗ Minh Quân" in res_a.json()["answer"]
+    assert "Đỗ Minh Quân" in sse_answer(res_a)
 
     # Kiểm tra TTL Cache không lưu key này
     cache_key = make_cache_key("Tôi là ai?")
     assert get_ttl_cached(cache_key) is None
 
     # User B hỏi ngay sau đó cùng câu "Tôi là ai?"
-    res_b = client.post("/api/chat", json={
+    res_b = client.post("/api/agent/stream", json={
         "question": "Tôi là ai?",
         "session_id": "sess_b",
         "user_id": user_b,
     })
     assert res_b.status_code == 200
-    ans_b = res_b.json()["answer"]
+    ans_b = sse_answer(res_b)
     # User B không bị cache câu trả lời của User A
     assert "Đỗ Minh Quân" not in ans_b
     assert "Giám đốc an ninh" not in ans_b

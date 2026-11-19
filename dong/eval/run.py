@@ -33,7 +33,7 @@ import yaml
 
 from src.domain.agents.graph import Agent_Input, run_agent
 from eval.judge import judge_answer
-from src.shared.guardrails import (
+from src.domain.guardrails import (
     GuardrailViolation,
     OUT_OF_SCOPE_REPLY,
     _is_tool_empty,
@@ -59,7 +59,7 @@ def _disable_live_eval() -> None:
 
 
 def _preflight_live() -> None:
-    from src.shared.config import settings
+    from src.shared.settings import settings
     from src.infra.llm import ping, use_offline_tools
 
     if use_offline_tools():

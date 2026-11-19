@@ -6,7 +6,7 @@ from pydantic import BaseModel, Field
 
 from src.domain.authz.resolve import access_context_from_user_ctx
 from src.infra.auth.iam_client import IamError, fetch_auth_me, login
-from src.shared.config import settings
+from src.shared.settings import settings
 
 router = APIRouter(tags=['auth'])
 

@@ -1,4 +1,5 @@
-from src.infra.monitoring.trace_payload import llm_io_payload, redact_text, slim_state
+from src.domain.observability.redaction import redact_text
+from src.domain.observability.tracing import llm_io_payload, slim_state
 
 
 def test_redact_masks_sk_and_bearer():
@@ -57,10 +58,10 @@ def test_invoke_text_traces_full_prompts(monkeypatch):
         def invoke(self, _messages):
             return _FakeResp()
 
-    import src.infra.llm.client as client_mod
-    import src.infra.monitoring.tracing as tracing_mod
+    import src.infra.llm.completion as completion_mod
+    import src.domain.observability.tracing as tracing_mod
 
-    monkeypatch.setattr(client_mod, "base_llm", lambda **_kw: _FakeLlm())
+    monkeypatch.setattr(completion_mod, "base_llm", lambda **_kw: _FakeLlm())
 
     from contextlib import contextmanager
 
@@ -75,7 +76,7 @@ def test_invoke_text_traces_full_prompts(monkeypatch):
     monkeypatch.setattr(tracing_mod, "current_span", lambda: object())
     monkeypatch.setattr(tracing_mod, "extract_token_usage", lambda _r: {})
     monkeypatch.setattr(tracing_mod, "add_request_tokens", lambda _u: None)
-    text = client_mod.invoke_text("sys-prompt", "user-prompt", substep="llm_text")
+    text = completion_mod.invoke_text("sys-prompt", "user-prompt", substep="llm_text")
     assert text == "hello"
     assert "system_len" not in captured["start_input"]
     assert captured["start_input"]["system"] == "sys-prompt"

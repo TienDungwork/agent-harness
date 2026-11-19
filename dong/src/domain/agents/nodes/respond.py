@@ -6,16 +6,79 @@ logger = logging.getLogger(__name__)
 from src.domain.agents.nodes.io import node_event
 from src.domain.agents.state import AgentState, Agent_Output
 from src.infra.chart.render import _detect_chart_type, plan_chart, should_render_chart
-from src.shared.guardrails import OUT_OF_SCOPE_REPLY
-from src.infra.llm.params import RESPOND
+from src.domain.guardrails import OUT_OF_SCOPE_REPLY
+from src.infra.llm.params import BALANCED
 from src.infra.llm.schemas import QueryResult, StatAnswer
 from src.domain.agents.tools import effective_question, filter_memories_for_stat, memory_context_block, original_question, respond_event_input, strip_thinking
 from src.domain.agents.nodes.synth import _aggregate_all_events_rows, _build_orchestrator_query_result, _synthesize_orchestrator_answer
-from src.infra.monitoring.tracing import current_span, trace_step
+from src.domain.observability.tracing import (
+    _current,
+    current_span,
+    reset_trace_root,
+    trace_step,
+    trace_stream,
+)
 from src.infra.prompts import registry
 
+
+def _stream_writer():
+    try:
+        from langgraph.config import get_stream_writer
+
+        return get_stream_writer()
+    except Exception:
+        return None
+
+
+def emit_answer_chunks(ans_text: str, chunk_words: int = 3, enabled: bool = True) -> None:
+    """Phát SSE chunk sau khi đã có full answer (template / offline)."""
+    if not enabled or not ans_text:
+        return
+    writer = _stream_writer()
+    if writer is None:
+        return
+    words = ans_text.split(" ")
+    for i in range(0, len(words), chunk_words):
+        group = words[i : i + chunk_words]
+        delta = " ".join(group)
+        if i + chunk_words < len(words):
+            delta += " "
+        writer({"node_id": "__answer__", "status": "chunk", "delta": delta})
+
+
+def _stream_respond_llm(
+    sys_prompt: str,
+    user_prompt: str,
+    question: str,
+    *,
+    max_tokens: int,
+    stream_tokens: bool,
+) -> str:
+    """LLM respond qua ``chat_stream`` + ``trace_stream`` (như vn-stock answer_node)."""
+    from src.infra.llm.completion import chat_stream
+
+    writer = _stream_writer() if stream_tokens else None
+    with trace_step(current_span(), "respond_stat", input={"stream": True}, as_type="generation") as box:
+        span_token = _current.set(box["_span"]) if box.get("_span") else None
+        try:
+            text = ""
+            for tok in trace_stream(
+                "respond_stat_stream",
+                question,
+                chat_stream(sys_prompt, user_prompt, max_tokens=max_tokens, params=BALANCED),
+                parent=box.get("_span"),
+            ):
+                text += tok
+                if writer is not None:
+                    writer({"node_id": "__answer__", "status": "chunk", "delta": tok})
+            box["output"] = {"text_len": len(text)}
+            return text
+        finally:
+            if span_token is not None:
+                reset_trace_root(span_token)
+
+
 def respond_node(state: AgentState) -> dict:
-    from src.domain.agents.stream import emit_answer_chunks
     q_original = original_question(state)
     q = effective_question(state)
     error = state['error'] if 'error' in state else None
@@ -30,10 +93,12 @@ def respond_node(state: AgentState) -> dict:
     session_id = (state['session_id'] if 'session_id' in state else None) or 'default'
     is_multi_respond = bool((state['multi_hop_ready'] if 'multi_hop_ready' in state else None) and step_results and plan and (getattr(plan, 'is_multi', False) or len(getattr(plan, 'steps', []) or []) >= 2))
     from src.domain.agents.nodes.simple_answer import try_format_simple_answer
-    from src.shared.config import settings
-    from src.infra.llm.client import invoke_text, use_offline_tools
+    from src.shared.settings import settings
+    from src.infra.llm.client import use_offline_tools
     answer_source = 'template'
     llm_used = False
+    streamed = False
+    stream_tokens = bool(state['stream_tokens'] if 'stream_tokens' in state else None)
     q_low = q.lower()
     if respond_mode == 'inline':
         with trace_step(current_span(), 'respond_inline', input={'intent': intent}, as_type='tool') as sub:
@@ -43,14 +108,14 @@ def respond_node(state: AgentState) -> dict:
             sub['output'] = {'answer_len': len(ans)}
         detail = intent or 'chat'
         result = Agent_Output(question=q_original, answer=ans, detail=detail)
-        emit_answer_chunks(ans, enabled=bool(state['stream_tokens'] if 'stream_tokens' in state else None))
+        emit_answer_chunks(ans, enabled=stream_tokens)
         return {'result': result, 'events': [node_event('respond', input=respond_event_input(state, respond_mode='inline', intent=intent), output={'answer_vi': ans, 'answer_source': 'inline'}, meta={'llm_used': False, 'user_id': user_id, 'session_id': session_id})]}
     if respond_mode == 'out_of_scope':
         with trace_step(current_span(), 'respond_out_of_scope', input={'intent': intent}, as_type='tool') as sub:
             ans = ((state['answer'] if 'answer' in state else None) or '').strip() or OUT_OF_SCOPE_REPLY
             sub['output'] = {'answer_len': len(ans)}
         result = Agent_Output(question=q_original, answer=ans, detail='out_of_scope')
-        emit_answer_chunks(ans, enabled=bool(state['stream_tokens'] if 'stream_tokens' in state else None))
+        emit_answer_chunks(ans, enabled=stream_tokens)
         return {'result': result, 'events': [node_event('respond', input=respond_event_input(state, respond_mode='out_of_scope'), output={'answer_vi': ans, 'answer_source': 'out_of_scope'}, meta={'llm_used': False, 'user_id': user_id, 'session_id': session_id})]}
     if is_multi_respond:
         from src.domain.agents.nodes.plan import is_all_events_plan
@@ -73,8 +138,8 @@ def respond_node(state: AgentState) -> dict:
             try:
                 c_type = (state['chart_type'] if 'chart_type' in state else None) or _detect_chart_type(q)
                 chart_spec = plan_chart(chart_rows, q, chart_type=c_type)
-                import src.domain.agents.graph as graph_mod
-                chart_png = graph_mod.render_chart(chart_rows, chart_spec) or ''
+                from src.infra.chart.render import render_chart
+                chart_png = render_chart(chart_rows, chart_spec) or ''
             except Exception:
                 chart_png = ''
                 chart_spec = None
@@ -84,7 +149,7 @@ def respond_node(state: AgentState) -> dict:
         stat = StatAnswer(answer_vi=ans, highlights=[], chart_requested=should_render_chart(q) or bool(chart_png))
         ans = stat.answer_vi
         result = Agent_Output(question=q_original, answer=ans, query=query_res, detail='orchestrator:multi')
-        emit_answer_chunks(ans, enabled=bool(state['stream_tokens'] if 'stream_tokens' in state else None))
+        emit_answer_chunks(ans, enabled=stream_tokens)
         chart_meta = chart_spec.model_dump() if chart_spec else {}
         return {'result': result, 'chart_png_base64': chart_png, 'events': [node_event('respond', input=respond_event_input(state, respond_mode='multi', orchestrator_step_results=step_results, step_count=len(step_results)), output={'answer_vi': ans, 'answer_source': answer_source, 'stat_answer': stat.model_dump(), 'query': query_res.model_dump()}, chart_png_base64=chart_png, chart_meta=chart_meta, chart_spec=chart_meta, meta={'llm_used': llm_used, 'user_id': user_id, 'session_id': session_id, 'is_multi': True})]}
     if respond_mode == 'docs':
@@ -93,7 +158,7 @@ def respond_node(state: AgentState) -> dict:
         if not ans:
             ans = 'Không tìm thấi tài liệu hướng dẫn phù hợp.'
         result = Agent_Output(question=q_original, answer=ans, detail='docs')
-        emit_answer_chunks(ans, enabled=bool(state['stream_tokens'] if 'stream_tokens' in state else None))
+        emit_answer_chunks(ans, enabled=stream_tokens)
         return {'result': result, 'events': [node_event('respond', input=respond_event_input(state, respond_mode='docs'), output={'answer_vi': ans, 'docs_answer': docs_payload}, meta={'llm_used': False, 'user_id': user_id, 'session_id': session_id})]}
     from src.domain.agents.knowledge.docs_agent.tools.camera_registry import is_camera_count_query, is_camera_list_query, format_camera_count_answer, format_camera_list_answer
     if is_camera_count_query(q):
@@ -106,7 +171,7 @@ def respond_node(state: AgentState) -> dict:
         ans = f'Lỗi khi truy vấn: {error}'
         answer_source = 'error'
     elif not rows:
-        from src.shared.guardrails import empty_stat_reply
+        from src.domain.guardrails import empty_stat_reply
         ans = empty_stat_reply(q)
         answer_source = 'empty'
     else:
@@ -150,8 +215,18 @@ def respond_node(state: AgentState) -> dict:
                     safety_instruction = 'Tuân thủ nghiêm ngặt quy tắc an toàn VMS KCN Hưng Phú: Không suy diễn số liệu ngoài dữ liệu truy vấn.'
                     sys_prompt = registry().render('respond_stat')
                     sys_prompt = f'{sys_prompt}\n\n[Nhắc lại chỉ dẫn]: {safety_instruction}'
-                    with trace_step(current_span(), 'respond_stat', input={'row_count': len(rows)}, as_type='generation'):
-                        raw = invoke_text(sys_prompt, f'{memory_context_block(state, for_stat=True, question=q)}Câu hỏi: {q}\nDữ liệu:\n{template_ans}', max_tokens=settings.sql_respond_max_tokens, params=RESPOND, substep=None)
+                    user_prompt = (
+                        f'{memory_context_block(state, for_stat=True, question=q)}'
+                        f'Câu hỏi: {q}\nDữ liệu:\n{template_ans}'
+                    )
+                    raw = _stream_respond_llm(
+                        sys_prompt,
+                        user_prompt,
+                        q,
+                        max_tokens=settings.sql_respond_max_tokens,
+                        stream_tokens=stream_tokens,
+                    )
+                    streamed = stream_tokens
                     polished = strip_thinking(raw)
                     if polished:
                         ans = polished
@@ -173,5 +248,6 @@ def respond_node(state: AgentState) -> dict:
         return [r]
     query_res = QueryResult(tool='sql_builder', columns=columns, rows=[_row_as_list(r) for r in rows] if rows else [], row_count=len(rows) if rows else 0, error=error or '', reply_vi=ans)
     result = Agent_Output(question=q_original, answer=ans, query=query_res, detail='query_data')
-    emit_answer_chunks(ans, enabled=bool(state['stream_tokens'] if 'stream_tokens' in state else None))
+    if not streamed:
+        emit_answer_chunks(ans, enabled=stream_tokens)
     return {'result': result, 'events': [node_event('respond', input=respond_event_input(state, respond_mode='stat', columns=columns, rows=rows, row_count=len(rows), recalled_memories=filter_memories_for_stat((state['recalled_memories'] if 'recalled_memories' in state else None) or [], q), error=error or ''), output={'answer_vi': ans, 'answer_source': answer_source, 'stat_answer': stat.model_dump(), 'query': query_res.model_dump()}, meta={'llm_used': llm_used, 'user_id': user_id, 'session_id': session_id})]}

@@ -1,37 +1,18 @@
-"""Guardrail — input (chặn injection/toxic, lọc câu hỏi ngoài phạm vi)
-+ output (đối chiếu số liệu chống hallucination, redact PII, giới hạn độ dài).
-
-Toàn bộ logic guardrail sử dụng Regex và code thuần, KHÔNG gọi LLM
-để tối ưu hóa tốc độ xử lý (< 1ms) và tiết kiệm chi phí.
-"""
+"""Guardrail checks — input/output/scope (regex, no LLM)."""
 
 from __future__ import annotations
 
 import re
 from typing import Any
 
-from src.shared.config import settings
-
-_INJECTION_PATTERNS = [
-    re.compile(r"ignore (?:all |previous |above |prior )*(?:instructions|prompts|rules)", re.IGNORECASE),
-    re.compile(r"disregard (?:all |previous |above |prior )*(?:instructions|rules|prompts)", re.IGNORECASE),
-    re.compile(r"bỏ qua (?:mọi |tất cả |các )*(?:hướng dẫn|chỉ dẫn|quy tắc|chỉ thị)", re.IGNORECASE),
-    re.compile(r"quên (?:hết |mọi |tất cả |các )*(?:hướng dẫn|chỉ dẫn|quy tắc|lệnh trước)", re.IGNORECASE),
-    re.compile(r"(?:reveal|dump|show|print|leak|get|output|display).*(?:system |developer )?(?:prompt|instructions|rules)", re.IGNORECASE),
-    re.compile(r"(?:tiết lộ|in ra|hiển thị|cho xem|xem|xuất).*(?:system prompt|prompt hệ thống|chỉ dẫn hệ thống|hướng dẫn ban đầu)", re.IGNORECASE),
-    re.compile(r"you are now (?:a|an|in) ", re.IGNORECASE),
-    re.compile(r"act as (?:if you|a|an) ", re.IGNORECASE),
-    re.compile(r"đóng vai (?:là|như|một) ", re.IGNORECASE),
-    re.compile(r"(?:từ giờ|bây giờ) bạn là ", re.IGNORECASE),
-    re.compile(r"\b(?:jailbreak|dan mode|developer mode enabled)\b", re.IGNORECASE),
-    re.compile(r"bypass (?:all |safety |guardrail|security )*(?:filters|rules|checks)", re.IGNORECASE),
-]
-
-_TOXIC_WORDS = frozenset({"đụ", "địt", "đéo", "fuck", "shit", "cút", "óc chó", "dm", "dcm", "vcl"})
-
-_PHONE = re.compile(r"(?:\+84|84|0)(?:3|5|7|8|9)\d{8}\b|\b0\d{9,10}\b")
-_EMAIL = re.compile(r"[a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+")
-_ID_CARD = re.compile(r"\b(?:CCCD|CMND|ID|Số định danh)[:\s]*(\d{9}|\d{12})\b", re.IGNORECASE)
+from src.domain.guardrails.injection import (
+    INJECTION_REJECT_MESSAGE,
+    TOXIC_REJECT_MESSAGE,
+    detect_prompt_injection,
+    detect_toxicity,
+)
+from src.domain.guardrails.pii import redact_pii
+from src.shared.settings import settings
 
 # Từ khoá nhận diện phạm vi nghiệp vụ VMS KCN Hưng Phú (8 domain sự kiện)
 STAT_KEYWORDS = frozenset(
@@ -302,17 +283,6 @@ OUT_OF_SCOPE_REPLY = (
     '"Làm sao mở Quản Lý Camera trên AIOC?".'
 )
 
-INJECTION_REJECT_MESSAGE = (
-    "Không thể xử lý yêu cầu này vì có dấu hiệu tấn công prompt injection "
-    "(cố gắng bỏ qua hướng dẫn hệ thống). "
-    "Hãy đặt câu hỏi trực tiếp về thống kê camera VMS, hướng dẫn AIOC hoặc biểu đồ sự kiện."
-)
-
-TOXIC_REJECT_MESSAGE = (
-    "Không thể xử lý yêu cầu vì có từ ngữ không phù hợp. "
-    "Vui lòng đặt câu hỏi lịch sự về giám sát camera KCN Hưng Phú."
-)
-
 _FALLBACK = "Xin lỗi, tôi chưa đủ dữ liệu đáng tin để trả lời. Hãy hỏi lại rõ hơn."
 _DISCLAIMER = " (Lưu ý: số liệu chưa xác minh được với dữ liệu tool trả về.)"
 
@@ -352,25 +322,6 @@ class OutputCheckResult:
         self.valid = valid
         self.issues = issues or []
         self.answer = answer
-
-
-def detect_prompt_injection(text: str) -> bool:
-    return any(p.search(text or "") for p in _INJECTION_PATTERNS)
-
-
-def detect_toxicity(text: str) -> bool:
-    low = (text or "").lower()
-    return any(w in low for w in _TOXIC_WORDS)
-
-
-def redact_pii(text: str) -> str:
-    """Che giấu thông tin cá nhân nhạy cảm (SĐT, Email, CCCD/CMND)."""
-    if not text:
-        return ""
-    text = _PHONE.sub("[SĐT ẩn]", text)
-    text = _EMAIL.sub("[email ẩn]", text)
-    text = _ID_CARD.sub(lambda m: m.group(0).replace(m.group(1), "[CCCD ẩn]"), text)
-    return text
 
 
 MEMORY_STATEMENT_KEYWORDS = frozenset(

@@ -230,7 +230,7 @@ def test_capability_question_lists_security_domains():
 
 def test_validate_sql_blocks_table_outside_role():
     from src.domain.authz.access_context import bind_access_context, reset_access_context
-    from src.infra.db.validator import validate_sql
+    from src.infra.storage.sql.validator import validate_sql
 
     ctx = AccessContext(
         user_id='env',
@@ -250,7 +250,7 @@ def test_validate_sql_blocks_table_outside_role():
 
 def test_validate_sql_allows_security_fire_table():
     from src.domain.authz.access_context import bind_access_context, reset_access_context
-    from src.infra.db.validator import validate_sql
+    from src.infra.storage.sql.validator import validate_sql
 
     ctx = AccessContext(
         user_id='sec',

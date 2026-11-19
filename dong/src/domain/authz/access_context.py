@@ -49,4 +49,12 @@ def reset_access_context(token: Token) -> None:
 
 
 def get_bound_access_context() -> AccessContext | None:
-    return _current_access.get()
+    ctx = _current_access.get()
+    if ctx is not None:
+        return ctx
+    try:
+        from langgraph.runtime import get_runtime
+
+        return (get_runtime().context or {}).get("access_context")
+    except Exception:
+        return None

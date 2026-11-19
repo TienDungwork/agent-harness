@@ -7,7 +7,7 @@ from src.domain.agents.nodes.intent import is_stat_event_domain
 from src.domain.agents.nodes.io import node_event
 from src.domain.agents.state import AgentState
 from src.infra.llm.schemas import OrchestratorPlan, OrchestratorStep
-from src.infra.monitoring.tracing import current_span, trace_step
+from src.domain.observability.tracing import current_span, trace_step
 
 def _is_multi_plan(plan: OrchestratorPlan | None) -> bool:
     return bool(plan and (plan.is_multi or len(plan.steps) >= 2))

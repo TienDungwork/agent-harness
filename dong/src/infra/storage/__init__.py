@@ -1,1 +1,1 @@
-"""Object storage adapters (MinIO charts, …)."""
+"""Storage layer: sql/ (analytics DB), feedback/ (human feedback), objects/ (MinIO)."""

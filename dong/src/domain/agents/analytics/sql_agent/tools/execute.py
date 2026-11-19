@@ -3,10 +3,10 @@ from __future__ import annotations
 from typing import Any
 from src.domain.agents.nodes.io import node_event
 from src.domain.agents.analytics.sql_agent.tools.scope import apply_organization_scope
-from src.infra.db.executor import execute_sql
-from src.infra.db.validator import validate_sql
+from src.infra.storage.sql.executor import execute_sql
+from src.infra.storage.sql.validator import validate_sql
 from src.infra.llm.client import use_offline_tools
-from src.infra.monitoring.tracing import current_span, trace_step
+from src.domain.observability.tracing import current_span, trace_step
 
 def execute_sql_node(state: dict[str, Any]) -> dict[str, Any]:
     """Re-validate SQL query and execute on read-only Postgres database.

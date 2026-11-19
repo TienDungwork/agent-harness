@@ -7,8 +7,7 @@ from __future__ import annotations
 
 """Unit tests for Phase 3b short-term memory checkpointer MVP."""
 
-from src.domain.agents.graph import Agent_Input, _get_graph, run_agent
-from src.main import ChatRequest
+from src.domain.agents.graph import (Agent_Input, _get_graph, run_agent)
 from src.infra.memory.shortterm import get_checkpointer
 
 
@@ -88,6 +87,8 @@ def test_shortterm_memory_session_isolation():
 
 def test_chat_request_session_id_default():
     """ChatRequest có trường session_id tùy chọn với giá trị mặc định là 'default'."""
+    from src.api.models.schemas import ChatRequest
+
     req_default = ChatRequest(question="Thống kê xe")
     assert req_default.session_id == "default"
 
@@ -191,7 +192,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 from fastapi.testclient import TestClient
 
-from src.domain.agents.graph import Agent_Input, _build_graph, run_agent, run_agent_stream
+from src.domain.agents.graph import (Agent_Input, _build_graph, run_agent, run_agent_stream)
 from src.main import app
 from src.infra.memory import (
     clear_long_term,
@@ -415,13 +416,13 @@ def test_out_of_scope_still_runs_store_extract():
 
 
 def test_api_chat_propagates_user_id_and_stores_memory():
-    """Endpoint /api/chat nhận user_id và kích hoạt lưu memory."""
+    """Endpoint /api/agent/stream nhận user_id và kích hoạt lưu memory."""
     client = TestClient(app)
     uid = "api-user-99"
 
     import time
 
-    resp = client.post("/api/chat", json={
+    resp = client.post("/api/agent/stream", json={
         "question": "Tôi phụ trách cổng số 2 KCN Hưng Phú",
         "session_id": "api-sess-1",
         "user_id": uid,
@@ -470,8 +471,8 @@ def test_ttl_cache_hit_within_300s(monkeypatch):
     """Entry stored in TTL cache hits successfully within 300s duration."""
     current_time = 1000.0
     monkeypatch.setattr(time, "time", lambda: current_time)
-    monkeypatch.setattr("src.shared.config.settings.cache_enabled", True)
-    monkeypatch.setattr("src.shared.config.settings.memory_ttl_seconds", 300)
+    monkeypatch.setattr("src.shared.settings.settings.cache_enabled", True)
+    monkeypatch.setattr("src.shared.settings.settings.memory_ttl_seconds", 300)
 
     clear_ttl_cache()
     key = make_cache_key("Hôm nay có bao nhiêu xe vào?")
@@ -490,8 +491,8 @@ def test_ttl_cache_miss_after_expire(monkeypatch):
     """Entry expires after 300s and get_ttl_cached returns None and cleans up."""
     current_time = 1000.0
     monkeypatch.setattr(time, "time", lambda: current_time)
-    monkeypatch.setattr("src.shared.config.settings.cache_enabled", True)
-    monkeypatch.setattr("src.shared.config.settings.memory_ttl_seconds", 300)
+    monkeypatch.setattr("src.shared.settings.settings.cache_enabled", True)
+    monkeypatch.setattr("src.shared.settings.settings.memory_ttl_seconds", 300)
 
     clear_ttl_cache()
     key = make_cache_key("Hôm nay có bao nhiêu xe vào?")
@@ -509,7 +510,7 @@ def test_ttl_cache_miss_after_expire(monkeypatch):
 def test_ttl_cache_disabled_cache_enabled_false(monkeypatch):
     """When CACHE_ENABLED is false, cache operations are disabled."""
     clear_ttl_cache()
-    monkeypatch.setattr("src.shared.config.settings.cache_enabled", False)
+    monkeypatch.setattr("src.shared.settings.settings.cache_enabled", False)
 
     key = make_cache_key("Hôm nay có bao nhiêu xe vào?")
     set_ttl_cached(key, {"answer": "test"})
@@ -519,8 +520,8 @@ def test_ttl_cache_disabled_cache_enabled_false(monkeypatch):
 def test_ttl_cache_disabled_when_memory_ttl_zero_or_negative(monkeypatch):
     """When memory_ttl_seconds <= 0, cache returns None and does not store."""
     clear_ttl_cache()
-    monkeypatch.setattr("src.shared.config.settings.cache_enabled", True)
-    monkeypatch.setattr("src.shared.config.settings.memory_ttl_seconds", 0)
+    monkeypatch.setattr("src.shared.settings.settings.cache_enabled", True)
+    monkeypatch.setattr("src.shared.settings.settings.memory_ttl_seconds", 0)
 
     key = make_cache_key("test zero ttl")
     set_ttl_cached(key, {"answer": "val"})
@@ -531,8 +532,8 @@ def test_ttl_cache_same_question_hits_before_graph_with_stored_route(monkeypatch
     """When stored with route after graph, checking before graph (without route) hits cache."""
     current_time = 5000.0
     monkeypatch.setattr(time, "time", lambda: current_time)
-    monkeypatch.setattr("src.shared.config.settings.cache_enabled", True)
-    monkeypatch.setattr("src.shared.config.settings.memory_ttl_seconds", 300)
+    monkeypatch.setattr("src.shared.settings.settings.cache_enabled", True)
+    monkeypatch.setattr("src.shared.settings.settings.memory_ttl_seconds", 300)
 
     clear_ttl_cache()
     question = "Thống kê xe IN hôm nay"
@@ -564,7 +565,7 @@ def test_ttl_cache_clear():
 def test_ttl_cache_disabled_via_ttl_cache_enabled_property(monkeypatch):
     """Setting ttl_cache_enabled=False disables cache retrieval and setting."""
     clear_ttl_cache()
-    monkeypatch.setattr("src.shared.config.settings.ttl_cache_enabled", False)
+    monkeypatch.setattr("src.shared.settings.settings.ttl_cache_enabled", False)
 
     key = make_cache_key("test question")
     set_ttl_cached(key, {"answer": "cached"})
@@ -572,15 +573,16 @@ def test_ttl_cache_disabled_via_ttl_cache_enabled_property(monkeypatch):
 
 
 def test_chat_cache_hit_before_graph(monkeypatch):
-    """Chat endpoint hits TTL cache before graph execution and sets cache_hit=True."""
+    """Stream hits TTL cache before graph execution."""
     from unittest.mock import MagicMock
-    from src.main import chat, ChatRequest
+    from fastapi.testclient import TestClient
+    from src.main import app
+    from tests.helpers_stream import post_stream, sse_answer
 
     clear_ttl_cache()
-    monkeypatch.setattr("src.shared.config.settings.cache_enabled", True)
-    monkeypatch.setattr("src.shared.config.settings.memory_ttl_seconds", 300)
+    monkeypatch.setattr("src.shared.settings.settings.cache_enabled", True)
+    monkeypatch.setattr("src.shared.settings.settings.memory_ttl_seconds", 300)
 
-    # Pre-populate cache (simulating prior graph run with route)
     q = "Hôm nay có bao nhiêu lượt xe vào?"
     store_key = make_cache_key(q, route="query_data")
     set_ttl_cached(store_key, {
@@ -593,23 +595,22 @@ def test_chat_cache_hit_before_graph(monkeypatch):
     })
 
     mock_run = MagicMock()
-    monkeypatch.setattr("src.main.run_agent", mock_run)
-
-    resp = chat(ChatRequest(question=q))
+    monkeypatch.setattr("src.main.run_agent_stream", mock_run)
+    res = post_stream(TestClient(app), q)
     assert mock_run.call_count == 0
-    assert resp.answer == "Hôm nay có 150 lượt xe vào."
-    assert resp.detail.get("cache_hit") is True
+    assert sse_answer(res) == "Hôm nay có 150 lượt xe vào."
 
 
 def test_cache_hit_skips_rewrite_when_llm_fails(monkeypatch):
     """TTL hit trước rewrite — LLM lỗi vẫn trả 200, không 503."""
     from unittest.mock import MagicMock
     from fastapi.testclient import TestClient
-    from src.main import app, chat, ChatRequest
+    from src.main import app
+    from tests.helpers_stream import post_stream, sse_answer
 
     clear_ttl_cache()
-    monkeypatch.setattr("src.shared.config.settings.cache_enabled", True)
-    monkeypatch.setattr("src.shared.config.settings.memory_ttl_seconds", 300)
+    monkeypatch.setattr("src.shared.settings.settings.cache_enabled", True)
+    monkeypatch.setattr("src.shared.settings.settings.memory_ttl_seconds", 300)
 
     q = "Hôm nay có bao nhiêu lượt xe vào?"
     set_ttl_cached(make_cache_key(q, route="query_data"), {
@@ -626,18 +627,14 @@ def test_cache_hit_skips_rewrite_when_llm_fails(monkeypatch):
 
     monkeypatch.setattr("src.domain.agents.nodes.rewrite.rewrite_question", boom)
     mock_run = MagicMock()
-    monkeypatch.setattr("src.main.run_agent", mock_run)
-
-    resp = chat(ChatRequest(question=q))
-    assert mock_run.call_count == 0
-    assert resp.answer == "Hôm nay có 100 lượt xe vào."
-    assert resp.detail.get("cache_hit") is True
+    monkeypatch.setattr("src.main.run_agent_stream", mock_run)
 
     client = TestClient(app)
-    stream_res = client.post("/api/agent/stream", json={"question": q})
-    assert stream_res.status_code == 200
-    assert '"node_id": "cache"' in stream_res.text
+    res = post_stream(client, q, session_id="cache-hit", user_id="u-cache")
+    assert res.status_code == 200
     assert mock_run.call_count == 0
+    assert sse_answer(res) == "Hôm nay có 100 lượt xe vào."
+    assert '"node_id": "cache"' in res.text
 
 
 def test_stream_agent_cache_hit_before_graph(monkeypatch):
@@ -647,8 +644,8 @@ def test_stream_agent_cache_hit_before_graph(monkeypatch):
     from src.main import app
 
     clear_ttl_cache()
-    monkeypatch.setattr("src.shared.config.settings.cache_enabled", True)
-    monkeypatch.setattr("src.shared.config.settings.memory_ttl_seconds", 300)
+    monkeypatch.setattr("src.shared.settings.settings.cache_enabled", True)
+    monkeypatch.setattr("src.shared.settings.settings.memory_ttl_seconds", 300)
 
     q = "Hôm nay có bao nhiêu lượt xe vào cổng?"
     store_key = make_cache_key(q, route="query_data")
@@ -665,7 +662,10 @@ def test_stream_agent_cache_hit_before_graph(monkeypatch):
     monkeypatch.setattr("src.domain.agents.graph.run_agent_stream", mock_stream)
 
     client = TestClient(app)
-    res = client.post("/api/agent/stream", json={"question": q})
+    res = client.post(
+        "/api/agent/stream",
+        json={"question": q, "session_id": "stream-cache", "user_id": "u-stream"},
+    )
     assert res.status_code == 200
     body = res.text
 
@@ -681,7 +681,7 @@ def test_stream_agent_cache_hit_before_graph(monkeypatch):
 """Phase 5: TTL / memory fail — degrade an toàn (vẫn trả lời được).
 
 Tests:
-- TTL get raises -> _lookup_ttl_cache returns None; /api/chat still 200 when agent mocked OK.
+- TTL get raises -> _lookup_ttl_cache returns None; /api/agent/stream still 200 when agent mocked OK.
 - TTL set raises -> response still returned with answer.
 - recall_long_term raises -> recall_node returns empty memories, no exception.
 - extract_and_store_memory raises -> run_store_extract returns done event with degraded output, no raise.
@@ -694,7 +694,9 @@ from unittest.mock import MagicMock, patch
 import pytest
 from fastapi.testclient import TestClient
 
-from src.domain.agents.graph import Agent_Input, Agent_Output, recall_node, run_agent_stream, run_store_extract
+from src.domain.agents.graph import (Agent_Input, Agent_Output, run_agent_stream)
+
+from src.domain.agents.nodes.memory import (recall_node, run_store_extract)
 from src.infra.llm.schemas import QueryResult
 from src.main import app, _lookup_ttl_cache
 from src.infra.memory.ttl_cache import (
@@ -757,8 +759,8 @@ def test_get_ttl_cached_corrupted_entry_shape_returns_none():
 
 
 def test_ttl_get_fails_chat_still_200_when_agent_ok(monkeypatch):
-    """TTL get fails -> /api/chat proceeds to agent and returns 200 with answer."""
-    monkeypatch.setattr("src.infra.monitoring.tracing.settings.monitoring_enabled", False)
+    """TTL get fails -> /api/agent/stream proceeds to agent and returns 200 with answer."""
+    monkeypatch.setattr("src.domain.observability.tracing.settings.monitoring_enabled", False)
 
     mock_output = Agent_Output(
         question="Hôm nay có bao nhiêu xe vào?",
@@ -769,17 +771,19 @@ def test_ttl_get_fails_chat_still_200_when_agent_ok(monkeypatch):
 
     with patch("src.main.get_ttl_cached", side_effect=RuntimeError("Cache connection lost")), \
          patch("src.domain.agents.graph.run_agent", return_value=mock_output):
-        res = client.post("/api/chat", json={"question": "Hôm nay có bao nhiêu xe vào?"})
+        res = client.post("/api/agent/stream", json={"question": "Hôm nay có bao nhiêu xe vào?",
+        "session_id": "sess-1",
+        "user_id": "user-1",
+    })
 
+    from tests.helpers_stream import sse_answer, sse_complete
     assert res.status_code == 200
-    data = res.json()
-    assert data["answer"] == "Hôm nay có 120 xe vào cổng."
-    assert data["row_count"] == 1
+    assert sse_answer(res) == "Hôm nay có 120 xe vào cổng."
 
 
 def test_ttl_set_raises_chat_and_ask_still_return_answer(monkeypatch):
-    """TTL set raises -> /api/chat and /ask still return answers successfully."""
-    monkeypatch.setattr("src.infra.monitoring.tracing.settings.monitoring_enabled", False)
+    """TTL set raises -> /api/agent/stream still returns answers successfully."""
+    monkeypatch.setattr("src.domain.observability.tracing.settings.monitoring_enabled", False)
 
     mock_output = Agent_Output(
         question="Hôm nay có bao nhiêu xe vào?",
@@ -790,20 +794,18 @@ def test_ttl_set_raises_chat_and_ask_still_return_answer(monkeypatch):
 
     with patch("src.main.set_ttl_cached", side_effect=RuntimeError("Disk full / Cache write failed")), \
          patch("src.domain.agents.graph.run_agent", return_value=mock_output):
-        # /api/chat
-        res_chat = client.post("/api/chat", json={"question": "Hôm nay có bao nhiêu xe vào?"})
-        assert res_chat.status_code == 200
-        assert res_chat.json()["answer"] == "Tổng số 150 xe."
-
-        # /ask
-        res_ask = client.post("/ask", json={"question": "Hôm nay có bao nhiêu xe vào?"})
+        res_ask = client.post("/api/agent/stream", json={"question": "Hôm nay có bao nhiêu xe vào?",
+        "session_id": "sess-1",
+        "user_id": "user-1",
+    })
+        from tests.helpers_stream import sse_answer
         assert res_ask.status_code == 200
-        assert res_ask.json()["answer"] == "Tổng số 150 xe."
+        assert sse_answer(res_ask) == "Tổng số 150 xe."
 
 
 def test_ttl_set_raises_in_stream_still_returns_answer(monkeypatch):
     """TTL set raises in /api/agent/stream -> SSE stream completes with __answer__ done."""
-    monkeypatch.setattr("src.infra.monitoring.tracing.settings.monitoring_enabled", False)
+    monkeypatch.setattr("src.domain.observability.tracing.settings.monitoring_enabled", False)
 
     mock_output = Agent_Output(
         question="Bao nhiêu xe hôm nay?",
@@ -818,7 +820,10 @@ def test_ttl_set_raises_in_stream_still_returns_answer(monkeypatch):
 
     with patch("src.main.set_ttl_cached", side_effect=RuntimeError("Cache store error")), \
          patch("src.domain.agents.graph.run_agent_stream", side_effect=fake_stream):
-        res = client.post("/api/agent/stream", json={"question": "Bao nhiêu xe hôm nay?"})
+        res = client.post(
+            "/api/agent/stream",
+            json={"question": "Bao nhiêu xe hôm nay?", "session_id": "ttl-set", "user_id": "u-ttl"},
+        )
 
     assert res.status_code == 200
     events = []
@@ -897,11 +902,18 @@ def test_extract_and_store_memory_raises_run_store_extract_degraded():
 
 def test_stream_integration_recall_fail_agent_ok_store_extract_degraded(monkeypatch):
     """Integration: stream with recall fail + extract fail + agent OK -> answer status done, store degraded."""
-    monkeypatch.setattr("src.infra.monitoring.tracing.settings.monitoring_enabled", False)
+    monkeypatch.setattr("src.domain.observability.tracing.settings.monitoring_enabled", False)
 
     with patch("src.infra.memory.longterm.recall_long_term", side_effect=RuntimeError("Vector DB unavailable")), \
          patch("src.infra.memory.extract.extract_and_store_memory", side_effect=RuntimeError("Store DB full")):
-        res = client.post("/api/agent/stream", json={"question": "Hôm nay có bao nhiêu lượt xe vào?"})
+        res = client.post(
+            "/api/agent/stream",
+            json={
+                "question": "Hôm nay có bao nhiêu lượt xe vào?",
+                "session_id": "stream-degrade",
+                "user_id": "u-degrade",
+            },
+        )
 
     assert res.status_code == 200
     events = []
@@ -932,8 +944,9 @@ def test_stream_integration_recall_fail_agent_ok_store_extract_degraded(monkeypa
 
 def test_memory_master_disabled_turns_off_all_layers(monkeypatch):
     """MEMORY_ENABLED=false tắt short-term checkpointer, long-term recall/store, TTL cache."""
-    from src.domain.agents.graph import recall_node, run_store_extract, Agent_Output
-    from src.shared.config import settings
+    from src.domain.agents.graph import Agent_Output
+    from src.domain.agents.nodes.memory import (recall_node, run_store_extract)
+    from src.shared.settings import settings
 
     clear_ttl_cache()
     monkeypatch.setattr(settings, "memory_enabled", False)
@@ -957,7 +970,7 @@ def test_memory_master_disabled_turns_off_all_layers(monkeypatch):
 
 def test_memory_env_bool_accepts_one(monkeypatch):
     """MEMORY_ENABLED=1 được coi là true."""
-    from src.shared.config import Settings
+    from src.shared.settings import Settings
 
     s = Settings(MEMORY_ENABLED="1")
     assert s.memory_enabled is True

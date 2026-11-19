@@ -9,7 +9,7 @@ from unittest.mock import patch
 import pytest
 
 from src.infra.llm import gateway
-from src.shared.config import settings
+from src.shared.settings import settings
 
 
 @pytest.fixture(autouse=True)

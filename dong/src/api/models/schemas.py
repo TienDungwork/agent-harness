@@ -24,19 +24,6 @@ class ChatResponse(BaseModel):
     row_count: int = 0
 
 
-class AskRequest(BaseModel):
-    question: str = Field(min_length=1, description="Câu hỏi thống kê tự nhiên")
-
-
-class AskResponse(BaseModel):
-    question: str
-    answer: str
-    tool: str = ""
-    columns: list[str] = []
-    rows: list[list] = []
-    row_count: int = 0
-
-
 class MemoryListResponse(BaseModel):
     status: str = "ok"
     user_id: str

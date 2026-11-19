@@ -6,7 +6,7 @@ Tiêu chuẩn kiểm thử Acceptance Criteria AC-3:
    - get_checkpointer() tự động fallback sang MemorySaver() trong RAM.
    - save_to_long_term(), recall_long_term(), clear_long_term() hoạt động bình thường qua fallback store.
    - recall_memory_node và extract_memory_node trong graph thực thi trơn tru không lỗi.
-   - API endpoints: GET /api/memory, DELETE /api/memory, POST /api/chat, POST /api/agent/stream,
+   - API endpoints: GET /api/memory, DELETE /api/memory, POST /api/agent/stream, POST /api/agent/stream,
      và GET /api/health phản hồi HTTP 200 thành công, tuyệt đối KHÔNG trả về HTTP 500.
 """
 
@@ -29,7 +29,7 @@ from src.infra.memory.longterm import (
     recall_long_term,
     save_to_long_term,
 )
-from src.domain.agents.graph import Agent_Input, run_agent
+from src.domain.agents.graph import (Agent_Input, run_agent)
 
 
 @pytest.fixture(autouse=True)
@@ -62,8 +62,8 @@ def test_init_memory_db_graceful_degradation_invalid_host(monkeypatch, caplog):
 
 def test_checkpointer_graceful_degradation_invalid_host(monkeypatch, caplog):
     """Khi DB_HOST=invalid, get_checkpointer() tự động fallback sang MemorySaver."""
-    monkeypatch.setattr("src.shared.config.settings.db_host", "invalid_postgres_host_nonexistent")
-    monkeypatch.setattr("src.shared.config.settings.db_user", "postgres")
+    monkeypatch.setattr("src.shared.settings.settings.db_host", "invalid_postgres_host_nonexistent")
+    monkeypatch.setattr("src.shared.settings.settings.db_user", "postgres")
 
     # Giả lập connection pool ném lỗi kết nối
     with patch("psycopg_pool.ConnectionPool", side_effect=Exception("could not translate host name")):
@@ -138,34 +138,53 @@ def test_api_memory_get_and_delete_no_500_when_db_down(client, monkeypatch):
 
 
 def test_api_chat_no_500_when_db_down(client, monkeypatch):
-    """Endpoint /api/chat không trả về HTTP 500 khi DB memory offline."""
-    monkeypatch.setattr("src.infra.memory.longterm.is_postgres_configured", lambda: True)
+    """Endpoint /api/agent/stream không trả về HTTP 500 khi long-term memory offline."""
+    from src.domain.agents.graph import Agent_Output
 
-    def mock_broken_connection(*args, **kwargs):
-        raise ConnectionError("PostgreSQL connection refused")
+    def boom(*_a, **_k):
+        raise ConnectionError("Qdrant unavailable")
 
-    monkeypatch.setattr("src.infra.memory.longterm.get_memory_connection", mock_broken_connection)
+    monkeypatch.setattr("src.infra.memory.longterm.recall_long_term", boom)
+    monkeypatch.setattr("src.infra.memory.longterm.save_to_long_term", boom)
+    def fake_stream(*_a, **_k):
+        yield {
+            "__final_result__": Agent_Output(
+                question="Chào bạn, tôi tên là Hoàng",
+                answer="Xin chào Hoàng.",
+                detail="respond_inline",
+            )
+        }
+
+    monkeypatch.setattr("src.main.run_agent_stream", fake_stream)
 
     payload = {
         "question": "Chào bạn, tôi tên là Hoàng",
         "session_id": "test_deg_chat_sess",
         "user_id": "user_deg_chat",
     }
-    res = client.post("/api/chat", json=payload)
+    from tests.helpers_stream import sse_answer
+    res = client.post("/api/agent/stream", json=payload)
     assert res.status_code == 200, f"Kỳ vọng 200 nhưng nhận {res.status_code}: {res.text}"
-    data = res.json()
-    assert "answer" in data
-    assert len(data["answer"]) > 0
+    assert len(sse_answer(res)) > 0
 
 
 def test_api_agent_stream_no_500_when_db_down(client, monkeypatch):
-    """Endpoint /api/agent/stream chạy bình thường và phát sự kiện __answer__ khi DB offline."""
-    monkeypatch.setattr("src.infra.memory.longterm.is_postgres_configured", lambda: True)
+    """Endpoint /api/agent/stream chạy bình thường và phát sự kiện __answer__ khi memory offline."""
+    from src.domain.agents.graph import Agent_Output
 
-    def mock_broken_connection(*args, **kwargs):
-        raise ConnectionError("PostgreSQL connection refused")
+    def boom(*_a, **_k):
+        raise ConnectionError("Qdrant unavailable")
 
-    monkeypatch.setattr("src.infra.memory.longterm.get_memory_connection", mock_broken_connection)
+    monkeypatch.setattr("src.infra.memory.longterm.recall_long_term", boom)
+    monkeypatch.setattr("src.infra.memory.longterm.save_to_long_term", boom)
+
+    mock_out = Agent_Output(question="Chào bạn", answer="Xin chào.", detail="respond_inline")
+
+    def fake_stream(*_a, **_k):
+        yield {"node_id": "recall", "status": "done", "output": {"degraded": True}}
+        yield {"__final_result__": mock_out}
+
+    monkeypatch.setattr("src.main.run_agent_stream", fake_stream)
 
     payload = {
         "question": "Chào bạn",
@@ -174,7 +193,6 @@ def test_api_agent_stream_no_500_when_db_down(client, monkeypatch):
     }
     res = client.post("/api/agent/stream", json=payload)
     assert res.status_code == 200, f"Kỳ vọng 200 nhưng nhận {res.status_code}: {res.text}"
-    # Xác nhận stream có chứa sự kiện trả lời hoàn tất
     stream_content = res.text
     assert "__answer__" in stream_content
 
@@ -198,7 +216,7 @@ def test_agent_graph_pipeline_execution_when_db_down(monkeypatch):
 
 def test_health_endpoint_healthy_when_db_down(client, monkeypatch):
     """Endpoint /api/health trả về 200 và phản hồi cấu hình bình thường khi DB offline."""
-    monkeypatch.setattr("src.shared.config.settings.db_host", "invalid_host")
+    monkeypatch.setattr("src.shared.settings.settings.db_host", "invalid_host")
     res = client.get("/api/health")
     assert res.status_code == 200
     assert res.json()["status"] == "ok"

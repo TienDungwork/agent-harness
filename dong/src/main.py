@@ -11,7 +11,7 @@ from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
 from src.domain.agents.graph import Agent_Input
-from src.shared.config import settings
+from src.shared.settings import settings
 
 
 @asynccontextmanager
@@ -23,8 +23,8 @@ async def _lifespan(_app: FastAPI):
 
         init_agent_storage()
         ensure_session_storage()
-        from src.shared.feedback import load_legacy_feedback_for_migration
-        from src.infra.feedback.store import ensure_feedback_storage
+        from src.domain.observability.feedback import load_legacy_feedback_for_migration
+        from src.infra.storage.feedback.postgres import ensure_feedback_storage
 
         ensure_feedback_storage(load_legacy_feedback_for_migration)
         if settings.short_term_memory_enabled:
@@ -83,16 +83,14 @@ from src.api.helpers.errors import (
 )
 from src.api.routers import (
     agent_router,
-    ask,
     auth_router,
-    chat,
     feedback_router,
     memory_router,
     meta_router,
     sessions_router,
     stream_agent,
 )
-from src.api.models.schemas import AskRequest, AskResponse, ChatRequest, ChatResponse
+from src.api.models.schemas import ChatRequest, ChatResponse
 from src.infra.memory.ttl_cache import _cache, get_ttl_cached, make_cache_key, set_ttl_cached
 
 
@@ -107,7 +105,7 @@ def _lookup_ttl_cache(question: str) -> dict | None:
     except Exception:
         return None
 from src.api.helpers.sse_helpers import build_chart_sse_event as _build_chart_sse_event
-from src.shared.guardrails import GuardrailViolation, rejection_detail
+from src.domain.guardrails import GuardrailViolation, rejection_detail
 app = FastAPI(
     title="agent_ATIN v3 API",
     description="Backend API Gateway cho hệ thống VMS KCN Hưng Phú",

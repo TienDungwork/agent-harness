@@ -4,7 +4,7 @@ from typing import Any
 from src.domain.agents.nodes.io import node_event
 from src.domain.agents.state import AgentState
 from src.infra.chart.render import _detect_chart_type, plan_chart
-from src.infra.monitoring.tracing import current_span, trace_step
+from src.domain.observability.tracing import current_span, trace_step
 
 def _pad_direction_rows(rows: list, columns: list) -> list:
     """Bổ sung IN/OUT count=0 khi GROUP BY direction chỉ trả một phía."""
@@ -46,8 +46,8 @@ def render_chart_node(state: AgentState) -> dict:
         chart_type = (state['chart_type'] if 'chart_type' in state else None) or _detect_chart_type(q)
         spec = plan_chart(rows, q, chart_type=chart_type)
         with trace_step(current_span(), 'render_png', input={'chart_type': getattr(spec, 'chart_type', '')}, as_type='tool') as sub:
-            import src.domain.agents.graph as graph_mod
-            png_base64 = graph_mod.render_chart(rows, spec)
+            from src.infra.chart.render import render_chart
+            png_base64 = render_chart(rows, spec)
             sub['output'] = {'rendered': bool(png_base64), 'png_len': len(png_base64 or '')}
         meta = spec.model_dump() if spec else {}
         ok = bool(png_base64)
@@ -57,7 +57,7 @@ def render_chart_node(state: AgentState) -> dict:
             try:
                 import base64
                 import logging
-                from src.infra.storage.minio_charts import upload_chart_png
+                from src.infra.storage.objects.minio_charts import upload_chart_png
                 chart_url = upload_chart_png(base64.b64decode(png_base64), session_id=session_id)
                 png_for_sse = ''
             except Exception as upload_exc:

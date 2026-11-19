@@ -1,6 +1,6 @@
-"""Human feedback persistence."""
+"""Human feedback persistence — postgres.py (production) / local.py (SQLite/JSON + attachments)."""
 
-from src.infra.feedback.store import (
+from src.infra.storage.feedback.postgres import (
     ensure_feedback_storage,
     fetch_all_feedback,
     insert_feedback,

@@ -1,4 +1,4 @@
-"""Human Feedback — Postgres agent DB (production); SQLite file khi test/offline."""
+"""Human feedback — local storage (SQLite + JSON export + ảnh đính kèm) khi test/offline."""
 from __future__ import annotations
 import base64
 from datetime import datetime, timezone
@@ -9,27 +9,23 @@ import re
 import sqlite3
 import threading
 from typing import Any
-import uuid
-from src.infra.llm.schemas import FeedbackRequest
 logger = logging.getLogger(__name__)
-BASE_DIR = Path(__file__).resolve().parent.parent
-DATA_DIR = BASE_DIR / 'data'
+# dong/data (…/infra/storage/feedback → storage → infra → src → dong)
+_ROOT = Path(__file__).resolve().parents[4]
+DATA_DIR = _ROOT / "data"
 FEEDBACK_DB = DATA_DIR / 'feedback.db'
 FEEDBACK_FILE = DATA_DIR / 'feedback.json'
 ATTACHMENTS_DIR = DATA_DIR / 'feedback' / 'attachments'
-_lock = threading.Lock()
-_pg_migrate_done = False
+lock = threading.Lock()
+
+def uses_default_paths() -> bool:
+    """False khi test override path → luôn dùng SQLite local thay vì Postgres."""
+    return FEEDBACK_DB.parent == DATA_DIR and FEEDBACK_FILE.parent == DATA_DIR
 
 def _get_target_db_path() -> Path:
     if FEEDBACK_FILE.name != 'feedback.json' or FEEDBACK_FILE.parent != DATA_DIR:
         return FEEDBACK_FILE.with_suffix('.db')
     return FEEDBACK_DB
-
-def _use_postgres() -> bool:
-    from src.infra.feedback.store import postgres_feedback_enabled
-    if not postgres_feedback_enabled():
-        return False
-    return FEEDBACK_DB.parent == DATA_DIR and FEEDBACK_FILE.parent == DATA_DIR
 
 def _get_connection(db_path: Path | None=None) -> sqlite3.Connection:
     target_db = db_path or _get_target_db_path()
@@ -126,74 +122,52 @@ def _ensure_sqlite_dirs() -> None:
     ATTACHMENTS_DIR.mkdir(parents=True, exist_ok=True)
     target_db = _get_target_db_path()
     target_db.parent.mkdir(parents=True, exist_ok=True)
-    with _lock:
+    with lock:
         with _get_connection(target_db) as conn:
             _init_sqlite_db(conn)
             _migrate_json_to_sqlite(conn)
 
-def _ensure_postgres_migrated() -> None:
-    global _pg_migrate_done
-    if _pg_migrate_done or not _use_postgres():
-        return
-    from src.infra.feedback.store import ensure_feedback_storage
-    ensure_feedback_storage(load_legacy_feedback_for_migration)
-    _pg_migrate_done = True
-
 def _sync_json_export(records: list[dict[str, Any]]) -> None:
-    if _use_postgres():
-        return
     try:
         FEEDBACK_FILE.parent.mkdir(parents=True, exist_ok=True)
         FEEDBACK_FILE.write_text(json.dumps(records, ensure_ascii=False, indent=2), encoding='utf-8')
     except Exception as exc:
         logger.warning('Không thể đồng bộ feedback.json: %s', exc)
 
-def save_feedback_record(req: FeedbackRequest) -> dict[str, Any]:
+def save_attachment(feedback_id: str, image_base64: str, image_filename: str | None) -> str:
+    """Ghi ảnh base64 ra disk, trả về path tương đối `data/feedback/attachments/...`."""
     ATTACHMENTS_DIR.mkdir(parents=True, exist_ok=True)
-    now = datetime.now(timezone.utc).astimezone()
-    ts_str = now.strftime('%Y%m%d_%H%M%S')
-    short_id = uuid.uuid4().hex[:6]
-    feedback_id = f'fb_{ts_str}_{short_id}'
-    iso_timestamp = now.isoformat()
-    attachment_path: str | None = None
-    if req.image_base64 and req.image_base64.strip():
-        try:
-            raw_b64 = req.image_base64.strip()
-            if ',' in raw_b64:
-                raw_b64 = raw_b64.split(',', 1)[1]
-            img_bytes = base64.b64decode(raw_b64)
-            if req.image_filename and req.image_filename.strip():
-                clean_name = re.sub('[^a-zA-Z0-9_\\.-]', '_', req.image_filename.strip())
-                img_filename = f'{feedback_id}_{clean_name}'
-            else:
-                img_filename = f'{feedback_id}.png'
-            img_path = ATTACHMENTS_DIR / img_filename
-            img_path.write_bytes(img_bytes)
-            attachment_path = f'data/feedback/attachments/{img_filename}'
-        except Exception as exc:
-            logger.warning('Không thể lưu ảnh đính kèm feedback: %s', exc)
-            raise ValueError('Không thể lưu ảnh đính kèm. Vui lòng thử lại.') from exc
-    record: dict[str, Any] = {'id': feedback_id, 'timestamp': iso_timestamp, 'session_id': req.session_id, 'user_id': req.user_id, 'rating': req.rating, 'feedback_reason': req.feedback_reason, 'attachment_path': attachment_path, 'question': req.question, 'answer': req.answer, 'agent_trace': req.agent_trace}
-    if _use_postgres():
-        _ensure_postgres_migrated()
-        from src.infra.feedback.store import insert_feedback
-        with _lock:
-            insert_feedback(record)
-        return record
+    try:
+        raw_b64 = image_base64.strip()
+        if ',' in raw_b64:
+            raw_b64 = raw_b64.split(',', 1)[1]
+        img_bytes = base64.b64decode(raw_b64)
+        if image_filename and image_filename.strip():
+            clean_name = re.sub('[^a-zA-Z0-9_\\.-]', '_', image_filename.strip())
+            img_filename = f'{feedback_id}_{clean_name}'
+        else:
+            img_filename = f'{feedback_id}.png'
+        (ATTACHMENTS_DIR / img_filename).write_bytes(img_bytes)
+        return f'data/feedback/attachments/{img_filename}'
+    except Exception as exc:
+        logger.warning('Không thể lưu ảnh đính kèm feedback: %s', exc)
+        raise ValueError('Không thể lưu ảnh đính kèm. Vui lòng thử lại.') from exc
+
+def insert_local(record: dict[str, Any]) -> None:
     _ensure_sqlite_dirs()
     target_db = _get_target_db_path()
-    with _lock:
+    with lock:
         try:
             with _get_connection(target_db) as conn:
                 _init_sqlite_db(conn)
-                trace_str = json.dumps(req.agent_trace, ensure_ascii=False) if req.agent_trace is not None else None
-                conn.execute('\n                    INSERT INTO feedback (\n                        id, timestamp, session_id, user_id, rating, feedback_reason,\n                        attachment_path, question, answer, agent_trace\n                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)\n                    ', (feedback_id, iso_timestamp, req.session_id, req.user_id, req.rating, req.feedback_reason, attachment_path, req.question, req.answer, trace_str))
+                trace = record['agent_trace']
+                trace_str = json.dumps(trace, ensure_ascii=False) if trace is not None else None
+                conn.execute('\n                    INSERT INTO feedback (\n                        id, timestamp, session_id, user_id, rating, feedback_reason,\n                        attachment_path, question, answer, agent_trace\n                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)\n                    ', (record['id'], record['timestamp'], record['session_id'], record['user_id'], record['rating'], record['feedback_reason'], record['attachment_path'], record['question'], record['answer'], trace_str))
                 conn.commit()
                 _sync_json_export(_fetch_all_sqlite(conn))
         except (sqlite3.OperationalError, sqlite3.DatabaseError) as db_err:
             logger.error('Lỗi ghi SQLite feedback: %s', db_err)
             _fallback_append_json(record)
-    return record
 
 def _fallback_append_json(record: dict[str, Any]) -> None:
     try:
@@ -212,14 +186,10 @@ def _fallback_append_json(record: dict[str, Any]) -> None:
     except Exception as exc:
         logger.error('Fallback ghi JSON thất bại: %s', exc)
 
-def get_all_feedback() -> list[dict[str, Any]]:
-    if _use_postgres():
-        _ensure_postgres_migrated()
-        from src.infra.feedback.store import fetch_all_feedback
-        return fetch_all_feedback()
+def fetch_all_local() -> list[dict[str, Any]]:
     _ensure_sqlite_dirs()
     target_db = _get_target_db_path()
-    with _lock:
+    with lock:
         if target_db.exists():
             try:
                 with _get_connection(target_db) as conn:

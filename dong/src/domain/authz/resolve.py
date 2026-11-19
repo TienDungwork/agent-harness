@@ -5,7 +5,7 @@ from typing import Any
 
 from src.domain.authz.access_context import AccessContext, GeoScope
 from src.domain.authz.role_matrix import domains_for_role_group, normalize_role_group, tables_for_domains
-from src.shared.config import settings
+from src.shared.settings import settings
 
 
 class AccessDenied(Exception):

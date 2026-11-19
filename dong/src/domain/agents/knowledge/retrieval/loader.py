@@ -4,7 +4,7 @@ from functools import lru_cache
 from pathlib import Path
 from typing import Any
 import yaml
-from src.shared.config import get_settings
+from src.shared.settings import get_settings
 
 def docs_root() -> Path:
     """Đường dẫn thư mục docs YAML VMS."""

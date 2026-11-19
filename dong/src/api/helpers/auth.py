@@ -7,7 +7,7 @@ from fastapi import Header, HTTPException, Request
 from fastapi.responses import JSONResponse
 
 from src.domain.authz.resolve import AccessDenied, resolve_access_context
-from src.shared.config import settings
+from src.shared.settings import settings
 
 _PUBLIC_API_SUFFIXES = ('/api/health', '/api/llm/ping')
 
